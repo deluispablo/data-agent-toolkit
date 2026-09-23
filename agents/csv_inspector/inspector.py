@@ -2,24 +2,31 @@
 
 This module implements a stateless pipeline that:
 
-1. Reads only the first ``n_bytes`` of a (potentially massive) delimited file.
+1. Reads only the first ``n_bytes`` (head) and last ``tail_bytes`` (tail) of
+   a potentially massive delimited file, via bounded, seek-based reads that
+   never load the full file into memory.
 2. Heuristically pre-detects the character encoding with ``chardet``.
-3. Builds a concise prompt describing the sample.
+3. Builds a concise prompt describing both samples.
 4. Invokes a local LLM through Ollama (with an optional fallback model) to
    infer the file's dialect (delimiter, quoting, escaping), non-standard
    header/footer lines, and a preliminary column schema.
 5. Validates the model's JSON response against
    :class:`~agents.csv_inspector.models.CSVInspectionResult`.
 
-The pipeline never loads the full source file into memory, and the LLM
-backend is pluggable via the ``model_invoker`` parameter, which makes the
-whole flow unit-testable without a running Ollama instance.
+When the head sample already exhausts the file (i.e. the file is smaller
+than ``n_bytes``), the tail sample is skipped entirely: it would only
+duplicate content already visible to the model and would waste tokens,
+which conflicts with this project's cost-optimization-first principle.
+
+The LLM backend is pluggable via the ``model_invoker`` parameter, which
+makes the whole flow unit-testable without a running Ollama instance.
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 from collections.abc import Callable
 from pathlib import Path
@@ -42,6 +49,7 @@ logger.addHandler(logging.NullHandler())
 DEFAULT_MODEL: str = "qwen2.5-coder:7b"
 FALLBACK_MODEL: str = "qwen2.5-coder:7b"
 DEFAULT_SAMPLE_BYTES: int = 4096
+DEFAULT_TAIL_BYTES: int = 4096
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -57,7 +65,8 @@ def read_sample_bytes(path: str | Path, n_bytes: int = DEFAULT_SAMPLE_BYTES) -> 
         n_bytes: Maximum number of bytes to read from the start of the file.
 
     Returns:
-        The raw bytes read from the file.
+        The raw bytes read from the file. Shorter than ``n_bytes`` only when
+        the file itself is smaller than ``n_bytes``.
 
     Raises:
         FileSampleReadError: If the file does not exist or cannot be read.
@@ -66,7 +75,39 @@ def read_sample_bytes(path: str | Path, n_bytes: int = DEFAULT_SAMPLE_BYTES) -> 
         with open(path, "rb") as handle:
             return handle.read(n_bytes)
     except OSError as exc:
-        raise FileSampleReadError(f"Unable to read sample from '{path}': {exc}") from exc
+        raise FileSampleReadError(f"Unable to read head sample from '{path}': {exc}") from exc
+
+
+def read_tail_bytes(path: str | Path, n_bytes: int = DEFAULT_TAIL_BYTES) -> bytes:
+    """Read only the last ``n_bytes`` of a file without loading it fully into memory.
+
+    Uses a bounded seek from the end of the file (``os.SEEK_END``) followed
+    by a single bounded read, so the cost is independent of the file's total
+    size: no data before the tail window is ever touched.
+
+    Args:
+        path: Path to the source file.
+        n_bytes: Maximum number of trailing bytes to read.
+
+    Returns:
+        The raw trailing bytes. Shorter than ``n_bytes`` only when the file
+        itself is smaller than ``n_bytes``; empty for a zero-byte file.
+        These bytes are a blind suffix of the file and may begin mid-line
+        (or mid-character, for multi-byte encodings) rather than at a clean
+        row boundary.
+
+    Raises:
+        FileSampleReadError: If the file does not exist or cannot be read.
+    """
+    try:
+        with open(path, "rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            file_size = handle.tell()
+            read_size = min(n_bytes, file_size)
+            handle.seek(-read_size, os.SEEK_END)
+            return handle.read(read_size)
+    except OSError as exc:
+        raise FileSampleReadError(f"Unable to read tail sample from '{path}': {exc}") from exc
 
 
 def detect_encoding(raw_bytes: bytes) -> str:
@@ -103,29 +144,61 @@ def decode_sample(raw_bytes: bytes, encoding: str) -> str:
         return raw_bytes.decode("utf-8", errors="replace")
 
 
-def build_prompt(sample_text: str, detected_encoding: str) -> str:
+def build_prompt(
+    head_sample: str,
+    detected_encoding: str,
+    tail_sample: str | None = None,
+) -> str:
     """Build the prompt sent to the LLM to infer the CSV dialect and schema.
 
     Args:
-        sample_text: The decoded text sample from the source file.
-        detected_encoding: The encoding heuristically detected for the
+        head_sample: The decoded text sample from the start of the source
+            file.
+        detected_encoding: The encoding heuristically detected for the head
             sample, included as a hint the model may override.
+        tail_sample: The decoded text sample from the end of the source
+            file, or ``None`` when the head sample already covers the whole
+            file (in which case a separate tail section is omitted to save
+            tokens). When present, this sample is a blind byte-suffix and
+            may start mid-line or mid-character.
 
     Returns:
         A complete prompt instructing the model to respond with a single
         JSON object matching the ``CSVInspectionResult`` schema.
     """
+    if tail_sample is not None:
+        tail_section = f"""
+--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---
+{tail_sample}
+--- TAIL SAMPLE END ---
+
+Use the tail sample only to detect trailing footer content (summary/total \
+rows, "end of report" markers, trailing blank lines). Its first visible \
+line is very likely a truncated fragment, not a real row: do not use it to \
+infer columns.
+"""
+        footer_instruction = (
+            '"footer_lines": ["<trailing footer line 1, from the tail sample>", "..."],\n'
+            '  "footer_rows_to_skip": <number of trailing footer rows to ignore, usually 0>,'
+        )
+    else:
+        tail_section = "\n(The file is fully contained in the sample above; there is no separate tail.)\n"
+        footer_instruction = (
+            '"footer_lines": ["<trailing footer line 1, if any, from the sample above>", "..."],\n'
+            '  "footer_rows_to_skip": <number of trailing footer rows to ignore, usually 0>,'
+        )
+
     return f"""You are an expert data engineering agent specialized in detecting \
 the quirks of "dirty" or non-standard CSV files.
 
-Below are the first bytes (already decoded) of a real CSV file. The encoding \
-heuristically detected by chardet is: {detected_encoding!r} (it may be incorrect).
+Below are byte samples from a real CSV file. The encoding heuristically \
+detected by chardet is: {detected_encoding!r} (it may be incorrect).
 
---- SAMPLE START ---
-{sample_text}
---- SAMPLE END ---
-
-Analyze the sample and respond ONLY with a JSON object (no extra text, no \
+--- HEAD SAMPLE START (first bytes of the file) ---
+{head_sample}
+--- HEAD SAMPLE END ---
+{tail_section}
+Analyze the samples and respond ONLY with a JSON object (no extra text, no \
 markdown, no backticks) with exactly this shape:
 
 {{
@@ -136,7 +209,7 @@ markdown, no backticks) with exactly this shape:
   "doublequote": <true|false, whether embedded quotes are escaped by doubling>,
   "header_row_index": <0-based index of the row containing the real column names>,
   "metadata_lines": ["<metadata/comment line 1 preceding the header>", "..."],
-  "footer_rows_to_skip": <number of trailing footer rows to ignore, usually 0>,
+  {footer_instruction}
   "columns": [
     {{
       "name": "<column name>",
@@ -154,6 +227,7 @@ Keep in mind:
 - The delimiter may also appear inside quoted fields; do not confuse it with the real separator.
 - Column names may contain accented characters and other special characters.
 - Pay attention to escaped double quotes (e.g. "" inside a quoted field).
+- Rows may have an inconsistent number of fields; do not let that block your analysis.
 """
 
 
@@ -246,13 +320,15 @@ def inspect_csv(
     path: str | Path,
     model: str = DEFAULT_MODEL,
     n_bytes: int = DEFAULT_SAMPLE_BYTES,
+    tail_bytes: int = DEFAULT_TAIL_BYTES,
     fallback_model: str = FALLBACK_MODEL,
     model_invoker: ModelInvoker = invoke_ollama_model,
 ) -> CSVInspectionResult:
     """Inspect a delimited file fragment and infer its dialect and schema.
 
-    Reads only the first ``n_bytes`` of ``path``, asks a local LLM (via
-    ``model_invoker``) to infer the file's encoding, delimiter, quoting
+    Reads only the first ``n_bytes`` (head) and, when the file is larger
+    than that, the last ``tail_bytes`` (tail) of ``path``. Asks a local LLM
+    (via ``model_invoker``) to infer the file's encoding, delimiter, quoting
     rules, non-standard header/footer lines, and a preliminary column
     schema, and returns the result validated with Pydantic.
 
@@ -260,6 +336,9 @@ def inspect_csv(
         path: Path to the source CSV/TSV file.
         model: Primary Ollama model name to use.
         n_bytes: Number of bytes to sample from the start of the file.
+        tail_bytes: Number of bytes to sample from the end of the file. If
+            the head sample already exhausts the file, no separate tail
+            read is performed.
         fallback_model: Secondary model to try if ``model`` fails. Skipped
             automatically when equal to ``model``.
         model_invoker: Callable used to invoke the LLM; defaults to
@@ -273,10 +352,17 @@ def inspect_csv(
         InspectionFailedError: If every configured model fails to produce a
             valid, schema-conformant result.
     """
-    raw_bytes = read_sample_bytes(path, n_bytes)
-    detected_encoding = detect_encoding(raw_bytes)
-    sample_text = decode_sample(raw_bytes, detected_encoding)
-    prompt = build_prompt(sample_text, detected_encoding)
+    head_bytes = read_sample_bytes(path, n_bytes)
+    detected_encoding = detect_encoding(head_bytes)
+    head_sample = decode_sample(head_bytes, detected_encoding)
+
+    file_fits_in_head = len(head_bytes) < n_bytes
+    tail_sample: str | None = None
+    if not file_fits_in_head:
+        tail_raw_bytes = read_tail_bytes(path, tail_bytes)
+        tail_sample = decode_sample(tail_raw_bytes, detected_encoding)
+
+    prompt = build_prompt(head_sample, detected_encoding, tail_sample=tail_sample)
 
     candidate_models = [model] if model == fallback_model else [model, fallback_model]
     attempts: dict[str, Exception] = {}

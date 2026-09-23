@@ -48,6 +48,10 @@ class CSVInspectionResult(BaseModel):
             comments, etc.) that are not part of the tabular data.
         footer_rows_to_skip: Number of trailing rows to discard as
             non-data footers.
+        footer_lines: Raw trailing lines (totals, summary rows, "end of
+            report" markers, etc.) that are not part of the tabular data.
+            Inferred from the tail byte sample and may be incomplete when
+            the tail sample itself began mid-line.
         columns: The preliminary schema inferred for each column.
         confidence: The model's self-reported confidence, in ``[0.0, 1.0]``.
         notes: Optional free-text observations relevant to downstream parsing.
@@ -66,6 +70,7 @@ class CSVInspectionResult(BaseModel):
     )
     metadata_lines: list[str] = Field(default_factory=list)
     footer_rows_to_skip: int = Field(default=0, ge=0)
+    footer_lines: list[str] = Field(default_factory=list)
     columns: list[ColumnSchema]
     confidence: float = Field(ge=0.0, le=1.0)
     notes: str | None = None

@@ -1,0 +1,359 @@
+{
+  "delimiter_comma.csv": {
+    "category": "delimiter",
+    "description": "Standard comma-delimited file with no dialect quirks.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "metadata_lines": [],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "delimiter_semicolon.csv": {
+    "category": "delimiter",
+    "description": "Semicolon-delimited file with accented characters (common EU export format).",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "metadata_lines": [],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "delimiter_tab.tsv": {
+    "category": "delimiter",
+    "description": "Tab-delimited (TSV) file; extension deliberately still generic to test content-based detection.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "metadata_lines": [],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "delimiter_pipe.csv": {
+    "category": "delimiter",
+    "description": "Pipe-delimited file, common in legacy mainframe/EDI-style exports.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "metadata_lines": [],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "delimiter_inside_quoted_field.csv": {
+    "category": "delimiter",
+    "description": "Comma-delimited file where a quoted field legitimately contains the delimiter character.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "metadata_lines": [],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": "The model must not mistake the comma inside the quoted field for a fourth column."
+  },
+  "encoding_utf8_bom.csv": {
+    "category": "encoding",
+    "description": "UTF-8 file with a byte-order mark, as produced by Excel's 'CSV UTF-8' export.",
+    "expected": {
+      "encoding": "utf-8-sig",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "chardet typically reports this as 'UTF-8-SIG'; the BOM itself must not leak into the first column name."
+  },
+  "encoding_latin1.csv": {
+    "category": "encoding",
+    "description": "Semicolon-delimited file encoded as Latin-1/cp1252, not valid UTF-8 (classic legacy Windows export).",
+    "expected": {
+      "encoding": "latin-1 or cp1252 (not utf-8)",
+      "delimiter": ";",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "These bytes are not valid UTF-8; the agent must not silently mangle accented characters."
+  },
+  "encoding_utf16le_bom.csv": {
+    "category": "encoding",
+    "description": "UTF-16 LE file with BOM, tab-delimited (classic old-Excel 'Unicode Text' export).",
+    "expected": {
+      "encoding": "utf-16 or utf-16-le",
+      "delimiter": "\t",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "A classic 'unexpected file' gotcha: every other byte is 0x00 when misread as a single-byte encoding."
+  },
+  "header_metadata_banner.csv": {
+    "category": "header_footer",
+    "description": "Two comment/metadata lines before the real header row (export banner style).",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "header_row_index": 2,
+      "metadata_lines": [
+        "# Exportado desde SistemaXYZ v3.2",
+        "# Fecha de generación: 2024-01-15"
+      ],
+      "footer_rows_to_skip": 0,
+      "footer_lines": []
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "header_none_data_only.csv": {
+    "category": "header_footer",
+    "description": "No header row at all; data starts on the very first line.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": null
+    },
+    "known_limitation": false,
+    "notes": "Ground truth is intentionally null: there is no real header row. The agent should either say so in 'notes' or return a low 'confidence', not confidently assert a fabricated header row."
+  },
+  "header_duplicated_mid_file.csv": {
+    "category": "header_footer",
+    "description": "The header row is repeated mid-file, as happens when exports get concatenated.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "The duplicated header mid-file is a structural anomaly the agent should flag in 'notes', not treat as a data row."
+  },
+  "footer_summary_totals.csv": {
+    "category": "header_footer",
+    "description": "A totals row appended after the data, sharing the same delimiter.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL,,4241.25"
+      ]
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "footer_end_marker.csv": {
+    "category": "header_footer",
+    "description": "A blank line followed by an 'end of report' marker and a generation timestamp.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 3,
+      "footer_lines": [
+        "",
+        "--- Fin del informe ---",
+        "Generado el 2024-01-20 10:00:00"
+      ]
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "header_and_footer_combined.csv": {
+    "category": "header_footer",
+    "description": "Both a metadata banner before the header and an end-of-report marker after the data.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 1,
+      "metadata_lines": [
+        "# Exportado desde SistemaXYZ v3.2"
+      ],
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe ---"
+      ]
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "quoting_doubled_quotes.csv": {
+    "category": "quoting",
+    "description": "Standard RFC 4180 escaping: an embedded double-quote is doubled (\"\").",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "doublequote": true,
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "quoting_backslash_escape.csv": {
+    "category": "quoting",
+    "description": "Backslash-escaped quotes inside fields, as produced by some MySQL/legacy exporters.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "escapechar": "\\",
+      "doublequote": false,
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "quoting_embedded_newline.csv": {
+    "category": "quoting",
+    "description": "A quoted field spans a real physical newline (a genuinely multi-line CSV record).",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": true,
+    "notes": "Byte-prefix/suffix sampling cannot reliably parse multi-line quoted records: a head or tail window may cut this field mid-record. Documented as a known limitation rather than solved by this iteration."
+  },
+  "quoting_inconsistent.csv": {
+    "category": "quoting",
+    "description": "Mixed quoting: some fields quoted, others not, within the same file.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "quoting_trailing_empty_field.csv": {
+    "category": "quoting",
+    "description": "A trailing delimiter leaves an empty last field on some rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "ragged_rows_inconsistent_columns.csv": {
+    "category": "structural",
+    "description": "Rows have an inconsistent number of fields (some trailing values missing).",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "Row 2 is missing a field, row 3 has an extra one; the agent should note this rather than error out."
+  },
+  "line_endings_mixed_crlf_lf.csv": {
+    "category": "structural",
+    "description": "Mixed line endings (\\r\\n and \\n) within the same file, from concatenated cross-OS exports.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "no_trailing_newline_eof.csv": {
+    "category": "structural",
+    "description": "The last line has no terminating newline character at end of file.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "blank_lines_between_rows.csv": {
+    "category": "structural",
+    "description": "Stray blank lines interspersed between data rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "empty_file.csv": {
+    "category": "structural",
+    "description": "A completely empty (zero-byte) file — extreme edge case for both head and tail reads.",
+    "expected": {
+      "encoding": null,
+      "delimiter": null,
+      "header_row_index": null
+    },
+    "known_limitation": false,
+    "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; the LLM step is expected to fail gracefully (there is nothing to infer from), which is a case for InspectionFailedError/manual review rather than a schema-conformant result."
+  },
+  "header_only_no_data.csv": {
+    "category": "structural",
+    "description": "A header row is present but there are zero data rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  },
+  "numeric_european_format.csv": {
+    "category": "data_format",
+    "description": "European decimal-comma / thousands-dot numeric formatting (e.g. '1.250,50').",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "'Importe' should ideally be inferred as a numeric type despite the European formatting, not as a plain string; worth tracking separately as a column-typing quality metric."
+  },
+  "null_representations_mixed.csv": {
+    "category": "data_format",
+    "description": "Inconsistent null markers across rows: empty string, NULL, N/A, '-', NaN.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": "'Observaciones' should be flagged nullable=True; the mix of null markers is worth a mention in 'notes'."
+  },
+  "whitespace_padded_fields.csv": {
+    "category": "data_format",
+    "description": "Fields padded with spaces around the delimiter, from a fixed-width-to-CSV conversion.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "header_row_index": 0
+    },
+    "known_limitation": false,
+    "notes": null
+  }
+}

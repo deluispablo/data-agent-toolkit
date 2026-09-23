@@ -1,0 +1,2 @@
+-r agents/csv_inspector/requirements.txt
+pytest>=8.0

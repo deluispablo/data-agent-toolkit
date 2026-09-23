@@ -34,6 +34,8 @@ convention = "google"
 
 [tool.ruff.lint.isort]
 known-first-party = [
+    "backends",
+    "config",
     "cli_support",
     "eval_samples",
     "exceptions",

@@ -1,0 +1,5 @@
+# Optional extra for the 'api' backend (Gemini Developer API / Vertex AI).
+# The default local (Ollama) backend needs only requirements.txt.
+-r requirements.txt
+google-genai>=2.0,<3
+pydantic-settings>=2.0,<3

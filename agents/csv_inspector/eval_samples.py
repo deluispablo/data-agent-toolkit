@@ -31,14 +31,23 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import codecs
 import json
 import logging
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from cli_support import add_log_level_argument, configure_cli, non_negative_int, positive_int
 from exceptions import CSVInspectorError
-from inspector import DEFAULT_MODEL, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, FALLBACK_MODEL, inspect_csv
+from inspector import (
+    DEFAULT_MODEL,
+    DEFAULT_SAMPLE_BYTES,
+    DEFAULT_TAIL_BYTES,
+    FALLBACK_MODEL,
+    inspect_csv,
+)
 from models import CSVInspectionResult
 
 logger = logging.getLogger(__name__)
@@ -98,25 +107,47 @@ class FileEvaluation:
         return len(self.matched_fields) / self.comparable_count
 
 
+def _normalize_encoding(name: str) -> str:
+    """Map an encoding label to Python's canonical codec name.
+
+    Different tools spell the same codec differently (``latin-1`` vs
+    ``ISO-8859-1``, ``windows-1252`` vs ``cp1252``, ``UTF-16LE`` vs
+    ``utf_16_le``); resolving through :func:`codecs.lookup` makes those
+    compare equal.
+
+    Args:
+        name: An encoding label.
+
+    Returns:
+        The canonical codec name, or the lower-cased label if Python does
+        not recognize it.
+    """
+    try:
+        return codecs.lookup(name.strip()).name
+    except LookupError:
+        return name.strip().lower()
+
+
 def _matches_encoding(expected: str, actual: str) -> bool:
-    """Loosely match a free-text expected encoding description against the actual value.
+    """Match a free-text expected encoding description against the actual value.
 
     Manifest entries sometimes describe encoding as alternatives (e.g.
     ``"latin-1 or cp1252 (not utf-8)"``) since chardet's exact label can
-    vary. This checks whether any alternative is a substring of the
-    model's reported encoding, case- and separator-insensitively.
+    vary. Parenthesized remarks are ignored, and each alternative is
+    compared to ``actual`` by canonical codec name.
 
     Args:
         expected: The manifest's expected encoding description.
         actual: The model's reported encoding.
 
     Returns:
-        True if any alternative in ``expected`` matches ``actual``.
+        True if any alternative in ``expected`` names the same codec as
+        ``actual``.
     """
-    expected_normalized = expected.lower().replace(" (not utf-8)", "")
-    actual_normalized = actual.lower().replace("_", "-")
-    alternatives = [alt.strip(" ()") for alt in expected_normalized.split(" or ")]
-    return any(alt and alt in actual_normalized for alt in alternatives)
+    without_remarks = re.sub(r"\([^)]*\)", "", expected)
+    alternatives = [alt for alt in without_remarks.split(" or ") if alt.strip()]
+    actual_codec = _normalize_encoding(actual)
+    return any(_normalize_encoding(alt) == actual_codec for alt in alternatives)
 
 
 def _compare(
@@ -206,14 +237,15 @@ def evaluate_file(
 
 def _format_file_line(evaluation: FileEvaluation) -> str:
     """Format one evaluation as a single human-readable report line."""
-    tag = f"[{evaluation.category}]"
+    prefix = f"[{evaluation.category}] {evaluation.filename}:"
     if evaluation.error:
-        return f"{tag} {evaluation.filename}: ERROR — {evaluation.error}"
-    if evaluation.comparable_count == 0:
-        return f"{tag} {evaluation.filename}: no comparable fields in manifest"
+        return f"{prefix} ERROR — {evaluation.error}"
+    score = evaluation.score
+    if score is None:
+        return f"{prefix} no comparable fields in manifest"
 
-    pct = evaluation.score * 100  # type: ignore[operator]
-    line = f"{tag} {evaluation.filename}: {len(evaluation.matched_fields)}/{evaluation.comparable_count} ({pct:.0f}%)"
+    matched = len(evaluation.matched_fields)
+    line = f"{prefix} {matched}/{evaluation.comparable_count} ({score:.0%})"
     if evaluation.mismatched_fields:
         details = ", ".join(
             f"{name} (expected={expected!r}, got={actual!r})"
@@ -250,12 +282,13 @@ def print_report(evaluations: list[FileEvaluation], *, model: str, fallback_mode
         for evaluation in known_limitations:
             print(_format_file_line(evaluation))
 
-    scoreable = [e for e in regular if e.score is not None]
-    if scoreable:
-        aggregate = sum(e.score for e in scoreable) / len(scoreable)  # type: ignore[misc]
+    scores = [e.score for e in regular if e.score is not None]
+    if scores:
+        aggregate = sum(scores) / len(scores)
         print(
-            f"\n=== Aggregate score: {aggregate * 100:.1f}% across {len(scoreable)} scoreable file(s) "
-            f"(excluding {len(known_limitations)} known-limitation and {len(errored)} errored file(s)) ==="
+            f"\n=== Aggregate score: {aggregate:.1%} across {len(scores)} scoreable file(s) "
+            f"(excluding {len(known_limitations)} known-limitation "
+            f"and {len(errored)} errored file(s)) ==="
         )
     else:
         print("\n=== No scoreable files ===")
@@ -265,23 +298,32 @@ def _parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the evaluation harness."""
     parser = argparse.ArgumentParser(description="csv_inspector manual evaluation harness")
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Primary Ollama model to evaluate.")
-    parser.add_argument("--fallback-model", default=FALLBACK_MODEL, help="Fallback Ollama model to evaluate.")
-    parser.add_argument("--bytes", type=int, default=DEFAULT_SAMPLE_BYTES, help="Head sample size, in bytes.")
-    parser.add_argument("--tail-bytes", type=int, default=DEFAULT_TAIL_BYTES, help="Tail sample size, in bytes.")
-    parser.add_argument("--category", default=None, help="Restrict the run to one manifest category.")
     parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity for progress messages.",
+        "--fallback-model", default=FALLBACK_MODEL, help="Fallback Ollama model to evaluate."
     )
+    parser.add_argument(
+        "--bytes",
+        type=positive_int,
+        default=DEFAULT_SAMPLE_BYTES,
+        help="Head sample size, in bytes.",
+    )
+    parser.add_argument(
+        "--tail-bytes",
+        type=non_negative_int,
+        default=DEFAULT_TAIL_BYTES,
+        help="Tail sample size, in bytes (0 disables).",
+    )
+    parser.add_argument(
+        "--category", default=None, help="Restrict the run to one manifest category."
+    )
+    add_log_level_argument(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     """Run the evaluation harness against the full (or filtered) sample catalog."""
     args = _parse_args()
-    logging.basicConfig(level=args.log_level, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    configure_cli(args.log_level)
 
     manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 

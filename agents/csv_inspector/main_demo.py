@@ -21,6 +21,7 @@ import logging
 import sys
 from pathlib import Path
 
+from cli_support import add_log_level_argument, configure_cli, non_negative_int, positive_int
 from exceptions import CSVInspectorError
 from inspector import DEFAULT_MODEL, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, inspect_csv
 
@@ -37,37 +38,29 @@ def _parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="csv_inspector local demo")
     parser.add_argument(
-        "--file", default=str(SAMPLE_PATH), help="Path to the CSV file to inspect."
+        "--file", type=Path, default=SAMPLE_PATH, help="Path to the CSV file to inspect."
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama model to use.")
     parser.add_argument(
         "--bytes",
-        type=int,
+        type=positive_int,
         default=DEFAULT_SAMPLE_BYTES,
         help="Number of leading (head) bytes to sample.",
     )
     parser.add_argument(
         "--tail-bytes",
-        type=int,
+        type=non_negative_int,
         default=DEFAULT_TAIL_BYTES,
-        help="Number of trailing (tail) bytes to sample, for footer detection.",
+        help="Number of trailing (tail) bytes to sample, for footer detection (0 disables).",
     )
-    parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity.",
-    )
+    add_log_level_argument(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     """Run the csv_inspector agent against a sample file and print the result."""
     args = _parse_args()
-    logging.basicConfig(
-        level=args.log_level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    configure_cli(args.log_level)
 
     logger.info(
         "Inspecting '%s' with model '%s' (head=%d bytes, tail=%d bytes).",
@@ -84,8 +77,10 @@ def main() -> None:
             n_bytes=args.bytes,
             tail_bytes=args.tail_bytes,
         )
-    except CSVInspectorError:
-        logger.exception("Inspection failed.")
+    except CSVInspectorError as exc:
+        # Expected failure modes get a one-line message; the traceback is
+        # only useful when debugging.
+        logger.error("Inspection failed: %s", exc, exc_info=logger.isEnabledFor(logging.DEBUG))
         sys.exit(1)
 
     print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))

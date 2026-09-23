@@ -10,20 +10,20 @@ Prerequisites:
 
 Usage:
     python main_demo.py
-    python main_demo.py --model qwen2.5-coder:7b --bytes 8192 --log-level DEBUG
+    python main_demo.py --model qwen2.5-coder:7b --bytes 8192 --tail-bytes 8192 --log-level DEBUG
 """
 
 from __future__ import annotations
 
 import argparse
-import io
 import json
 import logging
 import sys
 from pathlib import Path
 
+from cli_support import add_log_level_argument, configure_cli, non_negative_int, positive_int
 from exceptions import CSVInspectorError
-from inspector import DEFAULT_MODEL, DEFAULT_SAMPLE_BYTES, inspect_csv
+from inspector import DEFAULT_MODEL, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, inspect_csv
 
 logger = logging.getLogger(__name__)
 
@@ -38,47 +38,49 @@ def _parse_args() -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(description="csv_inspector local demo")
     parser.add_argument(
-        "--file", default=str(SAMPLE_PATH), help="Path to the CSV file to inspect."
+        "--file", type=Path, default=SAMPLE_PATH, help="Path to the CSV file to inspect."
     )
     parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama model to use.")
     parser.add_argument(
         "--bytes",
-        type=int,
+        type=positive_int,
         default=DEFAULT_SAMPLE_BYTES,
-        help="Number of leading bytes to sample.",
+        help="Number of leading (head) bytes to sample.",
     )
     parser.add_argument(
-        "--log-level",
-        default="INFO",
-        choices=["DEBUG", "INFO", "WARNING", "ERROR"],
-        help="Logging verbosity.",
+        "--tail-bytes",
+        type=non_negative_int,
+        default=DEFAULT_TAIL_BYTES,
+        help="Number of trailing (tail) bytes to sample, for footer detection (0 disables).",
     )
+    add_log_level_argument(parser)
     return parser.parse_args()
 
 
 def main() -> None:
     """Run the csv_inspector agent against a sample file and print the result."""
     args = _parse_args()
-    # Windows consoles default to a legacy code page (e.g. cp1252), which
-    # mangles non-ASCII characters in the JSON output; force UTF-8 instead.
-    if isinstance(sys.stdout, io.TextIOWrapper):
-        sys.stdout.reconfigure(encoding="utf-8")
-    logging.basicConfig(
-        level=args.log_level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-    )
+    configure_cli(args.log_level)
 
     logger.info(
-        "Inspecting '%s' with model '%s' (sampling %d bytes).",
+        "Inspecting '%s' with model '%s' (head=%d bytes, tail=%d bytes).",
         args.file,
         args.model,
         args.bytes,
+        args.tail_bytes,
     )
 
     try:
-        result = inspect_csv(args.file, model=args.model, n_bytes=args.bytes)
-    except CSVInspectorError:
-        logger.exception("Inspection failed.")
+        result = inspect_csv(
+            args.file,
+            model=args.model,
+            n_bytes=args.bytes,
+            tail_bytes=args.tail_bytes,
+        )
+    except CSVInspectorError as exc:
+        # Expected failure modes get a one-line message; the traceback is
+        # only useful when debugging.
+        logger.error("Inspection failed: %s", exc, exc_info=logger.isEnabledFor(logging.DEBUG))
         sys.exit(1)
 
     print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))

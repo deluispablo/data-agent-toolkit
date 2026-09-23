@@ -1,0 +1,6 @@
+Fecha,Cliente,Observaciones
+2024-01-15,Acme,
+2024-01-16,Beta,NULL
+2024-01-17,Gamma,N/A
+2024-01-18,Delta,-
+2024-01-19,Epsilon,NaN

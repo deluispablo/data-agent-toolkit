@@ -16,6 +16,14 @@ class FileSampleReadError(CSVInspectorError):
     """Raised when the initial byte sample cannot be read from the source file."""
 
 
+class EmptySampleError(CSVInspectorError):
+    """Raised when the source file is empty, so there is nothing to inspect.
+
+    Detected before any model is invoked, so an empty file never costs an
+    LLM call.
+    """
+
+
 class ModelInvocationError(CSVInspectorError):
     """Raised when the configured LLM backend fails to return a response."""
 

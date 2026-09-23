@@ -14,6 +14,8 @@ from pathlib import Path
 
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 _CSV_INSPECTOR_DIR = _REPO_ROOT / "agents" / "csv_inspector"
+_IMPORTABLE_DIRS = (_CSV_INSPECTOR_DIR, _CSV_INSPECTOR_DIR / "samples")
 
-if str(_CSV_INSPECTOR_DIR) not in sys.path:
-    sys.path.insert(0, str(_CSV_INSPECTOR_DIR))
+for _directory in _IMPORTABLE_DIRS:
+    if str(_directory) not in sys.path:
+        sys.path.insert(0, str(_directory))

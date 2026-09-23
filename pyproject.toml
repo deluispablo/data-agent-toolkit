@@ -1,0 +1,65 @@
+# Tool configuration only: agents are self-contained script folders, not an
+# installable distribution, so there is intentionally no [project] table.
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "N",        # pep8-naming
+    "D",        # pydocstyle (Google convention, see below)
+    "UP",       # pyupgrade
+    "ANN",      # type annotations
+    "B",        # flake8-bugbear
+    "BLE",      # blind except
+    "C4",       # comprehensions
+    "SIM",      # simplify
+    "RET",      # return statements
+    "PTH",      # prefer pathlib
+    "PT",       # pytest style
+    "PL",       # pylint
+    "RUF",      # ruff-specific
+]
+ignore = [
+    "PLR0913",  # many keyword-only knobs are the public API of inspect_csv
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.isort]
+known-first-party = [
+    "cli_support",
+    "eval_samples",
+    "exceptions",
+    "generate_samples",
+    "inspector",
+    "main_demo",
+    "models",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests: literal expectations, white-box helpers, and duck-typed fakes for io.open/ollama.
+"tests/**" = ["PLR2004", "PLC2701", "ANN401"]
+# Fixture catalog: long prose `description`/`notes` strings are data, not code.
+"agents/csv_inspector/samples/generate_samples.py" = ["E501"]
+
+[tool.mypy]
+strict = true
+warn_unreachable = true
+mypy_path = "agents/csv_inspector,agents/csv_inspector/samples"
+explicit_package_bases = true
+files = ["agents", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["chardet", "chardet.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]

@@ -31,6 +31,7 @@ from exceptions import (
 )
 from inspector import (
     ModelInvoker,
+    _extends_footer,
     _extract_json_payload,
     build_prompt,
     decode_sample,
@@ -51,11 +52,6 @@ VALID_RESULT_PAYLOAD: dict[str, object] = {
     "escapechar": None,
     "doublequote": True,
     "header_row_index": 2,
-    "metadata_lines": [
-        "# Exportado desde SistemaXYZ v3.2",
-        "# Fecha de generación: 2024-01-15",
-    ],
-    "footer_rows_to_skip": 0,
     "footer_lines": [],
     "columns": [
         {
@@ -304,7 +300,7 @@ def test_build_prompt_omits_tail_section_when_tail_sample_is_none() -> None:
     prompt = build_prompt(head_sample="a,b,c\n1,2,3\n", detected_encoding="utf-8", tail_sample=None)
 
     assert "TAIL SAMPLE START" not in prompt
-    assert "fully contained in the sample above" in prompt
+    assert "contains the ENTIRE file" in prompt
 
 
 def test_build_prompt_includes_tail_section_and_mid_line_caveat() -> None:
@@ -318,6 +314,70 @@ def test_build_prompt_includes_tail_section_and_mid_line_caveat() -> None:
     assert "TAIL SAMPLE START" in prompt
     assert ",99\nTOTAL,,999\n" in prompt
     assert "may start mid-line" in prompt
+
+
+@pytest.mark.parametrize("tail_sample", [None, "2,3\nTOTAL,,5\n"])
+def test_build_prompt_gives_concrete_footer_rules(tail_sample: str | None) -> None:
+    """Footers get explicit rules and examples in both prompt variants.
+
+    Regression test for issue #2: with only a metadata example in the prompt,
+    the model filed end-of-report markers and timestamps under metadata.
+    """
+    prompt = build_prompt(
+        head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample=tail_sample
+    )
+
+    assert "FOOTER (end of the file)" in prompt
+    for example in ("TOTAL,,4241.25", "--- Fin del informe ---", "Generado el 2024-01-20"):
+        assert example in prompt
+    assert "Footer lines are never part of the header preamble" in prompt
+
+
+def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
+    """With a tail sample, the head's (mid-file) last line must not be read as a footer."""
+    prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample="9,9\n")
+
+    assert "check the last lines of the TAIL sample" in prompt
+    assert "read footer lines ONLY from its last lines" in prompt
+
+
+def test_build_prompt_no_longer_requests_derived_or_removed_fields() -> None:
+    """The model is asked only for footer_lines: the count is derived, metadata is gone."""
+    prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8")
+
+    assert '"footer_lines"' in prompt
+    assert "footer_rows_to_skip" not in prompt
+    assert "metadata_lines" not in prompt
+
+
+# ---------------------------------------------------------------------
+# output contract
+# ---------------------------------------------------------------------
+
+
+def test_footer_rows_to_skip_is_derived_from_footer_lines() -> None:
+    """The footer count always equals the number of footer lines, blank ones included."""
+    payload = {**VALID_RESULT_PAYLOAD, "footer_lines": ["", "--- Fin ---", "Generado el X"]}
+
+    result = CSVInspectionResult.model_validate(payload)
+
+    assert result.footer_rows_to_skip == 3
+    assert result.model_dump()["footer_rows_to_skip"] == 3
+
+
+def test_contradictory_or_removed_model_fields_are_ignored() -> None:
+    """A stale count or a legacy metadata_lines key from the model cannot leak into the result."""
+    payload = {
+        **VALID_RESULT_PAYLOAD,
+        "footer_lines": ["TOTAL,,999"],
+        "footer_rows_to_skip": 0,
+        "metadata_lines": ["# banner"],
+    }
+
+    result = CSVInspectionResult.model_validate(payload)
+
+    assert result.footer_rows_to_skip == 1
+    assert "metadata_lines" not in result.model_dump()
 
 
 def test_extract_json_payload_strips_markdown_fence() -> None:
@@ -641,3 +701,200 @@ def test_invoke_ollama_model_reports_missing_package(monkeypatch: pytest.MonkeyP
 
     with pytest.raises(ModelInvocationError, match="pip install ollama"):
         invoke_ollama_model("prompt", "some-model")
+
+
+# ---------------------------------------------------------------------
+# grounding the model's answer in the sampled text (issue #2)
+# ---------------------------------------------------------------------
+
+_LEDGER = (
+    "# Exportado desde SistemaXYZ v3.2\n"
+    "# Periodo: 2024-01-01 a 2024-01-03\n"
+    "Fecha;Cliente;Importe\n"
+    "2024-01-01;Acme;10.00\n"
+    "2024-01-02;Beta;20.00\n"
+    "2024-01-03;Gamma;30.00\n"
+    "\n"
+    "TOTAL;;60.00\n"
+    "--- Fin del informe ---\n"
+)
+
+
+def _sloppy_answer(**overrides: object) -> ModelInvoker:
+    """Fake model that recognizes the structure but miscounts, paraphrases and skips lines.
+
+    By default it spots the totals row but drops the blank line before it
+    and the end-of-report marker after it.
+    """
+    payload = {
+        **VALID_RESULT_PAYLOAD,
+        "header_row_index": 0,
+        "columns": [
+            {"name": "Fecha", "inferred_type": "date"},
+            {"name": "Proveedor", "inferred_type": "string"},
+            {"name": "Monto", "inferred_type": "float"},
+        ],
+        "footer_lines": ["TOTAL;;60.00"],
+        **overrides,
+    }
+
+    def fake_invoker(prompt: str, model: str) -> str:
+        return json.dumps(payload)
+
+    return fake_invoker
+
+
+def test_grounding_recovers_header_row_and_literal_column_names(tmp_path: Path) -> None:
+    """A miscounted preamble and paraphrased names are corrected from the head."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer())
+
+    assert result.header_row_index == 2
+    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+    assert [column.inferred_type for column in result.columns] == ["date", "string", "float"]
+
+
+def test_grounding_recovers_skipped_footer_lines_verbatim(tmp_path: Path) -> None:
+    """Lines after the reported footer and blank separators before it are recovered."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer())
+
+    assert result.footer_lines == ["", "TOTAL;;60.00", "--- Fin del informe ---"]
+    assert result.footer_rows_to_skip == 3
+
+
+def test_grounding_reads_the_footer_from_the_tail_of_a_large_file() -> None:
+    """On the real head/tail path, the footer is anchored in the tail sample."""
+    fixture = SAMPLE_CSV_PATH.parent / "samples" / "header_and_footer_combined.csv"
+    totals_row = fixture.read_text(encoding="utf-8").splitlines()[-2]
+
+    # Mirrors what qwen2.5-coder:7b actually returned for this fixture.
+    columns = [
+        {"name": name, "inferred_type": "string"}
+        for name in ("Fecha", "Proveedor", "Descripción", "Monto")
+    ]
+
+    result = inspect_csv(
+        fixture, model_invoker=_sloppy_answer(columns=columns, footer_lines=[totals_row])
+    )
+
+    assert result.header_row_index == 2
+    assert [column.name for column in result.columns] == [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe",
+    ]
+    assert result.footer_lines == ["", totals_row, "--- Fin del informe ---"]
+
+
+def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
+    """Invented names that share nothing with the data never promote a data row to header."""
+    target = tmp_path / "no_header.csv"
+    target.write_text("2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8")
+    columns = [
+        {"name": "col_1", "inferred_type": "date"},
+        {"name": "col_2", "inferred_type": "string"},
+        {"name": "col_3", "inferred_type": "float"},
+    ]
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(columns=columns, header_row_index=0, footer_lines=[])
+    )
+
+    assert [column.name for column in result.columns] == ["col_1", "col_2", "col_3"]
+    assert result.footer_lines == []
+
+
+def test_grounding_anchors_the_footer_on_its_last_occurrence(tmp_path: Path) -> None:
+    """Footer text that also appears in the data must not drag data rows into the footer."""
+    target = tmp_path / "repeated.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\nRevisado\n2024-01-02;Beta;20.00\nRevisado\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(footer_lines=["Revisado"], header_row_index=0),
+    )
+
+    assert result.footer_lines == ["Revisado"]
+
+
+def test_grounding_keeps_an_unanchored_footer_as_reported(tmp_path: Path) -> None:
+    """If none of the reported footer lines occur in the file, the answer is left untouched."""
+    target = tmp_path / "plain.csv"
+    target.write_text("Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["*** END ***"]))
+
+    assert result.footer_lines == ["*** END ***"]
+
+
+def test_numeric_example_values_are_accepted_as_text() -> None:
+    """JSON numbers or nulls in example_values must not fail the whole inspection."""
+    payload = {
+        **VALID_RESULT_PAYLOAD,
+        "columns": [
+            {"name": "Importe", "inferred_type": "float", "example_values": [1447.44, 3, None]}
+        ],
+    }
+
+    result = CSVInspectionResult.model_validate(payload)
+
+    assert result.columns[0].example_values == ["1447.44", "3", ""]
+
+
+def test_grounding_recovers_an_unreported_totals_row_above_the_footer(tmp_path: Path) -> None:
+    """If the model only spots the closing marker, the totals row above it is still found."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"])
+    )
+
+    assert result.footer_lines == ["", "TOTAL;;60.00", "--- Fin del informe ---"]
+
+
+def test_grounding_never_extends_the_footer_past_a_data_row(tmp_path: Path) -> None:
+    """Backward extension stops at the first line that is neither blank nor a totals row."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n"
+        "2024-01-01;Total Care S.L.;10.00\n"
+        "2024-01-02;Beta;20.00\n"
+        "--- Fin del informe ---\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"])
+    )
+
+    assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        ("", True),
+        ("TOTAL;;;12.50", True),
+        ("Subtotal,,3", True),
+        ('"Total general",9', True),
+        ("Total registros: 250", True),
+        ("SUMA;;;1", True),
+        ("2024-01-01;Acme;10.00", False),
+        ("Totalmente nuevo,1,2", False),
+        ("Summary report", False),
+        ("--- Fin del informe ---", False),
+    ],
+)
+def test_extends_footer_accepts_only_blank_and_totals_rows(line: str, expected: bool) -> None:
+    """Only blank separators and totals-labelled rows extend a footer upwards."""
+    assert _extends_footer(line) is expected

@@ -75,9 +75,12 @@ Ollama) to infer:
 
 - Character encoding
 - Field delimiter, quote character, escape rules
-- Non-standard header lines (export banners, comments) *and* footer lines
-  (totals rows, "end of report" markers), sourced respectively from the
-  head and tail samples
+- Where the real header row is (`header_row_index`, i.e. how many preamble
+  lines such as export banners or comments to skip) and the footer lines
+  after the data (`footer_lines`: totals rows, "end of report" markers,
+  generation timestamps, blank separators), sourced respectively from the
+  head and tail samples. `footer_rows_to_skip` is derived from
+  `footer_lines`, so the two can never disagree.
 - A preliminary column-level schema (name, inferred type, nullability,
   example values)
 
@@ -101,10 +104,11 @@ flowchart TD
     T2 --> E2
     E1 --> F{Invoke primary Ollama model}
     E2 --> F
-    F -->|success: valid JSON + schema| L[CSVInspectionResult<br/>incl. footer_lines]
+    F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>header row + literal column names,<br/>footer re-read verbatim]
     F -->|failure: unreachable, bad JSON,<br/>or schema mismatch| G{Invoke fallback model}
-    G -->|success: valid JSON + schema| L
+    G -->|success: valid JSON + schema| GR
     G -->|failure| H[InspectionFailedError<br/>aggregated per-model attempts]
+    GR --> L[CSVInspectionResult<br/>incl. footer_lines]
 
     style L fill:#2f9e44,color:#fff
     style H fill:#c92a2a,color:#fff
@@ -125,17 +129,40 @@ Byte budgets are validated up front (`n_bytes >= 1`, `tail_bytes >= 0`):
 a negative size passed to `file.read()` means "read everything", which is
 exactly what this agent promises never to do.
 
+**Grounding.** Small local models reliably *recognize* headers and footers
+but count and copy lines poorly: they miscount preamble lines, paraphrase
+column names ("Importe" as "Monto"), and drop blank lines or skip a footer
+line. After validation, the model's answer is therefore used as a key to
+recompute positions deterministically from the sampled text:
+
+- **Header:** the head line whose fields equal the inferred column names;
+  failing that, the first line with as many fields as inferred columns,
+  followed by a line of the same shape, that shares at least one name with
+  the model's answer. That line's index becomes `header_row_index`, and
+  its fields replace any paraphrased column names.
+- **Footer:** the earliest reported footer line (by last occurrence) that
+  really appears at the end of the file, taken verbatim through to the
+  end of the file and extended backwards over blank separator lines and
+  rows labelled as totals (`TOTAL`, `Subtotal`, `Total registros: 250`,
+  `Suma`...). A totals row often has the same number of fields as a data
+  row, which is exactly what small models miss, but its label gives it
+  away.
+
+Whatever cannot be anchored this way is returned exactly as the model
+reported it: grounding only corrects footers the model has already
+identified, and never promotes an unlabelled data row to a footer.
+
 #### Module layout
 
 | File | Responsibility |
 |---|---|
-| `models.py` | `ColumnSchema`, `CSVInspectionResult` — the strict Pydantic v2 output contract, including `metadata_lines`/`footer_lines`. |
+| `models.py` | `ColumnSchema`, `CSVInspectionResult` — the strict Pydantic v2 output contract, including `footer_lines` and the derived `footer_rows_to_skip`. |
 | `exceptions.py` | `CSVInspectorError` and its subclasses — one per domain failure mode. |
 | `inspector.py` | Head/tail byte sampling (`read_sample_bytes`, `read_tail_bytes`), encoding detection, prompt construction, model invocation, JSON parsing/validation, and the primary/fallback orchestration in `inspect_csv`. |
 | `main_demo.py` | CLI entry point for local, credential-free verification against `sample.csv`. |
 | `eval_samples.py` | Manual evaluation harness: runs the real pipeline (Ollama required) against every fixture in `samples/` and scores it against `samples/manifest.json`. Not part of `pytest`/CI — see [Sample catalog](#sample-catalog) below. |
 | `cli_support.py` | Shared CLI plumbing for both scripts: validated byte-budget argument types, `--log-level`, logging setup, and UTF-8 stdout (so accented output renders on Windows consoles). |
-| `sample.csv` | Original synthetic fixture with deliberately messy characteristics: semicolon delimiter, metadata banner, accented values, embedded delimiters and escaped quotes. |
+| `sample.csv` | Original synthetic fixture with deliberately messy characteristics: semicolon delimiter, comment banner before the header, accented values, embedded delimiters and escaped quotes. |
 | `samples/` | Catalog of 28 further fixtures covering delimiters, encodings, header/footer variants, quoting/escaping, structural anomalies, and data-format gotchas — see below. |
 
 The LLM backend is injected through `inspect_csv`'s `model_invoker`
@@ -155,7 +182,7 @@ documented with its ground truth in `manifest.json`:
 |---|---|
 | `delimiter` | Comma, semicolon, tab, pipe, and a delimiter character appearing legitimately inside a quoted field. |
 | `encoding` | UTF-8 with BOM, Latin-1/cp1252 (not valid UTF-8), UTF-16LE with BOM (classic old-Excel export). |
-| `header_footer` | Metadata banners before the header, no header at all, a duplicated header mid-file, footer totals rows, an "end of report" marker, and both header and footer combined. |
+| `header_footer` | Banner lines before the header, no header at all, a duplicated header mid-file, a totals row, an "end of report" marker with timestamp, and banner + footer combined. The three footer fixtures are production-sized (~14 KiB, larger than the default 4 KiB + 4 KiB budget), so the footer only reaches the model through the tail sample, as in real exports. |
 | `quoting` | Doubled (`""`) and backslash-escaped quotes, an embedded real newline inside a quoted field (flagged `known_limitation`), inconsistent quoting, and a trailing empty field. |
 | `structural` | Ragged rows, mixed CRLF/LF line endings, no trailing newline at EOF, blank lines between rows, an empty (0-byte) file, and a header-only file with zero data rows. |
 | `data_format` | European decimal-comma numeric formatting, mixed null representations (`NULL`, `N/A`, `-`, `NaN`, empty), and whitespace-padded fields. |
@@ -175,10 +202,13 @@ Two different test layers consume this catalog:
 
 - `tests/test_samples_catalog.py` (pytest, CI-safe, no LLM): validates the
   byte-sampling/encoding-detection layer, manifest/filesystem consistency,
-  and that every fixture matches the generator byte for byte.
+  that every fixture matches the generator byte for byte, and that each
+  footer fixture's footer is only visible through the default tail window.
 - `eval_samples.py` (manual, requires Ollama): runs the real LLM pipeline
   against every fixture and reports a per-file and aggregate accuracy
-  score — see [Usage](#usage) below.
+  score, including `footer_lines` — see [Usage](#usage) below. Pass
+  `--bytes 65536` to evaluate the head-only path, where each footer
+  fixture fits entirely in the head sample.
 
 #### Usage
 

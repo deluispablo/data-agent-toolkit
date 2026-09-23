@@ -7,10 +7,13 @@ Fixtures are generated rather than hand-typed so the catalog stays
 reviewable in a diff and easy to extend as new real-world "CSVs we didn't
 expect" show up.
 
-This script writes only small, illustrative fixtures. Large files (used to
-exercise ``read_tail_bytes`` against multi-megabyte inputs) are deliberately
-NOT generated here: they are created on the fly inside pytest fixtures
-(``tmp_path``) so the repository never carries multi-megabyte binaries.
+Most fixtures are small and illustrative. The footer fixtures are the
+exception: they are production-sized (~14 KiB), larger than the default
+head + tail sampling budget, because a footer only ever reaches the model
+through the tail sample in real files. Multi-megabyte inputs (used to prove
+reads stay bounded) are deliberately NOT generated here: they are created on
+the fly inside pytest fixtures (``tmp_path``) so the repository never
+carries large binaries.
 
 Usage:
     python generate_samples.py
@@ -22,6 +25,7 @@ import json
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -93,6 +97,65 @@ def _rows_to_text(rows: Sequence[tuple[str, ...]], delimiter: str) -> str:
     return "\n".join(delimiter.join(row) for row in rows) + "\n"
 
 
+# Production-like ledger used by the footer fixtures. Those fixtures must be
+# larger than the default head + tail sampling budget (4 KiB + 4 KiB) so the
+# real head/tail split is exercised, with the footer fully inside the tail.
+_LEDGER_HEADER = ("Fecha", "Cliente", "Concepto", "Importe")
+_LEDGER_ROW_COUNT = 220
+_LEDGER_START = date(2024, 1, 1)
+_LEDGER_CLIENTS = (
+    "Acme Distribuciones S.L.",
+    "Beta Consultores S.A.",
+    "Gamma Logística",
+    "Delta Servicios Técnicos",
+    "Epsilon Hostelería",
+    "Zeta Construcciones S.L.",
+    "Eta Farmacia Central",
+    "Theta Mobiliario",
+)
+_LEDGER_CONCEPTS = (
+    "Compra de material informático",
+    "Servicio de mantenimiento",
+    "Consultoría técnica",
+    "Formación interna",
+    "Revisión anual de equipos",
+    "Transporte de mercancía",
+)
+
+
+def _ledger_rows(count: int = _LEDGER_ROW_COUNT) -> tuple[list[tuple[str, ...]], str]:
+    """Build deterministic ledger data rows and their formatted amount total.
+
+    Values come from simple arithmetic rather than ``random`` so the bytes
+    are identical on every Python version, which the fixture-drift tests
+    rely on. Amounts are summed in integer cents to keep the total exact.
+
+    Args:
+        count: Number of data rows to generate.
+
+    Returns:
+        A ``(rows, total)`` tuple: the data rows (without header) and the sum
+        of the ``Importe`` column formatted with two decimals.
+    """
+    rows: list[tuple[str, ...]] = []
+    total_cents = 0
+    for i in range(count):
+        cents = 1_000 + (i * 7_919) % 250_000
+        total_cents += cents
+        rows.append(
+            (
+                (_LEDGER_START + timedelta(days=i)).isoformat(),
+                _LEDGER_CLIENTS[(i * 3) % len(_LEDGER_CLIENTS)],
+                _LEDGER_CONCEPTS[(i * 5) % len(_LEDGER_CONCEPTS)],
+                f"{cents // 100}.{cents % 100:02d}",
+            )
+        )
+    return rows, f"{total_cents // 100}.{total_cents % 100:02d}"
+
+
+_LEDGER_ROWS, _LEDGER_TOTAL = _ledger_rows()
+
+
 CASES: list[SampleCase] = [
     SampleCase(
         filename="delimiter_comma.csv",
@@ -104,7 +167,6 @@ CASES: list[SampleCase] = [
             "delimiter": ",",
             "quotechar": '"',
             "header_row_index": 0,
-            "metadata_lines": [],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -127,7 +189,6 @@ CASES: list[SampleCase] = [
             "delimiter": ";",
             "quotechar": '"',
             "header_row_index": 0,
-            "metadata_lines": [],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -142,7 +203,6 @@ CASES: list[SampleCase] = [
             "delimiter": "\t",
             "quotechar": '"',
             "header_row_index": 0,
-            "metadata_lines": [],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -157,7 +217,6 @@ CASES: list[SampleCase] = [
             "delimiter": "|",
             "quotechar": '"',
             "header_row_index": 0,
-            "metadata_lines": [],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -178,7 +237,6 @@ CASES: list[SampleCase] = [
             "delimiter": ",",
             "quotechar": '"',
             "header_row_index": 0,
-            "metadata_lines": [],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -253,10 +311,6 @@ CASES: list[SampleCase] = [
             "encoding": "utf-8",
             "delimiter": ";",
             "header_row_index": 2,
-            "metadata_lines": [
-                "# Exportado desde SistemaXYZ v3.2",
-                "# Fecha de generación: 2024-01-15",
-            ],
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
@@ -301,13 +355,9 @@ CASES: list[SampleCase] = [
     SampleCase(
         filename="footer_summary_totals.csv",
         category="header_footer",
-        description="A totals row appended after the data, sharing the same delimiter.",
+        description="Production-sized ledger (~14 KiB) with a totals row appended after the data, sharing the same delimiter.",
         raw_bytes=_encode(
-            "Fecha,Cliente,Importe\n"
-            "2024-01-15,Acme,1250.50\n"
-            "2024-01-16,Beta,890.00\n"
-            "2024-01-17,Gamma,2100.75\n"
-            "TOTAL,,4241.25\n",
+            _rows_to_text([_LEDGER_HEADER, *_LEDGER_ROWS, ("TOTAL", "", "", _LEDGER_TOTAL)], ","),
             "utf-8",
         ),
         expected={
@@ -315,20 +365,19 @@ CASES: list[SampleCase] = [
             "delimiter": ",",
             "header_row_index": 0,
             "footer_rows_to_skip": 1,
-            "footer_lines": ["TOTAL,,4241.25"],
+            "footer_lines": [f"TOTAL,,,{_LEDGER_TOTAL}"],
         },
+        notes="Larger than the default head + tail budget, so the footer is only visible in the tail sample.",
     ),
     SampleCase(
         filename="footer_end_marker.csv",
         category="header_footer",
-        description="A blank line followed by an 'end of report' marker and a generation timestamp.",
+        description="Production-sized ledger (~14 KiB) followed by a blank line, an 'end of report' marker and a generation timestamp.",
         raw_bytes=_encode(
-            "Fecha,Cliente,Importe\n"
-            "2024-01-15,Acme,1250.50\n"
-            "2024-01-16,Beta,890.00\n"
-            "\n"
-            "--- Fin del informe ---\n"
-            "Generado el 2024-01-20 10:00:00\n",
+            _rows_to_text([_LEDGER_HEADER, *_LEDGER_ROWS], ",")
+            + "\n"
+            + "--- Fin del informe ---\n"
+            + "Generado el 2024-08-08 10:00:00\n",
             "utf-8",
         ),
         expected={
@@ -336,29 +385,31 @@ CASES: list[SampleCase] = [
             "delimiter": ",",
             "header_row_index": 0,
             "footer_rows_to_skip": 3,
-            "footer_lines": ["", "--- Fin del informe ---", "Generado el 2024-01-20 10:00:00"],
+            "footer_lines": ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
         },
+        notes="Regression case: the timestamp line used to be misclassified as a header/metadata line.",
     ),
     SampleCase(
         filename="header_and_footer_combined.csv",
         category="header_footer",
-        description="Both a metadata banner before the header and an end-of-report marker after the data.",
+        description="Production-sized semicolon export (~14 KiB) with a two-line banner before the header and a blank line, totals row and end-of-report marker after the data.",
         raw_bytes=_encode(
             "# Exportado desde SistemaXYZ v3.2\n"
-            "Fecha,Cliente,Importe\n"
-            "2024-01-15,Acme,1250.50\n"
-            "2024-01-16,Beta,890.00\n"
-            "--- Fin del informe ---\n",
+            "# Periodo: 2024-01-01 a 2024-08-07\n"
+            + _rows_to_text([_LEDGER_HEADER, *_LEDGER_ROWS], ";")
+            + "\n"
+            + f"TOTAL;;;{_LEDGER_TOTAL}\n"
+            + "--- Fin del informe ---\n",
             "utf-8",
         ),
         expected={
             "encoding": "utf-8",
-            "delimiter": ",",
-            "header_row_index": 1,
-            "metadata_lines": ["# Exportado desde SistemaXYZ v3.2"],
-            "footer_rows_to_skip": 1,
-            "footer_lines": ["--- Fin del informe ---"],
+            "delimiter": ";",
+            "header_row_index": 2,
+            "footer_rows_to_skip": 3,
+            "footer_lines": ["", f"TOTAL;;;{_LEDGER_TOTAL}", "--- Fin del informe ---"],
         },
+        notes="The banner is only visible in the head sample and the footer only in the tail sample.",
     ),
     # -------------------------------------------------------------
     # D. Quoting and escaping

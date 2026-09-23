@@ -25,6 +25,8 @@ makes the whole flow unit-testable without a running Ollama instance.
 from __future__ import annotations
 
 import codecs
+import csv
+import itertools
 import json
 import logging
 import os
@@ -56,6 +58,13 @@ DEFAULT_TAIL_BYTES: int = 4096
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
 _SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
+
+# A line starting with a totals label (optionally quoted), e.g. "TOTAL;;;12.50",
+# "Subtotal,,3", '"Total general",9' or "Total registros: 250".
+_TOTALS_LABEL = re.compile(
+    r"""^["']?\s*(?:sub\s*-?\s*)?(?:grand\s+)?(?:totals?|totales|suma|sum)\b""",
+    re.IGNORECASE,
+)
 
 ModelInvoker = Callable[[str, str], str]
 """A callable that sends ``prompt`` to ``model`` and returns the raw response text."""
@@ -266,17 +275,19 @@ def build_prompt(
 {tail_sample}
 --- TAIL SAMPLE END ---
 
-Use the tail sample only to detect trailing footer content (summary/total \
-rows, "end of report" markers, trailing blank lines). Its first visible \
+The head sample stops somewhere in the middle of the data: its last line \
+may be truncated and is never a footer. The tail sample is the real end of \
+the file: read footer lines ONLY from its last lines. Its first visible \
 line is very likely a truncated fragment, not a real row: do not use it to \
 infer columns.
 """
-        footer_source = "from the tail sample"
+        file_end = "the last lines of the TAIL sample"
     else:
         tail_section = (
-            "\n(The file is fully contained in the sample above; there is no separate tail.)\n"
+            "\n(The sample above contains the ENTIRE file; there is no separate tail. "
+            "Its last lines are the real end of the file.)\n"
         )
-        footer_source = "if any, from the sample above"
+        file_end = "the last lines of the sample above"
 
     return f"""You are an expert data engineering agent specialized in detecting \
 the quirks of "dirty" or non-standard CSV files.
@@ -295,15 +306,13 @@ markdown, no backticks) with exactly this shape:
   "encoding": "<real encoding, e.g. utf-8, latin-1, cp1252>",
   "delimiter": "<field separator character, e.g. ',' or ';'>",
   "quotechar": "<character used to quote fields>",
-  "escapechar": "<escape character if any, or null>",
-  "doublequote": <true|false, whether embedded quotes are escaped by doubling>,
+  "escapechar": "<"\\\\" if quotes inside fields are written as \\", otherwise null>",
+  "doublequote": <true if quotes inside fields are written as "", false if as \\">,
   "header_row_index": <0-based index of the row containing the real column names>,
-  "metadata_lines": ["<metadata/comment line 1 preceding the header>", "..."],
-  "footer_lines": ["<trailing footer line 1, {footer_source}>", "..."],
-  "footer_rows_to_skip": <number of trailing footer rows to ignore, usually 0>,
+  "footer_lines": ["<every footer line after the last data row, in file order>", "..."],
   "columns": [
     {{
-      "name": "<column name>",
+      "name": "<column name copied character for character from the header row>",
       "inferred_type": "<string|integer|float|date|boolean>",
       "nullable": <true|false>,
       "example_values": ["<example value 1>", "<example value 2>"]
@@ -313,11 +322,31 @@ markdown, no backticks) with exactly this shape:
   "notes": "<relevant observations, or null>"
 }}
 
+HEADER (start of the file): lines before the real column-name row, such as \
+export banners, comments (e.g. starting with '#') or blank lines, are \
+preamble. Do not list them anywhere; just count them: "header_row_index" is \
+the 0-based index of the column-name row, i.e. the number of preamble lines.
+
+FOOTER (end of the file): check {file_end} independently of the header. \
+A data row holds a real record, with values like the rows above it (a date \
+in the date column, a name in the name column, and so on). Any trailing \
+line after the last data row is a footer line, for example:
+- a totals/summary row: it may have the same number of fields as a data \
+row, but it carries a label instead of a record and leaves other fields \
+empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"
+- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"
+- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"
+- a blank line separating the data from any of the above
+Copy every footer line verbatim into "footer_lines" (a blank line is ""), \
+from the first footer line to the last line of the file. Use [] only when \
+the file really ends with a data row. Footer lines are never part of the \
+header preamble.
+
 Keep in mind:
-- There may be metadata or comment lines (e.g. starting with '#') before the real header.
 - The delimiter may also appear inside quoted fields; do not confuse it with the real separator.
 - Column names may contain accented characters and other special characters.
-- Pay attention to escaped double quotes (e.g. "" inside a quoted field).
+- Check how quotes are escaped inside quoted fields: doubled ("") or \
+backslash-escaped (\\"); see "escapechar" and "doublequote" above.
 - Rows may have an inconsistent number of fields; do not let that block your analysis.
 """
 
@@ -435,6 +464,160 @@ def _read_tail_sample(
     return decode_sample(read_tail_bytes(path, window), _tail_encoding(head_bytes, encoding))
 
 
+def _split_fields(line: str, delimiter: str, quotechar: str) -> list[str] | None:
+    """Split one line into stripped fields, or ``None`` if it cannot be parsed."""
+    try:
+        fields = next(csv.reader([line], delimiter=delimiter, quotechar=quotechar))
+    except (csv.Error, StopIteration):
+        return None
+    return [field.strip() for field in fields]
+
+
+def _locate_header_row(
+    result: CSVInspectionResult, head_sample: str
+) -> tuple[int, list[str]] | None:
+    """Find the head line holding the column names, and the names as written.
+
+    Small models count preamble lines poorly and sometimes paraphrase column
+    names (e.g. "Importe" as "Monto"), but reliably get the number of
+    columns and at least some names right. The header row is therefore:
+
+    1. the first line whose fields equal every inferred column name; or
+    2. failing that, the first line with as many fields as inferred columns
+       that is followed by a line of the same shape and shares at least one
+       name with the model's answer. The shared name keeps the first data
+       row of a header-less file from being mistaken for a header.
+
+    Args:
+        result: The model's validated result, whose ``columns`` and dialect
+            are used to recognize the header line.
+        head_sample: The decoded head sample.
+
+    Returns:
+        ``(index, names)``: the 0-based index of the header line and its
+        fields as written in the file, or ``None`` if no line qualifies (e.g.
+        a header-less file, or a dialect Python's ``csv`` module rejects).
+    """
+    expected = [column.name.strip() for column in result.columns]
+    if not expected or len(result.delimiter) != 1 or len(result.quotechar) != 1:
+        return None
+    rows = [
+        _split_fields(line, result.delimiter, result.quotechar)
+        for line in head_sample.lstrip("﻿").splitlines()
+    ]
+
+    for index, fields in enumerate(rows):
+        if fields == expected:
+            return index, fields
+
+    width = len(expected)
+    for index, (fields, next_fields) in enumerate(itertools.pairwise(rows)):
+        if (
+            fields is not None
+            and next_fields is not None
+            and len(fields) == len(next_fields) == width
+            and set(fields) & set(expected)
+        ):
+            return index, fields
+    return None
+
+
+def _locate_footer_lines(footer_lines: list[str], end_of_file: str) -> list[str] | None:
+    """Re-read the model's footer verbatim from the real end of the file.
+
+    The model is good at recognizing footer content but unreliable at
+    copying it exactly: it tends to drop blank separator lines or skip a
+    line in the middle. This anchors the footer at the earliest non-blank
+    footer line the model reported that really occurs in the file's last
+    lines, takes every line from there to the end of the file verbatim, and
+    extends it backwards over the blank lines that separate it from the
+    data.
+
+    Args:
+        footer_lines: The footer lines reported by the model.
+        end_of_file: Decoded text that ends at the real end of the file (the
+            tail sample, or the head sample when it covers the whole file).
+
+    Returns:
+        The grounded footer lines, or ``None`` when none of the model's
+        non-blank footer lines occur in ``end_of_file`` (nothing to anchor).
+    """
+    reported = {line.strip() for line in footer_lines if line.strip()}
+    if not reported:
+        return None
+    lines = end_of_file.splitlines()
+    # Last occurrence of each reported line, so text that also appears earlier
+    # in the data cannot drag data rows into the footer. Line 0 is skipped: in
+    # a tail sample it is usually a truncated fragment.
+    last_seen = {line.strip(): i for i, line in enumerate(lines) if i > 0}
+    anchors = [last_seen[text] for text in reported if text in last_seen]
+    if not anchors:
+        return None
+    start = min(anchors)
+    while start > 1 and _extends_footer(lines[start - 1]):
+        start -= 1
+    return lines[start:]
+
+
+def _extends_footer(line: str) -> bool:
+    """Whether a line just above a known footer line also belongs to the footer.
+
+    Only blank separator lines and rows labelled as totals qualify. A totals
+    row often has the same number of fields as a data row, which is exactly
+    what small models miss, but its label gives it away.
+    """
+    stripped = line.strip()
+    return not stripped or _TOTALS_LABEL.match(stripped) is not None
+
+
+def _ground_in_samples(
+    result: CSVInspectionResult, head_sample: str, tail_sample: str | None
+) -> CSVInspectionResult:
+    """Correct what the model reported by matching it against the sampled text.
+
+    Small local models recognize headers and footers reliably but count and
+    copy lines poorly. Positions and verbatim text are therefore recomputed
+    deterministically from the real samples, using the model's own answer
+    as the key: the header row (and the column names as actually written)
+    is located from the inferred columns, and the footer is re-read
+    verbatim from the end of the file. Anything that cannot be anchored is
+    left exactly as the model reported it.
+
+    Args:
+        result: The model's validated result.
+        head_sample: The decoded head sample.
+        tail_sample: The decoded tail sample, or ``None`` when the head
+            covers the whole file.
+
+    Returns:
+        The result with ``header_row_index``, column names and
+        ``footer_lines`` grounded in the samples; the same object when
+        nothing changed.
+    """
+    updates: dict[str, object] = {}
+
+    header = _locate_header_row(result, head_sample)
+    if header is not None:
+        header_row_index, names = header
+        if header_row_index != result.header_row_index:
+            updates["header_row_index"] = header_row_index
+        if names != [column.name for column in result.columns]:
+            updates["columns"] = [
+                column.model_copy(update={"name": name})
+                for column, name in zip(result.columns, names, strict=True)
+            ]
+
+    end_of_file = tail_sample if tail_sample is not None else head_sample
+    footer_lines = _locate_footer_lines(result.footer_lines, end_of_file)
+    if footer_lines is not None and footer_lines != result.footer_lines:
+        updates["footer_lines"] = footer_lines
+
+    if not updates:
+        return result
+    logger.info("Grounded model output in the sampled text: %s", updates)
+    return result.model_copy(update=updates)
+
+
 def inspect_csv(
     path: str | Path,
     *,
@@ -506,7 +689,7 @@ def inspect_csv(
             candidate,
             result.confidence,
         )
-        return result
+        return _ground_in_samples(result, head_sample, tail_sample)
 
     raise InspectionFailedError(
         f"No configured model produced a valid inspection result for '{path}'. "

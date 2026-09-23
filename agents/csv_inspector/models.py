@@ -7,7 +7,9 @@ inspection result without ad-hoc parsing.
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+import json
+
+from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
 
 
 class ColumnSchema(BaseModel):
@@ -30,6 +32,23 @@ class ColumnSchema(BaseModel):
     nullable: bool = True
     example_values: list[str] = Field(default_factory=list)
 
+    @field_validator("example_values", mode="before")
+    @classmethod
+    def _stringify_scalar_examples(cls, value: object) -> object:
+        """Accept JSON scalars as raw example values.
+
+        Models often emit numeric examples as JSON numbers (``1447.44``)
+        rather than strings. Examples are raw text by contract, so scalars
+        are rendered as their JSON text (``null`` as ``""``) instead of
+        failing the whole inspection over a cosmetic field.
+        """
+        if not isinstance(value, list):
+            return value
+        return [
+            "" if item is None else json.dumps(item) if isinstance(item, int | float) else item
+            for item in value
+        ]
+
 
 class CSVInspectionResult(BaseModel):
     """Structured, validated result of inspecting a CSV/TSV file fragment.
@@ -43,15 +62,14 @@ class CSVInspectionResult(BaseModel):
         doublequote: Whether embedded quote characters are escaped by
             doubling them, per RFC 4180.
         header_row_index: Zero-based index of the row containing the real
-            column names.
-        metadata_lines: Raw lines preceding the header row (export banners,
-            comments, etc.) that are not part of the tabular data.
-        footer_rows_to_skip: Number of trailing rows to discard as
-            non-data footers.
+            column names; equivalently, the number of preamble lines (export
+            banners, comments, blank lines) to skip before the header.
         footer_lines: Raw trailing lines (totals, summary rows, "end of
-            report" markers, etc.) that are not part of the tabular data.
-            Inferred from the tail byte sample and may be incomplete when
-            the tail sample itself began mid-line.
+            report" markers, generation timestamps, blank separator lines)
+            that follow the last data row, in file order.
+        footer_rows_to_skip: Number of trailing rows to discard as non-data
+            footers. Derived from ``footer_lines`` rather than inferred
+            separately, so the two can never disagree.
         columns: The preliminary schema inferred for each column.
         confidence: The model's self-reported confidence, in ``[0.0, 1.0]``.
         notes: Optional free-text observations relevant to downstream parsing.
@@ -68,9 +86,13 @@ class CSVInspectionResult(BaseModel):
         ge=0,
         description="Zero-based index of the row containing the real column names.",
     )
-    metadata_lines: list[str] = Field(default_factory=list)
-    footer_rows_to_skip: int = Field(default=0, ge=0)
     footer_lines: list[str] = Field(default_factory=list)
     columns: list[ColumnSchema]
     confidence: float = Field(ge=0.0, le=1.0)
     notes: str | None = None
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def footer_rows_to_skip(self) -> int:
+        """Number of trailing footer rows to discard, i.e. ``len(footer_lines)``."""
+        return len(self.footer_lines)

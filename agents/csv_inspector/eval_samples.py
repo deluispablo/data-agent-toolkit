@@ -63,6 +63,7 @@ _COMPARABLE_FIELDS: tuple[str, ...] = (
     "escapechar",
     "doublequote",
     "header_row_index",
+    "footer_lines",
     "footer_rows_to_skip",
 )
 
@@ -150,6 +151,11 @@ def _matches_encoding(expected: str, actual: str) -> bool:
     return any(_normalize_encoding(alt) == actual_codec for alt in alternatives)
 
 
+def _normalize_lines(lines: list[str]) -> list[str]:
+    """Strip surrounding whitespace from each line, so a stray carriage return is not a miss."""
+    return [line.strip() for line in lines]
+
+
 def _compare(
     expected: dict[str, Any], result: CSVInspectionResult
 ) -> tuple[list[str], list[tuple[str, Any, Any]], list[str]]:
@@ -175,11 +181,12 @@ def _compare(
 
         expected_value = expected[field_name]
         actual_value = getattr(result, field_name)
-        is_match = (
-            _matches_encoding(str(expected_value), str(actual_value))
-            if field_name == "encoding"
-            else expected_value == actual_value
-        )
+        if field_name == "encoding":
+            is_match = _matches_encoding(str(expected_value), str(actual_value))
+        elif field_name == "footer_lines":
+            is_match = _normalize_lines(expected_value) == _normalize_lines(actual_value)
+        else:
+            is_match = expected_value == actual_value
 
         if is_match:
             matched.append(field_name)

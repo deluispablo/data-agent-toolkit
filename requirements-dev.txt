@@ -1,2 +1,4 @@
 -r agents/csv_inspector/requirements.txt
 pytest>=8.0
+ruff>=0.16
+mypy>=2.0

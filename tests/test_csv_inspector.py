@@ -6,7 +6,7 @@ domain error branches — is exercised without requiring a running Ollama
 instance or network access.
 
 The byte-sampling layer (``read_sample_bytes`` / ``read_tail_bytes``) is
-tested not only for correctness but also, via an ``io.open()`` spy, for *how*
+tested not only for correctness but also, via a ``Path.open()`` spy, for *how*
 it reads: these functions must never fall back to loading a whole file into
 memory, since that is the entire point of sampling head/tail byte windows
 against multi-gigabyte production files.
@@ -15,7 +15,6 @@ against multi-gigabyte production files.
 from __future__ import annotations
 
 import codecs
-import io
 import json
 import sys
 from pathlib import Path
@@ -78,25 +77,27 @@ VALID_RESULT_PAYLOAD: dict[str, object] = {
 
 
 def _spy_on_open(monkeypatch: pytest.MonkeyPatch) -> list[int]:
-    """Patch ``io.open`` to record every size passed to ``.read()``.
+    """Patch ``Path.open`` to record every size passed to ``.read()``.
 
-    ``Path.open`` delegates to ``io.open``, so this intercepts every file
-    the sampling functions open.
+    The sampling functions open files via ``Path.open``. It is patched
+    directly because how it reaches ``io.open`` varies across Python
+    versions (3.10 binds it at import time), so patching ``io.open`` would
+    not intercept the call everywhere.
 
     Args:
         monkeypatch: The pytest monkeypatch fixture for the current test.
 
     Returns:
         A list that will be populated, in call order, with the ``size``
-        argument of every ``.read()`` call made through ``io.open()`` while
-        the patch is active. A negative entry would indicate an unbounded
-        (whole-file) read.
+        argument of every ``.read()`` call made through ``Path.open()``
+        while the patch is active. A negative entry would indicate an
+        unbounded (whole-file) read.
     """
     read_calls: list[int] = []
-    real_open = io.open
+    real_open = Path.open
 
-    def spy_open(*args: Any, **kwargs: Any) -> IO[Any]:
-        handle: IO[Any] = real_open(*args, **kwargs)
+    def spy_open(self: Path, *args: Any, **kwargs: Any) -> IO[Any]:
+        handle: IO[Any] = real_open(self, *args, **kwargs)
         original_read = handle.read
 
         def traced_read(size: int = -1) -> Any:
@@ -106,7 +107,7 @@ def _spy_on_open(monkeypatch: pytest.MonkeyPatch) -> list[int]:
         handle.read = traced_read  # type: ignore[method-assign]
         return handle
 
-    monkeypatch.setattr(io, "open", spy_open)
+    monkeypatch.setattr(Path, "open", spy_open)
     return read_calls
 
 

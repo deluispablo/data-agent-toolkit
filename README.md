@@ -233,7 +233,7 @@ free of any Ollama dependency:
 - `test_csv_inspector.py` uses dependency injection (`model_invoker`) to
   exercise the full pipeline — including the primary/fallback path and
   every domain error branch — **without** requiring a running Ollama
-  instance or network access. It also proves, via an `io.open()` spy, that
+  instance or network access. It also proves, via a `Path.open()` spy, that
   `read_sample_bytes`/`read_tail_bytes` never fall back to a whole-file
   read regardless of source file size, and uses a stand-in `ollama` module
   to cover `invoke_ollama_model` itself.

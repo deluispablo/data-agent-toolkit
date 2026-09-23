@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -87,7 +88,7 @@ _BASE_ROWS_PLAIN = [
 ]
 
 
-def _rows_to_text(rows: list[tuple[str, ...]], delimiter: str) -> str:
+def _rows_to_text(rows: Sequence[tuple[str, ...]], delimiter: str) -> str:
     """Join tabular rows into delimited text with a trailing newline."""
     return "\n".join(delimiter.join(row) for row in rows) + "\n"
 
@@ -365,7 +366,7 @@ CASES: list[SampleCase] = [
     SampleCase(
         filename="quoting_doubled_quotes.csv",
         category="quoting",
-        description="Standard RFC 4180 escaping: an embedded double-quote is doubled (\"\").",
+        description='Standard RFC 4180 escaping: an embedded double-quote is doubled ("").',
         raw_bytes=_encode(
             "Fecha,Cliente,Descripcion,Importe\n"
             '2024-01-17,"Fernández & Asociados","Consultoría técnica ""urgente"" solicitada por el cliente",2100.75\n',
@@ -529,9 +530,9 @@ CASES: list[SampleCase] = [
             "delimiter": None,
             "header_row_index": None,
         },
-        notes="read_sample_bytes and read_tail_bytes must both return b'' without raising; the LLM step is expected "
-        "to fail gracefully (there is nothing to infer from), which is a case for InspectionFailedError/manual review "
-        "rather than a schema-conformant result.",
+        notes="read_sample_bytes and read_tail_bytes must both return b'' without raising; "
+        "inspect_csv then raises EmptySampleError before invoking any model, since there is "
+        "nothing to infer from.",
     ),
     SampleCase(
         filename="header_only_no_data.csv",
@@ -605,25 +606,43 @@ CASES: list[SampleCase] = [
 ]
 
 
-def main() -> None:
-    """Write every fixture in ``CASES`` and the aggregated ``manifest.json``."""
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
+    """Build the ``manifest.json`` payload describing ``cases``.
 
-    manifest: dict[str, dict[str, Any]] = {}
-    for case in CASES:
-        target = SAMPLES_DIR / case.filename
-        target.write_bytes(case.raw_bytes)
-        manifest[case.filename] = {
+    Args:
+        cases: The fixtures to describe, typically :data:`CASES`.
+
+    Returns:
+        A mapping of fixture filename to its category, description,
+        expected ground truth, known-limitation flag and notes.
+    """
+    return {
+        case.filename: {
             "category": case.category,
             "description": case.description,
             "expected": case.expected,
             "known_limitation": case.known_limitation,
             "notes": case.notes,
         }
-        logger.info("Wrote %s (%d bytes, category=%s).", case.filename, len(case.raw_bytes), case.category)
+        for case in cases
+    }
 
+
+def main() -> None:
+    """Write every fixture in ``CASES`` and the aggregated ``manifest.json``."""
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
+
+    for case in CASES:
+        (SAMPLES_DIR / case.filename).write_bytes(case.raw_bytes)
+        logger.info(
+            "Wrote %s (%d bytes, category=%s).", case.filename, len(case.raw_bytes), case.category
+        )
+
+    manifest = build_manifest(CASES)
     manifest_path = SAMPLES_DIR / "manifest.json"
-    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n"
+    )
     logger.info("Wrote manifest.json with %d entries.", len(manifest))
 
 

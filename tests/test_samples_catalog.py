@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+
+from generate_samples import CASES, SampleCase, build_manifest
 from inspector import decode_sample, detect_encoding, read_sample_bytes, read_tail_bytes
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "samples"
@@ -25,7 +27,8 @@ _NON_FIXTURE_FILENAMES = {"generate_samples.py", "manifest.json"}
 
 def _load_manifest() -> dict[str, dict[str, Any]]:
     """Load the sample catalog's ground-truth manifest."""
-    return json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    return manifest
 
 
 MANIFEST: dict[str, dict[str, Any]] = _load_manifest()
@@ -65,6 +68,26 @@ def test_manifest_entry_has_category_and_description(filename: str) -> None:
     assert entry["category"]
     assert entry["description"]
     assert isinstance(entry["known_limitation"], bool)
+
+
+# ---------------------------------------------------------------------
+# Generator <-> committed catalog drift
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("case", CASES, ids=lambda case: case.filename)
+def test_fixture_on_disk_matches_generator_byte_for_byte(case: SampleCase) -> None:
+    """Committed fixtures must equal what generate_samples.py produces.
+
+    Catches both a forgotten regeneration and silent rewriting by git
+    (e.g. ``core.autocrlf`` normalizing the mixed CRLF/LF fixture).
+    """
+    assert (SAMPLES_DIR / case.filename).read_bytes() == case.raw_bytes
+
+
+def test_manifest_matches_generator() -> None:
+    """The committed manifest.json must equal the generator's current output."""
+    assert build_manifest(CASES) == MANIFEST
 
 
 # ---------------------------------------------------------------------

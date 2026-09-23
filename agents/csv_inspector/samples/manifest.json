@@ -310,7 +310,7 @@
       "header_row_index": null
     },
     "known_limitation": false,
-    "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; the LLM step is expected to fail gracefully (there is nothing to infer from), which is a case for InspectionFailedError/manual review rather than a schema-conformant result."
+    "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
   },
   "header_only_no_data.csv": {
     "category": "structural",

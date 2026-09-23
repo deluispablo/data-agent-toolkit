@@ -6,7 +6,7 @@ domain error branches — is exercised without requiring a running Ollama
 instance or network access.
 
 The byte-sampling layer (``read_sample_bytes`` / ``read_tail_bytes``) is
-tested not only for correctness but also, via an ``open()`` spy, for *how*
+tested not only for correctness but also, via an ``io.open()`` spy, for *how*
 it reads: these functions must never fall back to loading a whole file into
 memory, since that is the entire point of sampling head/tail byte windows
 against multi-gigabyte production files.
@@ -14,23 +14,33 @@ against multi-gigabyte production files.
 
 from __future__ import annotations
 
+import codecs
+import io
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
+from typing import IO, Any
 
 import pytest
+
 from exceptions import (
+    EmptySampleError,
     FileSampleReadError,
     InspectionFailedError,
+    ModelInvocationError,
 )
 from inspector import (
+    ModelInvoker,
+    _extract_json_payload,
     build_prompt,
     decode_sample,
     detect_encoding,
     inspect_csv,
+    invoke_ollama_model,
     read_sample_bytes,
     read_tail_bytes,
 )
-from inspector import _extract_json_payload  # noqa: PLC2701 - white-box unit test.
 from models import CSVInspectionResult
 
 SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
@@ -67,34 +77,54 @@ VALID_RESULT_PAYLOAD: dict[str, object] = {
 }
 
 
-def _spy_on_open(monkeypatch: pytest.MonkeyPatch) -> list[int | None]:
-    """Patch the ``open`` builtin to record every size passed to ``.read()``.
+def _spy_on_open(monkeypatch: pytest.MonkeyPatch) -> list[int]:
+    """Patch ``io.open`` to record every size passed to ``.read()``.
+
+    ``Path.open`` delegates to ``io.open``, so this intercepts every file
+    the sampling functions open.
 
     Args:
         monkeypatch: The pytest monkeypatch fixture for the current test.
 
     Returns:
         A list that will be populated, in call order, with the ``size``
-        argument of every ``.read()`` call made through ``open()`` while the
-        patch is active. A ``None`` or negative entry would indicate an
-        unbounded (whole-file) read.
+        argument of every ``.read()`` call made through ``io.open()`` while
+        the patch is active. A negative entry would indicate an unbounded
+        (whole-file) read.
     """
-    read_calls: list[int | None] = []
-    real_open = open
+    read_calls: list[int] = []
+    real_open = io.open
 
-    def spy_open(*args: object, **kwargs: object):
-        handle = real_open(*args, **kwargs)  # type: ignore[arg-type]
+    def spy_open(*args: Any, **kwargs: Any) -> IO[Any]:
+        handle: IO[Any] = real_open(*args, **kwargs)
         original_read = handle.read
 
-        def traced_read(size: int = -1) -> bytes:
+        def traced_read(size: int = -1) -> Any:
             read_calls.append(size)
             return original_read(size)
 
         handle.read = traced_read  # type: ignore[method-assign]
         return handle
 
-    monkeypatch.setattr("builtins.open", spy_open)
+    monkeypatch.setattr(io, "open", spy_open)
     return read_calls
+
+
+def _tail_section(prompt: str) -> str:
+    """Return the text between the tail sample markers of a built prompt."""
+    start = prompt.index("--- TAIL SAMPLE START")
+    end = prompt.index("--- TAIL SAMPLE END ---")
+    return prompt[prompt.index("\n", start) + 1 : end]
+
+
+def _capture_prompts(prompts: list[str]) -> ModelInvoker:
+    """Build a fake model invoker that records prompts and returns a valid payload."""
+
+    def fake_invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        return json.dumps(VALID_RESULT_PAYLOAD)
+
+    return fake_invoker
 
 
 # ---------------------------------------------------------------------
@@ -430,3 +460,183 @@ def test_inspect_csv_includes_tail_sample_for_files_larger_than_head(tmp_path: P
 
     assert "TAIL SAMPLE START" in seen_prompts[0]
     assert "TOTAL,,999" in seen_prompts[0]
+
+
+# ---------------------------------------------------------------------
+# byte-budget validation
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("n_bytes", [0, -1])
+def test_read_sample_bytes_rejects_non_positive_budget(tmp_path: Path, n_bytes: int) -> None:
+    """A non-positive head budget must be rejected: ``read(-1)`` reads the whole file."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a,b,c\n")
+
+    with pytest.raises(ValueError, match="n_bytes"):
+        read_sample_bytes(target, n_bytes=n_bytes)
+
+
+def test_read_tail_bytes_rejects_negative_budget(tmp_path: Path) -> None:
+    """A negative tail budget must be rejected rather than silently misread."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a,b,c\n")
+
+    with pytest.raises(ValueError, match="n_bytes"):
+        read_tail_bytes(target, n_bytes=-1)
+
+
+def test_read_tail_bytes_zero_budget_returns_empty_bytes(tmp_path: Path) -> None:
+    """A zero tail budget is valid and yields an empty sample."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a,b,c\n")
+
+    assert read_tail_bytes(target, n_bytes=0) == b""
+
+
+@pytest.mark.parametrize(
+    ("n_bytes", "tail_bytes", "bad_name"),
+    [(0, 64, "n_bytes"), (64, -1, "tail_bytes")],
+)
+def test_inspect_csv_validates_budgets_before_touching_the_file(
+    tmp_path: Path, n_bytes: int, tail_bytes: int, bad_name: str
+) -> None:
+    """Invalid budgets fail fast, even before the (missing) file is opened."""
+    with pytest.raises(ValueError, match=bad_name):
+        inspect_csv(
+            tmp_path / "missing.csv",
+            n_bytes=n_bytes,
+            tail_bytes=tail_bytes,
+            model_invoker=_capture_prompts([]),
+        )
+
+
+# ---------------------------------------------------------------------
+# empty input
+# ---------------------------------------------------------------------
+
+
+def test_inspect_csv_raises_on_empty_file_without_invoking_model(tmp_path: Path) -> None:
+    """An empty file must fail fast with a domain error and cost no LLM call."""
+    target = tmp_path / "empty.csv"
+    target.write_bytes(b"")
+    prompts: list[str] = []
+
+    with pytest.raises(EmptySampleError):
+        inspect_csv(target, model_invoker=_capture_prompts(prompts))
+
+    assert prompts == []
+
+
+# ---------------------------------------------------------------------
+# tail window: overlap, exact fit, alignment
+# ---------------------------------------------------------------------
+
+
+def test_inspect_csv_skips_tail_when_file_is_exactly_head_sized(tmp_path: Path) -> None:
+    """A file of exactly ``n_bytes`` is fully covered by the head: no tail section."""
+    target = tmp_path / "exact.csv"
+    target.write_bytes(b"a,b,c\n" * 10)
+    prompts: list[str] = []
+
+    inspect_csv(target, n_bytes=60, tail_bytes=64, model_invoker=_capture_prompts(prompts))
+
+    assert "TAIL SAMPLE START" not in prompts[0]
+
+
+def test_inspect_csv_tail_never_overlaps_head(tmp_path: Path) -> None:
+    """Only the bytes past the head window are sent as the tail sample."""
+    target = tmp_path / "overlap.csv"
+    target.write_bytes(b"H" * 64 + b"0123456789")
+    prompts: list[str] = []
+
+    inspect_csv(target, n_bytes=64, tail_bytes=64, model_invoker=_capture_prompts(prompts))
+
+    assert _tail_section(prompts[0]).strip() == "0123456789"
+
+
+def test_inspect_csv_zero_tail_bytes_disables_tail_sampling(tmp_path: Path) -> None:
+    """``tail_bytes=0`` opts out of tail sampling entirely."""
+    target = tmp_path / "large.csv"
+    target.write_bytes(b"a,b,c\n" + b"1,2,3\n" * 100)
+    prompts: list[str] = []
+
+    inspect_csv(target, n_bytes=16, tail_bytes=0, model_invoker=_capture_prompts(prompts))
+
+    assert "TAIL SAMPLE START" not in prompts[0]
+
+
+@pytest.mark.parametrize(
+    ("bom", "codec"),
+    [(codecs.BOM_UTF16_LE, "utf-16-le"), (codecs.BOM_UTF16_BE, "utf-16-be")],
+)
+def test_inspect_csv_decodes_utf16_tail_with_odd_budget(
+    tmp_path: Path, bom: bytes, codec: str
+) -> None:
+    """A UTF-16 tail must decode cleanly even for an odd budget and either byte order."""
+    text = "a\tb\n" + "1\t2\n" * 200 + "TOTAL\t999\n"
+    target = tmp_path / "utf16.csv"
+    target.write_bytes(bom + text.encode(codec))
+    prompts: list[str] = []
+
+    inspect_csv(target, n_bytes=64, tail_bytes=33, model_invoker=_capture_prompts(prompts))
+
+    tail = _tail_section(prompts[0])
+    assert "TOTAL\t999" in tail
+    assert "�" not in tail
+
+
+# ---------------------------------------------------------------------
+# invoke_ollama_model (with a fake ``ollama`` module)
+# ---------------------------------------------------------------------
+
+
+def _install_fake_ollama(monkeypatch: pytest.MonkeyPatch, chat: Any) -> None:
+    """Register a stand-in ``ollama`` module exposing the given ``chat`` callable."""
+    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(chat=chat))
+
+
+def test_invoke_ollama_model_returns_message_content(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The model's message content is returned verbatim."""
+
+    def chat(**kwargs: Any) -> Any:
+        return SimpleNamespace(message=SimpleNamespace(content='{"ok": true}'))
+
+    _install_fake_ollama(monkeypatch, chat)
+
+    assert invoke_ollama_model("prompt", "some-model") == '{"ok": true}'
+
+
+@pytest.mark.parametrize("content", [None, ""])
+def test_invoke_ollama_model_rejects_empty_content(
+    monkeypatch: pytest.MonkeyPatch, content: str | None
+) -> None:
+    """An empty or missing message is a backend failure, not an empty JSON payload."""
+
+    def chat(**kwargs: Any) -> Any:
+        return SimpleNamespace(message=SimpleNamespace(content=content))
+
+    _install_fake_ollama(monkeypatch, chat)
+
+    with pytest.raises(ModelInvocationError, match="empty response"):
+        invoke_ollama_model("prompt", "some-model")
+
+
+def test_invoke_ollama_model_wraps_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Any client-side failure is surfaced as the domain ``ModelInvocationError``."""
+
+    def chat(**kwargs: Any) -> Any:
+        raise ConnectionError("connection refused")
+
+    _install_fake_ollama(monkeypatch, chat)
+
+    with pytest.raises(ModelInvocationError, match="connection refused"):
+        invoke_ollama_model("prompt", "some-model")
+
+
+def test_invoke_ollama_model_reports_missing_package(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A missing ``ollama`` package yields an actionable domain error."""
+    monkeypatch.setitem(sys.modules, "ollama", None)
+
+    with pytest.raises(ModelInvocationError, match="pip install ollama"):
+        invoke_ollama_model("prompt", "some-model")

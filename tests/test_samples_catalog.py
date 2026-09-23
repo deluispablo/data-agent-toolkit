@@ -15,8 +15,17 @@ from typing import Any
 
 import pytest
 
+from exceptions import InspectionFailedError, ModelInvocationError
 from generate_samples import CASES, SampleCase, build_manifest
-from inspector import decode_sample, detect_encoding, read_sample_bytes, read_tail_bytes
+from inspector import (
+    DEFAULT_SAMPLE_BYTES,
+    DEFAULT_TAIL_BYTES,
+    decode_sample,
+    detect_encoding,
+    inspect_csv,
+    read_sample_bytes,
+    read_tail_bytes,
+)
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
@@ -154,20 +163,69 @@ def test_latin1_fixture_decodes_cleanly_as_latin1() -> None:
 
 
 # ---------------------------------------------------------------------
-# Footer visibility in the tail sample
+# Footer fixtures exercise the real head/tail split (issue #2)
 # ---------------------------------------------------------------------
 
+_FOOTER_FIXTURES = sorted(
+    name for name, entry in MANIFEST.items() if entry["expected"].get("footer_lines")
+)
 
-@pytest.mark.parametrize("filename", ["footer_summary_totals.csv", "footer_end_marker.csv"])
-def test_footer_content_is_visible_in_the_tail_sample(filename: str) -> None:
-    """A fixture with a documented footer must expose it within a small tail window."""
-    entry = MANIFEST[filename]
-    footer_lines: list[str] = entry["expected"].get("footer_lines") or []
-    non_empty_footer_lines = [line for line in footer_lines if line]
-    assert non_empty_footer_lines, f"{filename} manifest entry should list non-empty footer_lines."
 
-    tail_raw = read_tail_bytes(SAMPLES_DIR / filename, n_bytes=200)
-    tail_text = decode_sample(tail_raw, detect_encoding(tail_raw))
+def test_catalog_has_footer_fixtures_including_header_and_footer_combined() -> None:
+    """Guard against the parametrized footer tests below silently running on nothing."""
+    assert "footer_summary_totals.csv" in _FOOTER_FIXTURES
+    assert "footer_end_marker.csv" in _FOOTER_FIXTURES
+    assert "header_and_footer_combined.csv" in _FOOTER_FIXTURES
 
-    for line in non_empty_footer_lines:
+
+@pytest.mark.parametrize("filename", _FOOTER_FIXTURES)
+def test_footer_fixture_is_larger_than_the_default_sampling_budget(filename: str) -> None:
+    """Footer fixtures must be production-sized: head and tail never meet in the middle."""
+    size = (SAMPLES_DIR / filename).stat().st_size
+
+    assert size > DEFAULT_SAMPLE_BYTES + DEFAULT_TAIL_BYTES
+
+
+@pytest.mark.parametrize("filename", _FOOTER_FIXTURES)
+def test_footer_is_only_visible_through_the_default_tail_window(filename: str) -> None:
+    """Every non-blank footer line sits in the default tail window and never in the head."""
+    path = SAMPLES_DIR / filename
+    head_raw = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
+    encoding = detect_encoding(head_raw)
+    head_text = decode_sample(head_raw, encoding)
+    tail_text = decode_sample(read_tail_bytes(path, n_bytes=DEFAULT_TAIL_BYTES), encoding)
+
+    footer_lines = [line for line in MANIFEST[filename]["expected"]["footer_lines"] if line]
+    assert footer_lines, f"{filename} should list at least one non-blank footer line."
+    for line in footer_lines:
         assert line in tail_text
+        assert line not in head_text
+
+
+@pytest.mark.parametrize("filename", _FOOTER_FIXTURES)
+def test_inspect_csv_sends_the_footer_to_the_model_in_the_tail_section(filename: str) -> None:
+    """End to end with default budgets: the prompt's tail section carries the footer."""
+    prompts: list[str] = []
+
+    def fake_invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        raise ModelInvocationError("prompt captured")
+
+    with pytest.raises(InspectionFailedError):
+        inspect_csv(SAMPLES_DIR / filename, model_invoker=fake_invoker)
+
+    tail_section = prompts[0].split("--- TAIL SAMPLE START", 1)[1]
+    for line in MANIFEST[filename]["expected"]["footer_lines"]:
+        if line:
+            assert line in tail_section
+
+
+def test_combined_fixture_keeps_the_header_preamble_in_the_head() -> None:
+    """The header+footer fixture: banner and header in the head, footer only in the tail."""
+    path = SAMPLES_DIR / "header_and_footer_combined.csv"
+    head_text = decode_sample(read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES), "utf-8")
+    header_row_index = MANIFEST["header_and_footer_combined.csv"]["expected"]["header_row_index"]
+
+    lines = head_text.splitlines()
+    assert all(line.startswith("#") for line in lines[:header_row_index])
+    assert lines[header_row_index] == "Fecha;Cliente;Concepto;Importe"

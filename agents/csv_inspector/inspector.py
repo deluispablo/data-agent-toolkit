@@ -7,8 +7,9 @@ This module implements a stateless pipeline that:
    never load the full file into memory.
 2. Heuristically pre-detects the character encoding with ``chardet``.
 3. Builds a concise prompt describing both samples.
-4. Invokes a local LLM through Ollama (with an optional fallback model) to
-   infer the file's dialect (delimiter, quoting, escaping), non-standard
+4. Invokes an LLM (local Ollama by default, or Google Gemini through the
+   opt-in ``api`` backend), with an optional fallback model, to infer the
+   file's dialect (delimiter, quoting, escaping), non-standard
    header/footer lines, and a preliminary column schema.
 5. Validates the model's JSON response against
    :class:`models.CSVInspectionResult`.
@@ -18,14 +19,16 @@ the head did not already cover, and skipped entirely when the head exhausts
 the file. Sending the same bytes twice would only waste tokens, which
 conflicts with this project's cost-optimization-first principle.
 
-The LLM backend is pluggable via the ``model_invoker`` parameter, which
-makes the whole flow unit-testable without a running Ollama instance.
+The backend is selected with ``backend`` (see :class:`backends.LLMBackend`),
+and any ``model_invoker`` callable can be injected instead, which makes the
+whole flow unit-testable without Ollama, cloud credentials or network access.
 """
 
 from __future__ import annotations
 
 import codecs
 import csv
+import importlib.util
 import itertools
 import json
 import logging
@@ -33,11 +36,15 @@ import os
 import re
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import chardet
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
+from backends import LLMBackend
 from exceptions import (
+    BackendConfigurationError,
+    CredentialsNotConfiguredError,
     EmptySampleError,
     FileSampleReadError,
     InspectionFailedError,
@@ -46,6 +53,9 @@ from exceptions import (
     SchemaValidationError,
 )
 from models import CSVInspectionResult
+
+if TYPE_CHECKING:
+    from config import Settings
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
@@ -378,14 +388,14 @@ def invoke_ollama_model(prompt: str, model: str) -> str:
         The raw text content of the model's response.
 
     Raises:
-        ModelInvocationError: If the ``ollama`` package is not installed, the
-            backend cannot be reached, the model is not available locally,
-            or the model returns an empty message.
+        BackendConfigurationError: If the ``ollama`` package is not installed.
+        ModelInvocationError: If the backend cannot be reached, the model is
+            not available locally, or the model returns an empty message.
     """
     try:
         import ollama  # noqa: PLC0415 - lazily imported: only this backend needs it.
     except ImportError as exc:
-        raise ModelInvocationError(
+        raise BackendConfigurationError(
             "The 'ollama' package is required to use the local Ollama backend. "
             "Install it with 'pip install ollama' or inject a custom model_invoker."
         ) from exc
@@ -407,6 +417,220 @@ def invoke_ollama_model(prompt: str, model: str) -> str:
     if not content:
         raise ModelInvocationError(f"Model '{model}' returned an empty response.")
     return content
+
+
+_CLOUD_EXTRA_HINT = "Install it with 'pip install -r agents/csv_inspector/requirements-cloud.txt'."
+
+
+def _load_settings(backend: LLMBackend) -> Settings | None:
+    """Load environment settings, which need the optional cloud extra.
+
+    Args:
+        backend: The backend the settings are needed for.
+
+    Returns:
+        The loaded settings, or ``None`` for the local backend when
+        ``pydantic-settings`` is not installed (built-in defaults apply).
+
+    Raises:
+        BackendConfigurationError: If the cloud backend is selected without
+            the cloud extra installed, or a setting holds an invalid value.
+    """
+    try:
+        from config import load_settings  # noqa: PLC0415 - needs the optional cloud extra.
+    except ImportError as exc:
+        if backend is LLMBackend.LOCAL:
+            logger.debug("pydantic-settings not installed; using built-in local defaults.")
+            return None
+        raise BackendConfigurationError(
+            f"The 'api' backend needs the 'pydantic-settings' package. {_CLOUD_EXTRA_HINT}"
+        ) from exc
+    return load_settings()
+
+
+def _redact(message: str, secret: SecretStr | None) -> str:
+    """Remove a secret's value from an error message before it is logged or raised."""
+    if secret is None:
+        return message
+    value = secret.get_secret_value()
+    return message.replace(value, "***") if value else message
+
+
+def invoke_cloud_model(prompt: str, model: str) -> str:
+    """Send a prompt to a Google Gemini model and return its raw text response.
+
+    Authenticates with ``GEMINI_API_KEY`` (Gemini Developer API) or, failing
+    that, ``GOOGLE_CLOUD_PROJECT`` + ``GOOGLE_CLOUD_LOCATION`` (Vertex AI with
+    Application Default Credentials). Requests JSON output constrained by
+    the :class:`CSVInspectionResult` JSON Schema, at ``temperature=0.0``.
+    Credentials are checked before any client is created or request sent,
+    and the API key never appears in logs or raised errors.
+
+    Note:
+        Implemented and unit-tested against a mocked client only; not yet
+        verified against the real service (see issue #5).
+
+    Args:
+        prompt: The fully-built prompt to send.
+        model: Name of the Gemini model to invoke (e.g. ``"gemini-2.5-flash"``).
+
+    Returns:
+        The raw text content of the model's response.
+
+    Raises:
+        BackendConfigurationError: If the cloud extra is not installed or a
+            setting is invalid.
+        CredentialsNotConfiguredError: If no usable credentials are set.
+        ModelInvocationError: If the service rejects or fails the request, or
+            returns an empty response.
+    """
+    settings = _load_settings(LLMBackend.API)
+    if settings is None:  # pragma: no cover - _load_settings raises for the API backend.
+        raise BackendConfigurationError(f"Settings are unavailable. {_CLOUD_EXTRA_HINT}")
+    credentials = settings.cloud_credentials()
+
+    try:
+        # Lazily imported: only this backend needs them. google-auth ships with google-genai.
+        from google import genai  # noqa: PLC0415
+        from google.auth import exceptions as google_auth_exceptions  # noqa: PLC0415
+        from google.genai import types  # noqa: PLC0415
+    except ImportError as exc:
+        raise BackendConfigurationError(
+            f"The 'google-genai' package is required for the 'api' backend. {_CLOUD_EXTRA_HINT}"
+        ) from exc
+
+    config = types.GenerateContentConfig(
+        system_instruction=_SYSTEM_PROMPT,
+        temperature=0.0,
+        response_mime_type="application/json",
+        response_json_schema=CSVInspectionResult.model_json_schema(),
+    )
+    logger.debug("Calling cloud model '%s' via %s.", model, credentials.describe())
+
+    try:
+        if credentials.api_key is not None:
+            client = genai.Client(api_key=credentials.api_key.get_secret_value())
+        else:
+            client = genai.Client(
+                vertexai=True, project=credentials.project, location=credentials.location
+            )
+        with client:
+            response = client.models.generate_content(model=model, contents=prompt, config=config)
+    except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
+        # Re-raised "from None" on purpose: the original exception (and its
+        # traceback) could carry the API key, so only a redacted message is kept.
+        message = _redact(str(exc), credentials.api_key)
+        if isinstance(exc, google_auth_exceptions.DefaultCredentialsError):
+            raise CredentialsNotConfiguredError(
+                "Vertex AI could not find Application Default Credentials; run "
+                f"'gcloud auth application-default login' or set GEMINI_API_KEY. ({message})"
+            ) from None
+        raise ModelInvocationError(f"Cloud model '{model}' failed to respond: {message}") from None
+
+    text = response.text
+    if not text:
+        raise ModelInvocationError(f"Cloud model '{model}' returned an empty response.")
+    return text
+
+
+def get_model_invoker(backend: LLMBackend) -> ModelInvoker:
+    """Return the model invoker for ``backend``.
+
+    Args:
+        backend: The selected backend.
+
+    Returns:
+        :func:`invoke_ollama_model` for ``LOCAL``, :func:`invoke_cloud_model`
+        for ``API``.
+    """
+    return invoke_cloud_model if backend is LLMBackend.API else invoke_ollama_model
+
+
+def get_default_model(backend: LLMBackend) -> str:
+    """Return the primary model name for ``backend``.
+
+    Args:
+        backend: The selected backend.
+
+    Returns:
+        ``OLLAMA_MODEL`` / ``CLOUD_MODEL`` from the environment when set, the
+        built-in default otherwise.
+
+    Raises:
+        BackendConfigurationError: If the cloud backend is selected without
+            the cloud extra, or a setting is invalid.
+    """
+    settings = _load_settings(backend)
+    if settings is None:
+        return DEFAULT_MODEL
+    return settings.cloud_model if backend is LLMBackend.API else settings.ollama_model
+
+
+def get_fallback_model(backend: LLMBackend) -> str:
+    """Return the fallback model name for ``backend``.
+
+    Args:
+        backend: The selected backend.
+
+    Returns:
+        ``OLLAMA_FALLBACK_MODEL`` / ``CLOUD_FALLBACK_MODEL`` from the
+        environment when set, the built-in default otherwise.
+
+    Raises:
+        BackendConfigurationError: If the cloud backend is selected without
+            the cloud extra, or a setting is invalid.
+    """
+    settings = _load_settings(backend)
+    if settings is None:
+        return FALLBACK_MODEL
+    if backend is LLMBackend.API:
+        return settings.cloud_fallback_model
+    return settings.ollama_fallback_model
+
+
+def get_configured_backend() -> LLMBackend:
+    """Return the backend selected by the ``LLM_BACKEND`` setting.
+
+    Returns:
+        The configured backend, or ``LOCAL`` when unset or when the cloud
+        extra (which provides settings support) is not installed.
+
+    Raises:
+        BackendConfigurationError: If ``LLM_BACKEND`` holds an invalid value.
+    """
+    settings = _load_settings(LLMBackend.LOCAL)
+    return settings.llm_backend if settings is not None else LLMBackend.LOCAL
+
+
+def ensure_backend_ready(backend: LLMBackend) -> None:
+    """Fail fast if ``backend`` cannot be used, before any file is read.
+
+    The local backend needs nothing up front (Ollama reachability is only
+    known when it is called). The cloud backend needs the cloud extra and
+    sufficient credentials.
+
+    Args:
+        backend: The selected backend.
+
+    Raises:
+        BackendConfigurationError: If the cloud extra (``pydantic-settings``,
+            ``google-genai``) is missing or a setting is invalid.
+        CredentialsNotConfiguredError: If the cloud backend has no usable
+            credentials.
+    """
+    if backend is not LLMBackend.API:
+        return
+    settings = _load_settings(backend)
+    if settings is not None:
+        settings.cloud_credentials()
+    try:
+        sdk_installed = importlib.util.find_spec("google.genai") is not None
+    except ModuleNotFoundError:
+        sdk_installed = False
+    if not sdk_installed:
+        raise BackendConfigurationError(
+            f"The 'google-genai' package is required for the 'api' backend. {_CLOUD_EXTRA_HINT}"
+        )
 
 
 def _parse_and_validate(raw_response: str, model: str) -> CSVInspectionResult:
@@ -621,32 +845,39 @@ def _ground_in_samples(
 def inspect_csv(
     path: str | Path,
     *,
-    model: str = DEFAULT_MODEL,
+    backend: LLMBackend = LLMBackend.LOCAL,
+    model: str | None = None,
     n_bytes: int = DEFAULT_SAMPLE_BYTES,
     tail_bytes: int = DEFAULT_TAIL_BYTES,
-    fallback_model: str = FALLBACK_MODEL,
-    model_invoker: ModelInvoker = invoke_ollama_model,
+    fallback_model: str | None = None,
+    model_invoker: ModelInvoker | None = None,
 ) -> CSVInspectionResult:
     """Inspect a delimited file fragment and infer its dialect and schema.
 
     Reads only the first ``n_bytes`` (head) and, when the file is larger
-    than that, up to ``tail_bytes`` more from the end (tail). Asks a local
-    LLM (via ``model_invoker``) to infer the file's encoding, delimiter,
+    than that, up to ``tail_bytes`` more from the end (tail). Asks an LLM
+    (local Ollama by default, or Gemini with ``backend=LLMBackend.API``) to
+    infer the file's encoding, delimiter,
     quoting rules, non-standard header/footer lines, and a preliminary
     column schema, and returns the result validated with Pydantic.
 
     Args:
         path: Path to the source CSV/TSV file.
-        model: Primary Ollama model name to use.
+        backend: Which LLM backend to use: local Ollama (default, no
+            credentials) or the Gemini API (opt-in, see ``config.py``).
+        model: Primary model name. Defaults to the backend's configured
+            model (:func:`get_default_model`).
         n_bytes: Number of bytes to sample from the start of the file. Must
             be at least 1.
         tail_bytes: Maximum number of bytes to sample from the end of the
             file. The tail never overlaps the head, and is skipped when the
             head already exhausts the file. ``0`` disables tail sampling.
         fallback_model: Secondary model to try if ``model`` fails. Skipped
-            automatically when equal to ``model``.
-        model_invoker: Callable used to invoke the LLM; defaults to
-            :func:`invoke_ollama_model`. Injectable for testing.
+            automatically when equal to ``model``. Defaults to the backend's
+            configured fallback (:func:`get_fallback_model`).
+        model_invoker: Callable used to invoke the LLM. When given, it takes
+            precedence over ``backend`` (which then only selects default
+            model names); injectable for testing or custom backends.
 
     Returns:
         A validated :class:`CSVInspectionResult`.
@@ -656,11 +887,20 @@ def inspect_csv(
             negative.
         FileSampleReadError: If the source file cannot be read.
         EmptySampleError: If the source file is empty.
+        BackendConfigurationError: If the backend is unusable as configured
+            (e.g. missing SDK or credentials); raised immediately, without
+            trying the fallback model.
         InspectionFailedError: If every configured model fails to produce a
             valid, schema-conformant result.
     """
     _validate_byte_budget("n_bytes", n_bytes, minimum=1)
     _validate_byte_budget("tail_bytes", tail_bytes, minimum=0)
+
+    # Resolve the backend before touching the file, so configuration problems
+    # surface first. An explicit invoker wins over the backend's own.
+    invoker = model_invoker if model_invoker is not None else get_model_invoker(backend)
+    model = model if model is not None else get_default_model(backend)
+    fallback_model = fallback_model if fallback_model is not None else get_fallback_model(backend)
 
     head_bytes = read_sample_bytes(path, n_bytes)
     if not head_bytes:
@@ -678,8 +918,11 @@ def inspect_csv(
     for candidate in candidate_models:
         logger.info("Inspecting '%s' with model '%s'.", path, candidate)
         try:
-            raw_response = model_invoker(prompt, candidate)
+            raw_response = invoker(prompt, candidate)
             result = _parse_and_validate(raw_response, candidate)
+        except BackendConfigurationError:
+            # A missing SDK or credentials would fail the fallback identically.
+            raise
         except (ModelInvocationError, ResponseParsingError, SchemaValidationError) as exc:
             logger.warning("Model '%s' failed: %s", candidate, exc)
             attempts[candidate] = exc

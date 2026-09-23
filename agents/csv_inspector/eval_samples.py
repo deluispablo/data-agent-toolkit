@@ -26,6 +26,7 @@ Prerequisites:
 Usage:
     python eval_samples.py
     python eval_samples.py --model qwen3:8b --bytes 8192 --category encoding
+    python eval_samples.py --backend api --model gemini-2.5-flash
 """
 
 from __future__ import annotations
@@ -35,17 +36,26 @@ import codecs
 import json
 import logging
 import re
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from cli_support import add_log_level_argument, configure_cli, non_negative_int, positive_int
+from backends import LLMBackend
+from cli_support import (
+    add_backend_argument,
+    add_log_level_argument,
+    configure_cli,
+    non_negative_int,
+    positive_int,
+    resolve_backend,
+)
 from exceptions import CSVInspectorError
 from inspector import (
-    DEFAULT_MODEL,
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
-    FALLBACK_MODEL,
+    get_default_model,
+    get_fallback_model,
     inspect_csv,
 )
 from models import CSVInspectionResult
@@ -200,6 +210,7 @@ def evaluate_file(
     filename: str,
     entry: dict[str, Any],
     *,
+    backend: LLMBackend,
     model: str,
     fallback_model: str,
     n_bytes: int,
@@ -210,8 +221,9 @@ def evaluate_file(
     Args:
         filename: Name of the fixture under ``samples/``.
         entry: This fixture's manifest entry.
-        model: Primary Ollama model to evaluate.
-        fallback_model: Fallback Ollama model.
+        backend: The LLM backend to evaluate.
+        model: Primary model to evaluate.
+        fallback_model: Fallback model.
         n_bytes: Head sample size, in bytes.
         tail_bytes: Tail sample size, in bytes.
 
@@ -226,6 +238,7 @@ def evaluate_file(
     try:
         result = inspect_csv(
             SAMPLES_DIR / filename,
+            backend=backend,
             model=model,
             fallback_model=fallback_model,
             n_bytes=n_bytes,
@@ -262,11 +275,18 @@ def _format_file_line(evaluation: FileEvaluation) -> str:
     return line
 
 
-def print_report(evaluations: list[FileEvaluation], *, model: str, fallback_model: str) -> None:
+def print_report(
+    evaluations: list[FileEvaluation],
+    *,
+    backend: LLMBackend,
+    model: str,
+    fallback_model: str,
+) -> None:
     """Print the full evaluation report to stdout.
 
     Args:
         evaluations: Per-fixture evaluation results.
+        backend: The backend that was evaluated (for the report header).
         model: The primary model that was evaluated (for the report header).
         fallback_model: The fallback model that was evaluated.
     """
@@ -274,7 +294,10 @@ def print_report(evaluations: list[FileEvaluation], *, model: str, fallback_mode
     known_limitations = [e for e in evaluations if e.known_limitation]
     errored = [e for e in evaluations if e.error and not e.known_limitation]
 
-    print(f"=== csv_inspector eval report (model={model!r}, fallback={fallback_model!r}) ===\n")
+    print(
+        f"=== csv_inspector eval report (backend={backend.value!r}, model={model!r}, "
+        f"fallback={fallback_model!r}) ===\n"
+    )
 
     for evaluation in regular:
         print(_format_file_line(evaluation))
@@ -304,9 +327,14 @@ def print_report(evaluations: list[FileEvaluation], *, model: str, fallback_mode
 def _parse_args() -> argparse.Namespace:
     """Parse command-line arguments for the evaluation harness."""
     parser = argparse.ArgumentParser(description="csv_inspector manual evaluation harness")
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Primary Ollama model to evaluate.")
+    add_backend_argument(parser)
     parser.add_argument(
-        "--fallback-model", default=FALLBACK_MODEL, help="Fallback Ollama model to evaluate."
+        "--model", default=None, help="Primary model (default: the backend's configured model)."
+    )
+    parser.add_argument(
+        "--fallback-model",
+        default=None,
+        help="Fallback model (default: the backend's configured fallback).",
     )
     parser.add_argument(
         "--bytes",
@@ -332,6 +360,15 @@ def main() -> None:
     args = _parse_args()
     configure_cli(args.log_level)
 
+    try:
+        backend = resolve_backend(args.backend)
+        model = args.model or get_default_model(backend)
+        fallback_model = args.fallback_model or get_fallback_model(backend)
+    except CSVInspectorError as exc:
+        # Fail once, up front, instead of reporting the same error per fixture.
+        logger.error("Cannot run the evaluation: %s", exc)
+        sys.exit(1)
+
     manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
 
     evaluations: list[FileEvaluation] = []
@@ -343,14 +380,15 @@ def main() -> None:
             evaluate_file(
                 filename,
                 entry,
-                model=args.model,
-                fallback_model=args.fallback_model,
+                backend=backend,
+                model=model,
+                fallback_model=fallback_model,
                 n_bytes=args.bytes,
                 tail_bytes=args.tail_bytes,
             )
         )
 
-    print_report(evaluations, model=args.model, fallback_model=args.fallback_model)
+    print_report(evaluations, backend=backend, model=model, fallback_model=fallback_model)
 
 
 if __name__ == "__main__":

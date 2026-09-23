@@ -1,7 +1,8 @@
 """Shared command-line plumbing for the csv_inspector scripts.
 
 Keeps ``main_demo.py`` and ``eval_samples.py`` consistent in how they parse
-byte budgets, configure logging, and write non-ASCII output.
+byte budgets, select the LLM backend, configure logging, and write non-ASCII
+output.
 """
 
 from __future__ import annotations
@@ -10,6 +11,9 @@ import argparse
 import io
 import logging
 import sys
+
+from backends import LLMBackend
+from inspector import ensure_backend_ready, get_configured_backend
 
 LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
@@ -55,6 +59,46 @@ def non_negative_int(value: str) -> int:
     if number < 0:
         raise argparse.ArgumentTypeError(f"expected an integer >= 0, got {number}")
     return number
+
+
+def add_backend_argument(parser: argparse.ArgumentParser) -> None:
+    """Add the standard ``--backend`` option to ``parser``.
+
+    The option defaults to ``None`` so :func:`resolve_backend` can fall back
+    to the ``LLM_BACKEND`` setting, and then to the local backend.
+
+    Args:
+        parser: The parser to extend.
+    """
+    parser.add_argument(
+        "--backend",
+        choices=[backend.value for backend in LLMBackend],
+        default=None,
+        help="LLM backend: 'local' (Ollama, default) or 'api' (Gemini; needs credentials). "
+        "Defaults to LLM_BACKEND, then 'local'.",
+    )
+
+
+def resolve_backend(value: str | None) -> LLMBackend:
+    """Resolve the backend to use and check it is ready, before any work starts.
+
+    Precedence: the ``--backend`` value, then ``LLM_BACKEND``, then local.
+
+    Args:
+        value: The raw ``--backend`` value, or ``None`` when not given.
+
+    Returns:
+        The resolved backend.
+
+    Raises:
+        BackendConfigurationError: If the backend cannot be used as
+            configured (e.g. the cloud extra is not installed).
+        CredentialsNotConfiguredError: If the cloud backend has no usable
+            credentials.
+    """
+    backend = LLMBackend(value) if value is not None else get_configured_backend()
+    ensure_backend_ready(backend)
+    return backend
 
 
 def add_log_level_argument(parser: argparse.ArgumentParser) -> None:

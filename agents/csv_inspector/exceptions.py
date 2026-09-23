@@ -28,6 +28,23 @@ class ModelInvocationError(CSVInspectorError):
     """Raised when the configured LLM backend fails to return a response."""
 
 
+class BackendConfigurationError(ModelInvocationError):
+    """Raised when the selected LLM backend is not usable as configured.
+
+    Covers problems no retry can fix, such as a missing SDK package or an
+    invalid setting. ``inspect_csv`` re-raises these immediately instead of
+    trying the fallback model, which would fail in exactly the same way.
+    """
+
+
+class CredentialsNotConfiguredError(BackendConfigurationError):
+    """Raised when the cloud backend is selected without sufficient credentials.
+
+    The message names the missing environment variable(s) and never
+    includes any credential value.
+    """
+
+
 class ResponseParsingError(CSVInspectorError):
     """Raised when the raw LLM response cannot be parsed as valid JSON."""
 

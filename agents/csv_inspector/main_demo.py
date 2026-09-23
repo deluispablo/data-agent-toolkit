@@ -1,16 +1,18 @@
 """Local execution demo for the csv_inspector agent.
 
-Runs the agent against a sample CSV file using a local Ollama model and
-prints the full structured JSON result. Runs entirely for free against a
-locally running Ollama instance; no cloud credentials required.
+Runs the agent against a sample CSV file and prints the full structured
+JSON result. By default it uses a local Ollama model, entirely for free and
+with no cloud credentials. ``--backend api`` opts in to Google Gemini (needs
+the ``requirements-cloud.txt`` extra and credentials; see ``.env.example``).
 
-Prerequisites:
+Prerequisites (local backend):
     - Ollama running locally (``ollama serve``).
     - The target model pulled locally, e.g. ``ollama pull qwen2.5-coder:7b``.
 
 Usage:
     python main_demo.py
     python main_demo.py --model qwen2.5-coder:7b --bytes 8192 --tail-bytes 8192 --log-level DEBUG
+    python main_demo.py --backend api --model gemini-2.5-flash
 """
 
 from __future__ import annotations
@@ -21,9 +23,16 @@ import logging
 import sys
 from pathlib import Path
 
-from cli_support import add_log_level_argument, configure_cli, non_negative_int, positive_int
+from cli_support import (
+    add_backend_argument,
+    add_log_level_argument,
+    configure_cli,
+    non_negative_int,
+    positive_int,
+    resolve_backend,
+)
 from exceptions import CSVInspectorError
-from inspector import DEFAULT_MODEL, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, inspect_csv
+from inspector import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, get_default_model, inspect_csv
 
 logger = logging.getLogger(__name__)
 
@@ -36,11 +45,14 @@ def _parse_args() -> argparse.Namespace:
     Returns:
         The parsed argument namespace.
     """
-    parser = argparse.ArgumentParser(description="csv_inspector local demo")
+    parser = argparse.ArgumentParser(description="csv_inspector demo")
     parser.add_argument(
         "--file", type=Path, default=SAMPLE_PATH, help="Path to the CSV file to inspect."
     )
-    parser.add_argument("--model", default=DEFAULT_MODEL, help="Ollama model to use.")
+    add_backend_argument(parser)
+    parser.add_argument(
+        "--model", default=None, help="Model to use. Defaults to the backend's configured model."
+    )
     parser.add_argument(
         "--bytes",
         type=positive_int,
@@ -62,18 +74,21 @@ def main() -> None:
     args = _parse_args()
     configure_cli(args.log_level)
 
-    logger.info(
-        "Inspecting '%s' with model '%s' (head=%d bytes, tail=%d bytes).",
-        args.file,
-        args.model,
-        args.bytes,
-        args.tail_bytes,
-    )
-
     try:
+        backend = resolve_backend(args.backend)
+        model = args.model or get_default_model(backend)
+        logger.info(
+            "Inspecting '%s' with %s model '%s' (head=%d bytes, tail=%d bytes).",
+            args.file,
+            backend.value,
+            model,
+            args.bytes,
+            args.tail_bytes,
+        )
         result = inspect_csv(
             args.file,
-            model=args.model,
+            backend=backend,
+            model=model,
             n_bytes=args.bytes,
             tail_bytes=args.tail_bytes,
         )

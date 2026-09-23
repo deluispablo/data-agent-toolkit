@@ -1,4 +1,6 @@
--r agents/csv_inspector/requirements.txt
+# Includes the optional cloud extra so its code is type-checked and unit-tested
+# (with a mocked client; tests never reach the real service).
+-r agents/csv_inspector/requirements-cloud.txt
 pytest>=8.0
 ruff>=0.16
 mypy>=2.0

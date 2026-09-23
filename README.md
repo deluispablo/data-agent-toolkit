@@ -40,22 +40,28 @@ data-agent-toolkit/
 │       ├── inspector.py        # Core inspection pipeline (head + tail sampling)
 │       ├── models.py           # Pydantic v2 schema (structured output contract)
 │       ├── exceptions.py       # Domain exception hierarchy
-│       ├── main_demo.py        # Local, credential-free demo/CLI
+│       ├── main_demo.py        # Demo/CLI (--backend local by default, or api)
 │       ├── eval_samples.py     # Manual LLM evaluation harness (not run in CI)
-│       ├── cli_support.py      # Shared CLI plumbing (arg types, logging, UTF-8 stdout)
+│       ├── cli_support.py      # Shared CLI plumbing (arg types, --backend, logging, UTF-8)
+│       ├── backends.py         # LLMBackend enum: local (Ollama) or api (Gemini)
+│       ├── config.py           # Environment settings for backends (cloud extra)
 │       ├── sample.csv          # Original synthetic "dirty" CSV fixture
 │       ├── samples/            # Catalog of 28 dialect/structural edge-case fixtures
 │       │   ├── generate_samples.py  # Reproducibly (re)generates every fixture below
 │       │   ├── manifest.json        # Ground truth per fixture, used by tests + eval_samples.py
 │       │   └── *.csv / *.tsv        # The generated fixtures themselves
-│       └── requirements.txt    # Runtime dependencies for this agent
+│       ├── requirements.txt    # Runtime dependencies for this agent (local backend)
+│       └── requirements-cloud.txt  # Optional extra for the api backend
 ├── common/                     # Shared utilities across agents (as they emerge)
 ├── tests/
 │   ├── conftest.py             # Adds each agent's directory to sys.path
 │   ├── test_csv_inspector.py   # Unit tests: byte sampling, prompt building, orchestration
 │   ├── test_samples_catalog.py # Deterministic tests parametrized over samples/ (no LLM)
 │   ├── test_eval_samples.py    # Scoring logic of the evaluation harness (no LLM)
-│   └── test_cli_support.py     # CLI argument helpers
+│   ├── test_cli_support.py     # CLI argument helpers
+│   ├── test_config.py          # Settings and credential resolution (no network)
+│   └── test_backends.py        # Backend factories and cloud invoker, mocked (no network)
+├── .env.example                # Documented settings template (copy to .env)
 ├── .gitattributes              # LF for sources; CSV/TSV fixtures kept byte-exact
 ├── pyproject.toml              # ruff, mypy and pytest configuration
 ├── requirements-dev.txt        # Dev dependencies (pytest, ruff, mypy, + runtime deps)
@@ -70,8 +76,9 @@ data-agent-toolkit/
 A stateless agent that inspects only a bounded **head** window (first N
 bytes) and, for files larger than that window, a bounded **tail** window
 (last N bytes) of a large, potentially messy CSV/TSV file — never loading
-the full file into memory, in either direction — and uses a local LLM (via
-Ollama) to infer:
+the full file into memory, in either direction — and uses an LLM (a local
+Ollama model by default, or Google Gemini as an opt-in; see
+[Backends](#backends)) to infer:
 
 - Character encoding
 - Field delimiter, quote character, escape rules
@@ -102,7 +109,7 @@ flowchart TD
     D --> E1
     D --> E2[Build prompt: head + tail<br/>with mid-line caveat for the model]
     T2 --> E2
-    E1 --> F{Invoke primary Ollama model}
+    E1 --> F{Invoke primary model<br/>local Ollama or Gemini API}
     E2 --> F
     F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>header row + literal column names,<br/>footer re-read verbatim]
     F -->|failure: unreachable, bad JSON,<br/>or schema mismatch| G{Invoke fallback model}
@@ -158,19 +165,67 @@ identified, and never promotes an unlabelled data row to a footer.
 |---|---|
 | `models.py` | `ColumnSchema`, `CSVInspectionResult` — the strict Pydantic v2 output contract, including `footer_lines` and the derived `footer_rows_to_skip`. |
 | `exceptions.py` | `CSVInspectorError` and its subclasses — one per domain failure mode. |
-| `inspector.py` | Head/tail byte sampling (`read_sample_bytes`, `read_tail_bytes`), encoding detection, prompt construction, model invocation, JSON parsing/validation, and the primary/fallback orchestration in `inspect_csv`. |
-| `main_demo.py` | CLI entry point for local, credential-free verification against `sample.csv`. |
-| `eval_samples.py` | Manual evaluation harness: runs the real pipeline (Ollama required) against every fixture in `samples/` and scores it against `samples/manifest.json`. Not part of `pytest`/CI — see [Sample catalog](#sample-catalog) below. |
-| `cli_support.py` | Shared CLI plumbing for both scripts: validated byte-budget argument types, `--log-level`, logging setup, and UTF-8 stdout (so accented output renders on Windows consoles). |
+| `inspector.py` | Head/tail byte sampling (`read_sample_bytes`, `read_tail_bytes`), encoding detection, prompt construction, model invocation (`invoke_ollama_model`, `invoke_cloud_model`) and backend factories, JSON parsing/validation, and the primary/fallback orchestration in `inspect_csv`. |
+| `backends.py` | `LLMBackend`: `local` (Ollama, default) or `api` (Gemini). |
+| `config.py` | `Settings` (pydantic-settings) and cloud credential resolution. Imported lazily; needs the cloud extra. |
+| `main_demo.py` | CLI entry point: inspects `sample.csv` (or `--file`) with the selected `--backend`. |
+| `eval_samples.py` | Manual evaluation harness: runs the real pipeline (a live model on the selected `--backend`) against every fixture in `samples/` and scores it against `samples/manifest.json`. Not part of `pytest`/CI — see [Sample catalog](#sample-catalog) below. |
+| `cli_support.py` | Shared CLI plumbing for both scripts: validated byte-budget argument types, `--backend` resolution with an up-front readiness check, `--log-level`, logging setup, and UTF-8 stdout (so accented output renders on Windows consoles). |
 | `sample.csv` | Original synthetic fixture with deliberately messy characteristics: semicolon delimiter, comment banner before the header, accented values, embedded delimiters and escaped quotes. |
 | `samples/` | Catalog of 28 further fixtures covering delimiters, encodings, header/footer variants, quoting/escaping, structural anomalies, and data-format gotchas — see below. |
 
-The LLM backend is injected through `inspect_csv`'s `model_invoker`
-parameter (default: `invoke_ollama_model`, which lazily imports the
-`ollama` package). This keeps the module importable — and the pipeline
-fully unit-testable — without the `ollama` package installed, and makes it
-trivial to point the same pipeline at a different backend (e.g. a Gemini
-API client) for the project's dual-LLM story.
+Model invocation is pluggable: `backend` selects a built-in invoker
+(see [Backends](#backends)), and an explicit `model_invoker` callable
+always takes precedence over it. Both built-in invokers import their SDK
+lazily, which keeps the module importable, and the pipeline fully
+unit-testable, without either SDK installed.
+
+#### Backends
+
+`csv_inspector` runs on one of two LLM backends, selected with
+`inspect_csv(..., backend=LLMBackend.LOCAL | LLMBackend.API)`, the CLIs'
+`--backend {local,api}` flag, or the `LLM_BACKEND` variable (flag first,
+then `LLM_BACKEND`, then `local`):
+
+| Backend | Model service | Needs | Default |
+|---|---|---|---|
+| `local` | Ollama on this machine | `requirements.txt` + a running Ollama | ✅ |
+| `api` | Google Gemini: Gemini Developer API (API key) or Vertex AI (Application Default Credentials), via `google-genai` | `requirements-cloud.txt` + credentials | opt-in |
+
+> [!WARNING]
+> **The `api` backend is implemented and unit-tested against a mocked
+> client, but has not yet been verified against the real service**: no
+> credentials were available when it was built. Real end-to-end
+> verification is tracked in
+> [#5](https://github.com/deluispablo/data-agent-toolkit/issues/5).
+
+The local backend is unchanged by any of this: it needs no credentials and
+no extra packages, and the cloud SDK is only ever imported lazily, inside
+`invoke_cloud_model`. The cloud backend sends the same prompt with JSON
+output constrained by `CSVInspectionResult`'s JSON Schema, at
+`temperature=0.0`, and its answer goes through the same validation and
+grounding as a local one.
+
+Settings are read from environment variables or a `.env` file in the
+directory you run from (copy [`.env.example`](.env.example)). Reading them
+requires the cloud extra; without it, the local backend uses its built-in
+defaults.
+
+| Variable | Purpose | Default |
+|---|---|---|
+| `LLM_BACKEND` | Backend when `--backend` is not given: `local` or `api` | `local` |
+| `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | Local primary / fallback model | `qwen2.5-coder:7b` |
+| `GEMINI_API_KEY` | Gemini Developer API key; takes precedence when set | unset |
+| `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` | Vertex AI project and location, used with ADC when no API key is set | unset |
+| `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | Cloud primary / fallback model | `gemini-2.5-flash` |
+
+The `api` backend needs **either** `GEMINI_API_KEY` **or** both
+`GOOGLE_CLOUD_PROJECT` and `GOOGLE_CLOUD_LOCATION` (after
+`gcloud auth application-default login`). Missing credentials or packages
+fail fast with a one-line error naming what to set or install, before any
+file is read and without trying the fallback model. The API key is held as
+a `SecretStr` and scrubbed from any backend error, so it never appears in
+logs or exceptions; never commit a real `.env`.
 
 #### Sample catalog
 
@@ -234,6 +289,13 @@ python agents/csv_inspector/main_demo.py --file path/to/file.csv --model qwen2.5
 
 # 5. (Optional) Score the model against the full 28-fixture sample catalog
 python agents/csv_inspector/eval_samples.py --model qwen2.5-coder:7b
+
+# 6. (Optional) Cloud backend: install the extra and configure credentials
+#    (implemented, real verification pending: see #5)
+pip install -r agents/csv_inspector/requirements-cloud.txt
+cp .env.example .env   # then set GEMINI_API_KEY, or GOOGLE_CLOUD_PROJECT + _LOCATION
+python agents/csv_inspector/main_demo.py --backend api --model gemini-2.5-flash
+python agents/csv_inspector/eval_samples.py --backend api
 ```
 
 #### Error handling
@@ -245,7 +307,9 @@ All domain failures raise a subclass of `CSVInspectorError`
 |---|---|
 | `FileSampleReadError` | The source file cannot be read from disk. |
 | `EmptySampleError` | The source file is empty; raised before any model is invoked. |
-| `ModelInvocationError` | The backend is unreachable, the `ollama` package is missing, the model is not pulled locally, or it returns an empty message. |
+| `ModelInvocationError` | The backend is unreachable or rejects the request, the model is not available, or it returns an empty message. |
+| `BackendConfigurationError` | The selected backend is unusable as configured: a missing SDK package or cloud extra, or an invalid setting. Raised immediately, without trying the fallback model. Subclass of `ModelInvocationError`. |
+| `CredentialsNotConfiguredError` | The `api` backend has no usable credentials; the message names the missing variable(s). Subclass of `BackendConfigurationError`. |
 | `ResponseParsingError` | The model's response is not valid JSON. |
 | `SchemaValidationError` | The parsed JSON does not satisfy the `CSVInspectionResult` schema. |
 | `InspectionFailedError` | Every configured model (primary + fallback) failed; carries an `attempts` mapping of model name → exception for diagnostics. |
@@ -272,6 +336,17 @@ free of any Ollama dependency:
   fixtures and manifest stay in sync with `generate_samples.py`.
 - `test_eval_samples.py` and `test_cli_support.py` cover the harness's
   scoring logic and the shared CLI helpers.
+- `test_config.py` and `test_backends.py` cover settings and credential
+  resolution, the backend factories, and `invoke_cloud_model`. The latter
+  replaces the `google-genai` client with a recording fake but keeps the
+  SDK's real request types, so the request shape is checked against the
+  actual SDK **without any network call**. They also check that no module
+  imports the cloud SDK at import time, that the API key never reaches logs
+  or exceptions, and that the CLIs fail cleanly without credentials.
+
+An autouse fixture (`tests/conftest.py`) clears every settings variable and
+runs each test from an empty directory, so the suite is hermetic: neither
+your exported variables nor a local `.env` can change a result.
 
 ```bash
 pip install -r requirements-dev.txt

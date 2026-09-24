@@ -8,9 +8,17 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "delimiter_semicolon.csv": {
@@ -22,9 +30,17 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "delimiter_tab.tsv": {
@@ -36,9 +52,17 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "delimiter_pipe.csv": {
@@ -50,9 +74,17 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "delimiter_inside_quoted_field.csv": {
@@ -64,9 +96,16 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "The model must not mistake the comma inside the quoted field for a fourth column."
   },
   "encoding_utf8_bom.csv": {
@@ -75,9 +114,16 @@
     "expected": {
       "encoding": "utf-8-sig",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "chardet typically reports this as 'UTF-8-SIG'; the BOM itself must not leak into the first column name."
   },
   "encoding_latin1.csv": {
@@ -86,9 +132,16 @@
     "expected": {
       "encoding": "latin-1 or cp1252 (not utf-8)",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "These bytes are not valid UTF-8; the agent must not silently mangle accented characters."
   },
   "encoding_utf16le_bom.csv": {
@@ -97,9 +150,17 @@
     "expected": {
       "encoding": "utf-16 or utf-16-le",
       "delimiter": "\t",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "A classic 'unexpected file' gotcha: every other byte is 0x00 when misread as a single-byte encoding."
   },
   "header_metadata_banner.csv": {
@@ -110,9 +171,17 @@
       "delimiter": ";",
       "header_row_index": 2,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "header_none_data_only.csv": {
@@ -122,9 +191,15 @@
       "encoding": "utf-8",
       "delimiter": ",",
       "has_header": false,
-      "header_row_index": null
+      "header_row_index": null,
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "There is no real header row: the agent should answer has_header=false and header_row_index=null, not assert a fabricated header row."
   },
   "header_duplicated_mid_file.csv": {
@@ -133,9 +208,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "The duplicated header mid-file is a structural anomaly the agent should flag in 'notes', not treat as a data row."
   },
   "footer_summary_totals.csv": {
@@ -148,9 +229,16 @@
       "footer_rows_to_skip": 1,
       "footer_lines": [
         "TOTAL,,,274887.10"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "Larger than the default head + tail budget, so the footer is only visible in the tail sample."
   },
   "footer_end_marker.csv": {
@@ -165,9 +253,16 @@
         "",
         "--- Fin del informe ---",
         "Generado el 2024-08-08 10:00:00"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "Regression case: the timestamp line used to be misclassified as a header/metadata line."
   },
   "header_and_footer_combined.csv": {
@@ -182,9 +277,16 @@
         "",
         "TOTAL;;;274887.10",
         "--- Fin del informe ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "The banner is only visible in the head sample and the footer only in the tail sample."
   },
   "quoting_doubled_quotes.csv": {
@@ -195,9 +297,16 @@
       "delimiter": ",",
       "quotechar": "\"",
       "doublequote": true,
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "quoting_backslash_escape.csv": {
@@ -209,9 +318,16 @@
       "quotechar": "\"",
       "escapechar": "\\",
       "doublequote": false,
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "quoting_embedded_newline.csv": {
@@ -220,9 +336,16 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": true,
+    "generated": false,
     "notes": "Byte-prefix/suffix sampling cannot reliably parse multi-line quoted records: a head or tail window may cut this field mid-record. Documented as a known limitation rather than solved by this iteration."
   },
   "quoting_inconsistent.csv": {
@@ -232,9 +355,16 @@
       "encoding": "utf-8",
       "delimiter": ",",
       "quotechar": "\"",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "quoting_trailing_empty_field.csv": {
@@ -243,9 +373,16 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "ragged_rows_inconsistent_columns.csv": {
@@ -254,9 +391,16 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "Row 2 is missing a field, row 3 has an extra one; the agent should note this rather than error out."
   },
   "line_endings_mixed_crlf_lf.csv": {
@@ -265,9 +409,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "no_trailing_newline_eof.csv": {
@@ -276,9 +426,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "blank_lines_between_rows.csv": {
@@ -287,9 +443,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "empty_file.csv": {
@@ -298,9 +460,11 @@
     "expected": {
       "encoding": null,
       "delimiter": null,
-      "header_row_index": null
+      "header_row_index": null,
+      "columns": []
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
   },
   "header_only_no_data.csv": {
@@ -309,9 +473,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
   },
   "numeric_european_format.csv": {
@@ -320,9 +490,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "'Importe' should ideally be inferred as a numeric type despite the European formatting, not as a plain string; worth tracking separately as a column-typing quality metric."
   },
   "null_representations_mixed.csv": {
@@ -331,9 +507,15 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": "'Observaciones' should be flagged nullable=True; the mix of null markers is worth a mention in 'notes'."
   },
   "whitespace_padded_fields.csv": {
@@ -342,9 +524,1719 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha ",
+        " Cliente ",
+        " Importe"
+      ]
     },
     "known_limitation": false,
+    "generated": false,
     "notes": null
+  },
+  "header_none_after_preamble.csv": {
+    "category": "header_footer",
+    "description": "No header row, but two comment lines before the first data row.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "has_header": false,
+      "header_row_index": null,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._first_row_is_data: it checks line 0 only, and the result cannot describe preamble lines without a header row (#94)."
+  },
+  "quoting_newline_in_head_window.csv": {
+    "category": "quoting",
+    "description": "Production-sized ledger (~14 KiB) whose 11th data row has a quoted field spanning two physical lines, inside the default head window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._split_lines: grounding splits the head on every line break, so the record reads as two short rows."
+  },
+  "quoting_newline_in_tail_window.csv": {
+    "category": "quoting",
+    "description": "Production-sized ledger (~14 KiB) whose fifth-to-last data row has a quoted field spanning two physical lines, inside the default tail window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._split_lines on the tail: the second half of the record looks like a short trailing line."
+  },
+  "footer_longer_than_tail_window.csv": {
+    "category": "header_footer",
+    "description": "Production-sized ledger followed by a 40-line footer of ~130-character notes (~5 KiB), longer than the default 4 KiB tail window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 40,
+      "footer_lines": [
+        "Nota 01: importes provisionales hasta el cierre contable del periodo; revise la partida 01 antes de conciliar con el extracto bancario",
+        "Nota 02: importes provisionales hasta el cierre contable del periodo; revise la partida 02 antes de conciliar con el extracto bancario",
+        "Nota 03: importes provisionales hasta el cierre contable del periodo; revise la partida 03 antes de conciliar con el extracto bancario",
+        "Nota 04: importes provisionales hasta el cierre contable del periodo; revise la partida 04 antes de conciliar con el extracto bancario",
+        "Nota 05: importes provisionales hasta el cierre contable del periodo; revise la partida 05 antes de conciliar con el extracto bancario",
+        "Nota 06: importes provisionales hasta el cierre contable del periodo; revise la partida 06 antes de conciliar con el extracto bancario",
+        "Nota 07: importes provisionales hasta el cierre contable del periodo; revise la partida 07 antes de conciliar con el extracto bancario",
+        "Nota 08: importes provisionales hasta el cierre contable del periodo; revise la partida 08 antes de conciliar con el extracto bancario",
+        "Nota 09: importes provisionales hasta el cierre contable del periodo; revise la partida 09 antes de conciliar con el extracto bancario",
+        "Nota 10: importes provisionales hasta el cierre contable del periodo; revise la partida 10 antes de conciliar con el extracto bancario",
+        "Nota 11: importes provisionales hasta el cierre contable del periodo; revise la partida 11 antes de conciliar con el extracto bancario",
+        "Nota 12: importes provisionales hasta el cierre contable del periodo; revise la partida 12 antes de conciliar con el extracto bancario",
+        "Nota 13: importes provisionales hasta el cierre contable del periodo; revise la partida 13 antes de conciliar con el extracto bancario",
+        "Nota 14: importes provisionales hasta el cierre contable del periodo; revise la partida 14 antes de conciliar con el extracto bancario",
+        "Nota 15: importes provisionales hasta el cierre contable del periodo; revise la partida 15 antes de conciliar con el extracto bancario",
+        "Nota 16: importes provisionales hasta el cierre contable del periodo; revise la partida 16 antes de conciliar con el extracto bancario",
+        "Nota 17: importes provisionales hasta el cierre contable del periodo; revise la partida 17 antes de conciliar con el extracto bancario",
+        "Nota 18: importes provisionales hasta el cierre contable del periodo; revise la partida 18 antes de conciliar con el extracto bancario",
+        "Nota 19: importes provisionales hasta el cierre contable del periodo; revise la partida 19 antes de conciliar con el extracto bancario",
+        "Nota 20: importes provisionales hasta el cierre contable del periodo; revise la partida 20 antes de conciliar con el extracto bancario",
+        "Nota 21: importes provisionales hasta el cierre contable del periodo; revise la partida 21 antes de conciliar con el extracto bancario",
+        "Nota 22: importes provisionales hasta el cierre contable del periodo; revise la partida 22 antes de conciliar con el extracto bancario",
+        "Nota 23: importes provisionales hasta el cierre contable del periodo; revise la partida 23 antes de conciliar con el extracto bancario",
+        "Nota 24: importes provisionales hasta el cierre contable del periodo; revise la partida 24 antes de conciliar con el extracto bancario",
+        "Nota 25: importes provisionales hasta el cierre contable del periodo; revise la partida 25 antes de conciliar con el extracto bancario",
+        "Nota 26: importes provisionales hasta el cierre contable del periodo; revise la partida 26 antes de conciliar con el extracto bancario",
+        "Nota 27: importes provisionales hasta el cierre contable del periodo; revise la partida 27 antes de conciliar con el extracto bancario",
+        "Nota 28: importes provisionales hasta el cierre contable del periodo; revise la partida 28 antes de conciliar con el extracto bancario",
+        "Nota 29: importes provisionales hasta el cierre contable del periodo; revise la partida 29 antes de conciliar con el extracto bancario",
+        "Nota 30: importes provisionales hasta el cierre contable del periodo; revise la partida 30 antes de conciliar con el extracto bancario",
+        "Nota 31: importes provisionales hasta el cierre contable del periodo; revise la partida 31 antes de conciliar con el extracto bancario",
+        "Nota 32: importes provisionales hasta el cierre contable del periodo; revise la partida 32 antes de conciliar con el extracto bancario",
+        "Nota 33: importes provisionales hasta el cierre contable del periodo; revise la partida 33 antes de conciliar con el extracto bancario",
+        "Nota 34: importes provisionales hasta el cierre contable del periodo; revise la partida 34 antes de conciliar con el extracto bancario",
+        "Nota 35: importes provisionales hasta el cierre contable del periodo; revise la partida 35 antes de conciliar con el extracto bancario",
+        "Nota 36: importes provisionales hasta el cierre contable del periodo; revise la partida 36 antes de conciliar con el extracto bancario",
+        "Nota 37: importes provisionales hasta el cierre contable del periodo; revise la partida 37 antes de conciliar con el extracto bancario",
+        "Nota 38: importes provisionales hasta el cierre contable del periodo; revise la partida 38 antes de conciliar con el extracto bancario",
+        "Nota 39: importes provisionales hasta el cierre contable del periodo; revise la partida 39 antes de conciliar con el extracto bancario",
+        "Nota 40: importes provisionales hasta el cierre contable del periodo; revise la partida 40 antes de conciliar con el extracto bancario"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._locate_footer_lines: footer exceeds tail window, so only its last lines can be anchored; a larger tail_bytes is the workaround."
+  },
+  "footer_like_data_row_numeric_label.csv": {
+    "category": "header_footer",
+    "description": "The last data row ('2024,,4241.25') is shaped like a totals row but has a numeric first field and belongs to the data.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Anio",
+        "Region",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._extends_footer: a year is not a totals label, so the row is never pulled into a footer."
+  },
+  "footer_after_total_energies_row.csv": {
+    "category": "header_footer",
+    "description": "Production-sized ledger keyed by client whose last data row starts with 'Total Energies SA', followed by an end-of-report marker.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe ---"
+      ],
+      "columns": [
+        "Cliente",
+        "Fecha",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards the _grounding._extends_footer label rule: 'Total Energies SA' is not a bare totals label and its other fields are filled, so the row stays data."
+  },
+  "delimiter_semicolon_decimal_comma.csv": {
+    "category": "delimiter",
+    "description": "Semicolon-delimited amounts with decimal comma and thousands dot ('1.234,56'); every data row also splits evenly on the comma.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Base",
+        "IVA",
+        "Total"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter: ',' agrees on every data row too, so a reported ',' is kept; only ';' splits the header."
+  },
+  "delimiter_tab_commas_quoted_header.tsv": {
+    "category": "delimiter",
+    "description": "Tab-delimited file with a quoted header and unquoted values containing commas.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter: commas in the values must not beat the tab."
+  },
+  "delimiter_pipe_inside_quotes.csv": {
+    "category": "delimiter",
+    "description": "Pipe-delimited file where quoted fields contain the pipe character.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._agreement_score: fields are split with the quotechar, so quoted pipes do not change the field count."
+  },
+  "encoding_cp1252_tail_only.csv": {
+    "category": "encoding",
+    "description": "Semicolon ledger (~10 KiB) in cp1252 whose head is pure ASCII; accented client names occur only in the last rows.",
+    "expected": {
+      "encoding": "latin-1 or cp1252 (not utf-8)",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _sampling.sample_source tail re-detection: an ASCII head must not settle the encoding as utf-8."
+  },
+  "single_column.csv": {
+    "category": "structural",
+    "description": "A single column: no delimiter occurs anywhere in the file.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Cliente"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter boundary: no candidate splits a line, so the reported delimiter is kept; ',' is the conventional answer."
+  },
+  "single_data_row.csv": {
+    "category": "structural",
+    "description": "A header row followed by exactly one data row.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter and _locate_header_row boundaries: only two lines exist to agree on a shape."
+  },
+  "exactly_head_window_size.csv": {
+    "category": "structural",
+    "description": "A file of exactly 4096 bytes, the default head window, ending in a newline.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _sampling.sample_source boundary: a full head window with nothing past it covers the whole file and is not trimmed."
+  },
+  "header_duplicate_and_blank_names.csv": {
+    "category": "header_footer",
+    "description": "A pandas-style export: blank first column name (the index) and a duplicated column name ('id,id').",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "",
+        "id",
+        "id",
+        "value"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._locate_header_row named-set rule: names are kept verbatim, the blank one included, and duplicates are not merged."
+  },
+  "data_contains_sample_marker.csv": {
+    "category": "data_format",
+    "description": "A data value is the literal prompt marker '--- HEAD SAMPLE END ---'.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards grounding against the plain-text sample markers (#105): the dialect comes from the real bytes, not from where the model thinks the sample ends."
+  },
+  "header_years.csv": {
+    "category": "header_footer",
+    "description": "The header is made of years ('2023,2024,2025') above numeric data rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "has_header": true,
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "2023",
+        "2024",
+        "2025"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._first_row_is_data (#131): a numeric header row is still a header; the no-header rule must not fire."
+  },
+  "gen_footer_none_wide.csv": {
+    "category": "header_footer",
+    "description": "Generated comma-delimited file, utf-8, LF, 40 columns x 30 rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_totals_wide.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 40 columns x 30 rows; totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL;;390278.89;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_marker_wide.csv": {
+    "category": "header_footer",
+    "description": "Generated tab-delimited file, utf-8, LF, 40 columns x 30 rows; marker footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 30 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_timestamp_wide.csv": {
+    "category": "header_footer",
+    "description": "Generated pipe-delimited file, utf-8, LF, 40 columns x 30 rows; timestamp footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "Informe generado el 2024-02-05 a las 10:46:58"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_blank_totals_wide.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 40 columns x 30 rows; blank + totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 2,
+      "footer_lines": [
+        "",
+        "TOTAL;;365019.26;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_none_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, CRLF, 3 columns x 300 rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_totals_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated pipe-delimited file, utf-8, CRLF, 3 columns x 300 rows; totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL||773001.05"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_marker_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated tab-delimited file, utf-8, CRLF, 3 columns x 300 rows; marker footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 300 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_timestamp_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, CRLF, 3 columns x 300 rows; timestamp footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "Informe generado el 2024-09-27 a las 15:06:25"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_footer_blank_totals_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated comma-delimited file, utf-8, CRLF, 3 columns x 300 rows; blank + totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 2,
+      "footer_lines": [
+        "",
+        "TOTAL,,761447.36"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf8_lf.csv": {
+    "category": "encoding",
+    "description": "Generated comma-delimited file, utf-8, LF, 5 columns x 150 rows; totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL,,356681.99,,"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf8_crlf.csv": {
+    "category": "encoding",
+    "description": "Generated semicolon-delimited file, utf-8, CRLF, 8 columns x 40 rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf8_bom_lf.csv": {
+    "category": "encoding",
+    "description": "Generated comma-delimited file, utf-8-sig, LF, 5 columns x 40 rows.",
+    "expected": {
+      "encoding": "utf-8-sig",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf8_bom_crlf.csv": {
+    "category": "encoding",
+    "description": "Generated comma-delimited file, utf-8-sig, CRLF, 8 columns x 120 rows; marker footer.",
+    "expected": {
+      "encoding": "utf-8-sig",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 120 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_cp1252_lf.csv": {
+    "category": "encoding",
+    "description": "Generated semicolon-delimited file, cp1252, LF, 6 columns x 150 rows; marker footer.",
+    "expected": {
+      "encoding": "cp1252 or latin-1 (not utf-8)",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 150 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_cp1252_crlf.csv": {
+    "category": "encoding",
+    "description": "Generated semicolon-delimited file, cp1252, CRLF, 6 columns x 150 rows; timestamp footer.",
+    "expected": {
+      "encoding": "cp1252 or latin-1 (not utf-8)",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "Informe generado el 2024-02-16 a las 17:33:30"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf16le_lf.csv": {
+    "category": "encoding",
+    "description": "Generated tab-delimited file, utf-16, LF, 5 columns x 40 rows.",
+    "expected": {
+      "encoding": "utf-16 or utf-16-le",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_encoding_utf16le_crlf.csv": {
+    "category": "encoding",
+    "description": "Generated tab-delimited file, utf-16, CRLF, 6 columns x 80 rows; marker footer.",
+    "expected": {
+      "encoding": "utf-16 or utf-16-le",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 80 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_preamble_1.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 5 columns x 40 rows; 1-line preamble.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 1,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_preamble_5_crlf.csv": {
+    "category": "header_footer",
+    "description": "Generated comma-delimited file, utf-8, CRLF, 7 columns x 40 rows; 5-line preamble.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 5,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_preamble_5_footer.csv": {
+    "category": "header_footer",
+    "description": "Generated tab-delimited file, utf-8, LF, 6 columns x 150 rows; 5-line preamble, blank + totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 5,
+      "footer_rows_to_skip": 2,
+      "footer_lines": [
+        "",
+        "TOTAL\t\t373402.73\t\t\t"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_headerless_narrow.csv": {
+    "category": "header_footer",
+    "description": "Generated comma-delimited file, utf-8, LF, 3 columns x 40 rows; no header row.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "has_header": false,
+      "header_row_index": null,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_headerless_marker.csv": {
+    "category": "header_footer",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 6 columns x 150 rows; no header row, marker footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "has_header": false,
+      "header_row_index": null,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 150 líneas ---"
+      ],
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3",
+        "column_4",
+        "column_5",
+        "column_6"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_quoted_header.csv": {
+    "category": "quoting",
+    "description": "Generated comma-delimited file, utf-8, LF, 8 columns x 40 rows; quoted header.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_quotechar_single.csv": {
+    "category": "quoting",
+    "description": "Generated comma-delimited file, utf-8, LF, 6 columns x 40 rows; quoted header, quotechar '.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "'",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_ragged_comma.csv": {
+    "category": "structural",
+    "description": "Generated comma-delimited file, utf-8, LF, 6 columns x 40 rows; ragged rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_ragged_tab_wide.csv": {
+    "category": "structural",
+    "description": "Generated tab-delimited file, utf-8, LF, 40 columns x 40 rows; ragged rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_decimal_comma_semicolon.csv": {
+    "category": "data_format",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 5 columns x 40 rows; decimal comma.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_decimal_comma_comma.csv": {
+    "category": "data_format",
+    "description": "Generated comma-delimited file, utf-8, LF, 4 columns x 40 rows; decimal comma.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_large_ledger.csv": {
+    "category": "structural",
+    "description": "Generated semicolon-delimited file, utf-8, LF, 5 columns x 1200 rows; 2-line preamble, totals footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 2,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL;;2931490.11;;"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_large_wide.csv": {
+    "category": "structural",
+    "description": "Generated comma-delimited file, utf-8, CRLF, 40 columns x 160 rows; marker footer.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe: 160 líneas ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_combo_eu_legacy.csv": {
+    "category": "combo",
+    "description": "Generated semicolon-delimited file, cp1252, CRLF, 6 columns x 150 rows; 2-line preamble, decimal comma, blank + totals footer.",
+    "expected": {
+      "encoding": "cp1252 or latin-1 (not utf-8)",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 2,
+      "footer_rows_to_skip": 2,
+      "footer_lines": [
+        "",
+        "TOTAL;;375.739,60;;;"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_combo_bom_crlf_preamble.csv": {
+    "category": "combo",
+    "description": "Generated comma-delimited file, utf-8-sig, CRLF, 8 columns x 120 rows; 3-line preamble, quoted header, timestamp footer.",
+    "expected": {
+      "encoding": "utf-8-sig",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 3,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "Informe generado el 2023-10-06 a las 15:01:17"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_combo_pipe_ragged.csv": {
+    "category": "combo",
+    "description": "Generated pipe-delimited file, utf-8-sig, CRLF, 12 columns x 40 rows; quoted header, decimal comma, ragged rows.",
+    "expected": {
+      "encoding": "utf-8-sig",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": null
+  },
+  "gen_utf16le_bom_crlf_wide.csv": {
+    "category": "encoding",
+    "description": "Generated tab-delimited file, utf-16, CRLF, 40 columns x 30 rows; totals footer.",
+    "expected": {
+      "encoding": "utf-16 or utf-16-le",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "TOTAL\t\t378735.32\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t\t"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Concepto",
+        "Cantidad",
+        "Región",
+        "Código",
+        "Estado",
+        "Fecha_2",
+        "Cliente_2",
+        "Importe_2",
+        "Concepto_2",
+        "Cantidad_2",
+        "Región_2",
+        "Código_2",
+        "Estado_2",
+        "Fecha_3",
+        "Cliente_3",
+        "Importe_3",
+        "Concepto_3",
+        "Cantidad_3",
+        "Región_3",
+        "Código_3",
+        "Estado_3",
+        "Fecha_4",
+        "Cliente_4",
+        "Importe_4",
+        "Concepto_4",
+        "Cantidad_4",
+        "Región_4",
+        "Código_4",
+        "Estado_4",
+        "Fecha_5",
+        "Cliente_5",
+        "Importe_5",
+        "Concepto_5",
+        "Cantidad_5",
+        "Región_5",
+        "Código_5",
+        "Estado_5"
+      ]
+    },
+    "known_limitation": false,
+    "generated": true,
+    "notes": "Guards _encoding.code_unit_size: the UTF-16 tail window must be aligned to 2-byte code units, or the footer decodes as garbage."
+  },
+  "gen_very_wide_long_lines.csv": {
+    "category": "structural",
+    "description": "Generated comma-delimited file, utf-8, LF, 200 columns x 6 rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_2 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_3 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_4 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_5 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_6 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_7 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_8 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_9 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_10 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_11 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_12 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_13 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_14 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_15 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_16 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_17 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_18 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_19 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_20 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_21 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_22 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_23 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_24 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Fecha_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cliente_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Importe_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Concepto_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Cantidad_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Región_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Código_25 detalle ampliado según contrato vigente del ejercicio detalle",
+        "Estado_25 detalle ampliado según contrato vigente del ejercicio detalle"
+      ]
+    },
+    "known_limitation": true,
+    "generated": true,
+    "notes": "Each line is ~8 KB, so the default head window holds less than one complete line; byte windows cannot show a header, line-based windows (#134) would."
   }
 }

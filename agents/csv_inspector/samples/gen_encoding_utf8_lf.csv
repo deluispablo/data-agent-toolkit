@@ -1,0 +1,152 @@
+Fecha,Cliente,Importe,Concepto,Cantidad
+2023-08-18,Ibáñez Logística,2070.22,Servicio de mantenimiento,46
+2023-08-19,García S.L.,332.12,Compra de material informático,306
+2023-08-20,Acme Distribuciones S.L.,607.35,Revisión anual de equipos,164
+2023-08-21,Peña & Hijos,2630.48,Servicio de mantenimiento,64
+2023-08-22,Acme Distribuciones S.L.,4947.00,Formación interna,155
+2023-08-23,Ibáñez Logística,3152.46,Transporte de mercancía,224
+2023-08-24,Ibáñez Logística,3858.31,Formación interna,120
+2023-08-25,"Taller ""El Rápido""",1062.01,Formación interna,74
+2023-08-26,Muñoz Hermanos,1074.38,Consultoría técnica,299
+2023-08-27,García S.L.,4661.68,Consultoría técnica,397
+2023-08-28,Peña & Hijos,1755.39,Servicio de mantenimiento,19
+2023-08-29,Ibáñez Logística,927.81,Consultoría técnica,336
+2023-08-30,"Fernández, Asociados",3174.76,Servicio de mantenimiento,290
+2023-08-31,García S.L.,1188.49,Formación interna,311
+2023-09-01,Núñez Ortega y Cía.,3512.54,Transporte de mercancía,244
+2023-09-02,Ibáñez Logística,3654.68,Transporte de mercancía,170
+2023-09-03,Núñez Ortega y Cía.,3297.96,Formación interna,151
+2023-09-04,García S.L.,1203.50,Transporte de mercancía,2
+2023-09-05,"Taller ""El Rápido""",3543.10,Consultoría técnica,293
+2023-09-06,Peña & Hijos,2653.78,Revisión anual de equipos,282
+2023-09-07,Acme Distribuciones S.L.,910.65,Transporte de mercancía,211
+2023-09-08,Muñoz Hermanos,4700.51,Servicio de mantenimiento,114
+2023-09-09,"Fernández, Asociados",3310.42,Revisión anual de equipos,63
+2023-09-10,Núñez Ortega y Cía.,4916.01,Servicio de mantenimiento,353
+2023-09-11,Peña & Hijos,759.40,Transporte de mercancía,286
+2023-09-12,"Fernández, Asociados",3058.53,Servicio de mantenimiento,224
+2023-09-13,Núñez Ortega y Cía.,1605.95,Compra de material informático,287
+2023-09-14,Acme Distribuciones S.L.,621.44,Formación interna,305
+2023-09-15,Núñez Ortega y Cía.,2666.29,Formación interna,434
+2023-09-16,García S.L.,4434.19,Revisión anual de equipos,399
+2023-09-17,Peña & Hijos,4510.03,Revisión anual de equipos,1
+2023-09-18,García S.L.,4437.08,Consultoría técnica,93
+2023-09-19,Núñez Ortega y Cía.,3363.00,Revisión anual de equipos,90
+2023-09-20,García S.L.,2177.18,Formación interna,328
+2023-09-21,Acme Distribuciones S.L.,2351.69,Transporte de mercancía,485
+2023-09-22,"Taller ""El Rápido""",1404.07,Formación interna,414
+2023-09-23,Ibáñez Logística,65.17,Consultoría técnica,445
+2023-09-24,Núñez Ortega y Cía.,1872.17,Transporte de mercancía,382
+2023-09-25,Acme Distribuciones S.L.,3194.21,Transporte de mercancía,48
+2023-09-26,Muñoz Hermanos,352.61,Compra de material informático,190
+2023-09-27,"Fernández, Asociados",693.90,Revisión anual de equipos,235
+2023-09-28,Muñoz Hermanos,84.34,Formación interna,412
+2023-09-29,"Taller ""El Rápido""",1282.15,Consultoría técnica,397
+2023-09-30,Ibáñez Logística,2477.16,Compra de material informático,254
+2023-10-01,Muñoz Hermanos,1273.53,Compra de material informático,180
+2023-10-02,Acme Distribuciones S.L.,1174.44,Revisión anual de equipos,61
+2023-10-03,Núñez Ortega y Cía.,2878.51,Servicio de mantenimiento,417
+2023-10-04,Peña & Hijos,1914.57,Servicio de mantenimiento,423
+2023-10-05,Ibáñez Logística,4136.16,Transporte de mercancía,203
+2023-10-06,Acme Distribuciones S.L.,1481.20,Compra de material informático,32
+2023-10-07,Peña & Hijos,376.57,Compra de material informático,314
+2023-10-08,Muñoz Hermanos,1872.67,Transporte de mercancía,109
+2023-10-09,Muñoz Hermanos,3653.60,Transporte de mercancía,64
+2023-10-10,"Taller ""El Rápido""",912.18,Formación interna,268
+2023-10-11,Ibáñez Logística,2704.02,Formación interna,72
+2023-10-12,Ibáñez Logística,3956.92,Consultoría técnica,335
+2023-10-13,Muñoz Hermanos,226.74,Revisión anual de equipos,185
+2023-10-14,Muñoz Hermanos,1106.44,Transporte de mercancía,7
+2023-10-15,Acme Distribuciones S.L.,2493.52,Transporte de mercancía,483
+2023-10-16,Núñez Ortega y Cía.,2520.61,Revisión anual de equipos,364
+2023-10-17,Muñoz Hermanos,182.72,Compra de material informático,191
+2023-10-18,"Fernández, Asociados",4095.39,Servicio de mantenimiento,469
+2023-10-19,García S.L.,371.75,Compra de material informático,349
+2023-10-20,Acme Distribuciones S.L.,1993.33,Servicio de mantenimiento,104
+2023-10-21,Núñez Ortega y Cía.,4554.81,Revisión anual de equipos,421
+2023-10-22,"Fernández, Asociados",1646.45,Consultoría técnica,113
+2023-10-23,Acme Distribuciones S.L.,1362.72,Compra de material informático,361
+2023-10-24,Ibáñez Logística,1617.43,Compra de material informático,126
+2023-10-25,"Taller ""El Rápido""",262.41,Consultoría técnica,134
+2023-10-26,Núñez Ortega y Cía.,1643.33,Formación interna,143
+2023-10-27,Núñez Ortega y Cía.,3211.86,Formación interna,32
+2023-10-28,Peña & Hijos,4583.34,Servicio de mantenimiento,370
+2023-10-29,Peña & Hijos,1983.94,Transporte de mercancía,36
+2023-10-30,Peña & Hijos,1124.24,Compra de material informático,437
+2023-10-31,"Taller ""El Rápido""",2585.40,Compra de material informático,248
+2023-11-01,Peña & Hijos,1751.04,Compra de material informático,295
+2023-11-02,"Taller ""El Rápido""",671.70,Revisión anual de equipos,109
+2023-11-03,Ibáñez Logística,2641.80,Servicio de mantenimiento,389
+2023-11-04,Núñez Ortega y Cía.,4178.24,Consultoría técnica,235
+2023-11-05,Acme Distribuciones S.L.,202.67,Revisión anual de equipos,498
+2023-11-06,"Fernández, Asociados",1616.25,Revisión anual de equipos,308
+2023-11-07,García S.L.,881.28,Servicio de mantenimiento,165
+2023-11-08,Acme Distribuciones S.L.,4554.92,Transporte de mercancía,458
+2023-11-09,Acme Distribuciones S.L.,2096.37,Revisión anual de equipos,274
+2023-11-10,Ibáñez Logística,3266.75,Consultoría técnica,164
+2023-11-11,Peña & Hijos,553.76,Transporte de mercancía,142
+2023-11-12,Peña & Hijos,2816.72,Transporte de mercancía,482
+2023-11-13,Ibáñez Logística,1897.71,Consultoría técnica,379
+2023-11-14,García S.L.,2535.05,Revisión anual de equipos,153
+2023-11-15,"Taller ""El Rápido""",2212.76,Transporte de mercancía,250
+2023-11-16,Peña & Hijos,4992.14,Transporte de mercancía,456
+2023-11-17,"Fernández, Asociados",261.43,Compra de material informático,237
+2023-11-18,Peña & Hijos,1766.36,Consultoría técnica,161
+2023-11-19,Peña & Hijos,4697.61,Formación interna,200
+2023-11-20,Peña & Hijos,337.28,Consultoría técnica,467
+2023-11-21,Peña & Hijos,3108.27,Formación interna,493
+2023-11-22,García S.L.,2252.97,Consultoría técnica,421
+2023-11-23,Muñoz Hermanos,1044.14,Compra de material informático,361
+2023-11-24,"Fernández, Asociados",1745.34,Revisión anual de equipos,290
+2023-11-25,Ibáñez Logística,2960.38,Compra de material informático,398
+2023-11-26,García S.L.,4520.56,Consultoría técnica,441
+2023-11-27,Ibáñez Logística,2174.21,Compra de material informático,405
+2023-11-28,"Fernández, Asociados",581.44,Compra de material informático,88
+2023-11-29,Peña & Hijos,454.83,Compra de material informático,86
+2023-11-30,"Fernández, Asociados",2045.04,Revisión anual de equipos,359
+2023-12-01,García S.L.,4316.03,Transporte de mercancía,82
+2023-12-02,"Taller ""El Rápido""",2578.63,Compra de material informático,165
+2023-12-03,García S.L.,1478.87,Formación interna,245
+2023-12-04,"Taller ""El Rápido""",1070.48,Revisión anual de equipos,64
+2023-12-05,Ibáñez Logística,4012.09,Compra de material informático,464
+2023-12-06,"Taller ""El Rápido""",3152.85,Formación interna,15
+2023-12-07,Peña & Hijos,1766.90,Servicio de mantenimiento,495
+2023-12-08,Núñez Ortega y Cía.,2336.44,Consultoría técnica,253
+2023-12-09,"Fernández, Asociados",2084.46,Consultoría técnica,338
+2023-12-10,Acme Distribuciones S.L.,1966.87,Revisión anual de equipos,402
+2023-12-11,Muñoz Hermanos,2562.62,Formación interna,226
+2023-12-12,"Taller ""El Rápido""",2635.98,Formación interna,341
+2023-12-13,"Fernández, Asociados",2326.09,Consultoría técnica,335
+2023-12-14,"Fernández, Asociados",3434.21,Formación interna,491
+2023-12-15,"Taller ""El Rápido""",4301.69,Compra de material informático,82
+2023-12-16,García S.L.,4443.03,Transporte de mercancía,1
+2023-12-17,García S.L.,3472.66,Compra de material informático,492
+2023-12-18,Acme Distribuciones S.L.,1380.04,Revisión anual de equipos,430
+2023-12-19,García S.L.,4397.95,Revisión anual de equipos,192
+2023-12-20,"Fernández, Asociados",2694.71,Consultoría técnica,333
+2023-12-21,"Taller ""El Rápido""",750.15,Revisión anual de equipos,478
+2023-12-22,Ibáñez Logística,805.56,Compra de material informático,144
+2023-12-23,Ibáñez Logística,4409.05,Formación interna,489
+2023-12-24,Peña & Hijos,4610.75,Servicio de mantenimiento,182
+2023-12-25,Peña & Hijos,617.81,Transporte de mercancía,165
+2023-12-26,Núñez Ortega y Cía.,3196.92,Transporte de mercancía,465
+2023-12-27,García S.L.,366.39,Servicio de mantenimiento,276
+2023-12-28,Núñez Ortega y Cía.,3889.33,Consultoría técnica,361
+2023-12-29,Ibáñez Logística,139.93,Compra de material informático,494
+2023-12-30,Peña & Hijos,4550.10,Revisión anual de equipos,470
+2023-12-31,Acme Distribuciones S.L.,3233.34,Formación interna,271
+2024-01-01,"Fernández, Asociados",3164.19,Transporte de mercancía,35
+2024-01-02,Ibáñez Logística,4626.82,Formación interna,405
+2024-01-03,Ibáñez Logística,2974.39,Revisión anual de equipos,187
+2024-01-04,Peña & Hijos,3010.89,Formación interna,452
+2024-01-05,García S.L.,4881.70,Transporte de mercancía,41
+2024-01-06,"Taller ""El Rápido""",1635.66,Transporte de mercancía,299
+2024-01-07,Núñez Ortega y Cía.,4891.28,Transporte de mercancía,94
+2024-01-08,García S.L.,4628.90,Consultoría técnica,110
+2024-01-09,Núñez Ortega y Cía.,2313.86,Transporte de mercancía,366
+2024-01-10,Muñoz Hermanos,1215.88,Compra de material informático,335
+2024-01-11,"Fernández, Asociados",590.11,Servicio de mantenimiento,264
+2024-01-12,Acme Distribuciones S.L.,988.38,Compra de material informático,484
+2024-01-13,Núñez Ortega y Cía.,1769.07,Compra de material informático,430
+2024-01-14,Peña & Hijos,3732.94,Formación interna,57
+TOTAL,,356681.99,,

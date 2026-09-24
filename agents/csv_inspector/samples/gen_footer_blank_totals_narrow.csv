@@ -1,0 +1,303 @@
+Fecha,Cliente,Importe
+2023-12-12,Núñez Ortega y Cía.,2406.49
+2023-12-13,Ibáñez Logística,4296.32
+2023-12-14,Núñez Ortega y Cía.,4256.88
+2023-12-15,"Taller ""El Rápido""",3534.41
+2023-12-16,Núñez Ortega y Cía.,1919.60
+2023-12-17,"Taller ""El Rápido""",3483.30
+2023-12-18,Núñez Ortega y Cía.,809.07
+2023-12-19,"Fernández, Asociados",4890.59
+2023-12-20,Núñez Ortega y Cía.,2515.34
+2023-12-21,Ibáñez Logística,2765.59
+2023-12-22,Acme Distribuciones S.L.,2412.47
+2023-12-23,García S.L.,4756.36
+2023-12-24,Muñoz Hermanos,3034.67
+2023-12-25,Ibáñez Logística,229.38
+2023-12-26,Núñez Ortega y Cía.,3257.55
+2023-12-27,Muñoz Hermanos,2609.00
+2023-12-28,García S.L.,3971.91
+2023-12-29,"Taller ""El Rápido""",3108.28
+2023-12-30,Núñez Ortega y Cía.,3596.98
+2023-12-31,Peña & Hijos,894.08
+2024-01-01,Muñoz Hermanos,2922.08
+2024-01-02,García S.L.,1112.94
+2024-01-03,Muñoz Hermanos,1991.07
+2024-01-04,Ibáñez Logística,2638.30
+2024-01-05,Ibáñez Logística,4022.13
+2024-01-06,Acme Distribuciones S.L.,3755.20
+2024-01-07,"Taller ""El Rápido""",2872.37
+2024-01-08,"Fernández, Asociados",534.27
+2024-01-09,Acme Distribuciones S.L.,2467.41
+2024-01-10,Muñoz Hermanos,3267.55
+2024-01-11,Núñez Ortega y Cía.,2526.50
+2024-01-12,García S.L.,1310.83
+2024-01-13,"Taller ""El Rápido""",1192.79
+2024-01-14,García S.L.,1090.95
+2024-01-15,Ibáñez Logística,4867.78
+2024-01-16,Núñez Ortega y Cía.,445.26
+2024-01-17,"Taller ""El Rápido""",2216.68
+2024-01-18,Acme Distribuciones S.L.,1330.01
+2024-01-19,Muñoz Hermanos,4497.89
+2024-01-20,"Taller ""El Rápido""",267.65
+2024-01-21,Peña & Hijos,2658.83
+2024-01-22,Núñez Ortega y Cía.,4580.55
+2024-01-23,Ibáñez Logística,223.46
+2024-01-24,"Fernández, Asociados",3688.56
+2024-01-25,"Taller ""El Rápido""",2038.11
+2024-01-26,"Fernández, Asociados",909.04
+2024-01-27,Peña & Hijos,1979.49
+2024-01-28,Acme Distribuciones S.L.,1115.87
+2024-01-29,García S.L.,4012.91
+2024-01-30,García S.L.,3840.11
+2024-01-31,Peña & Hijos,4324.65
+2024-02-01,Muñoz Hermanos,868.29
+2024-02-02,"Fernández, Asociados",3269.14
+2024-02-03,Muñoz Hermanos,2907.37
+2024-02-04,Acme Distribuciones S.L.,4457.33
+2024-02-05,Peña & Hijos,4509.10
+2024-02-06,Acme Distribuciones S.L.,4267.97
+2024-02-07,Muñoz Hermanos,666.07
+2024-02-08,"Fernández, Asociados",1119.36
+2024-02-09,Acme Distribuciones S.L.,1120.29
+2024-02-10,Peña & Hijos,3051.90
+2024-02-11,"Fernández, Asociados",1969.56
+2024-02-12,Ibáñez Logística,4742.78
+2024-02-13,"Taller ""El Rápido""",923.00
+2024-02-14,"Fernández, Asociados",4182.03
+2024-02-15,Núñez Ortega y Cía.,1667.52
+2024-02-16,"Taller ""El Rápido""",2532.44
+2024-02-17,Acme Distribuciones S.L.,3395.22
+2024-02-18,Núñez Ortega y Cía.,3317.65
+2024-02-19,Ibáñez Logística,3753.71
+2024-02-20,Núñez Ortega y Cía.,412.25
+2024-02-21,Peña & Hijos,2809.42
+2024-02-22,"Taller ""El Rápido""",3639.76
+2024-02-23,Muñoz Hermanos,4662.01
+2024-02-24,García S.L.,1251.22
+2024-02-25,"Taller ""El Rápido""",4560.89
+2024-02-26,"Taller ""El Rápido""",2831.96
+2024-02-27,Acme Distribuciones S.L.,3517.17
+2024-02-28,Núñez Ortega y Cía.,126.26
+2024-02-29,Ibáñez Logística,1279.10
+2024-03-01,Muñoz Hermanos,4.51
+2024-03-02,Acme Distribuciones S.L.,1270.83
+2024-03-03,"Fernández, Asociados",3872.21
+2024-03-04,Peña & Hijos,1261.98
+2024-03-05,Acme Distribuciones S.L.,627.06
+2024-03-06,Ibáñez Logística,3928.01
+2024-03-07,Acme Distribuciones S.L.,2872.26
+2024-03-08,Peña & Hijos,1256.33
+2024-03-09,Ibáñez Logística,2341.72
+2024-03-10,Peña & Hijos,4363.34
+2024-03-11,Peña & Hijos,3763.90
+2024-03-12,Núñez Ortega y Cía.,4967.41
+2024-03-13,Núñez Ortega y Cía.,2947.63
+2024-03-14,Ibáñez Logística,1835.09
+2024-03-15,Muñoz Hermanos,675.18
+2024-03-16,Ibáñez Logística,1459.39
+2024-03-17,Núñez Ortega y Cía.,65.97
+2024-03-18,Acme Distribuciones S.L.,3782.95
+2024-03-19,Peña & Hijos,3522.91
+2024-03-20,García S.L.,4347.56
+2024-03-21,Muñoz Hermanos,4488.11
+2024-03-22,"Taller ""El Rápido""",3703.89
+2024-03-23,"Fernández, Asociados",1937.06
+2024-03-24,"Fernández, Asociados",2481.31
+2024-03-25,Núñez Ortega y Cía.,3682.07
+2024-03-26,Muñoz Hermanos,3872.83
+2024-03-27,Peña & Hijos,4420.75
+2024-03-28,Acme Distribuciones S.L.,2026.70
+2024-03-29,Peña & Hijos,874.63
+2024-03-30,"Fernández, Asociados",4553.06
+2024-03-31,"Taller ""El Rápido""",2409.91
+2024-04-01,Ibáñez Logística,1853.82
+2024-04-02,Acme Distribuciones S.L.,1813.36
+2024-04-03,García S.L.,3451.43
+2024-04-04,Ibáñez Logística,3809.60
+2024-04-05,"Taller ""El Rápido""",2984.37
+2024-04-06,Muñoz Hermanos,2118.08
+2024-04-07,Peña & Hijos,4316.56
+2024-04-08,Acme Distribuciones S.L.,99.30
+2024-04-09,Muñoz Hermanos,4410.48
+2024-04-10,"Fernández, Asociados",4079.18
+2024-04-11,Peña & Hijos,3206.95
+2024-04-12,"Taller ""El Rápido""",3940.67
+2024-04-13,Peña & Hijos,3631.51
+2024-04-14,Ibáñez Logística,2736.73
+2024-04-15,Peña & Hijos,2933.80
+2024-04-16,Muñoz Hermanos,2793.78
+2024-04-17,"Taller ""El Rápido""",4623.86
+2024-04-18,Muñoz Hermanos,917.92
+2024-04-19,Acme Distribuciones S.L.,3866.44
+2024-04-20,Núñez Ortega y Cía.,1332.60
+2024-04-21,Acme Distribuciones S.L.,1804.41
+2024-04-22,Muñoz Hermanos,1251.73
+2024-04-23,"Fernández, Asociados",3729.11
+2024-04-24,Muñoz Hermanos,4611.69
+2024-04-25,García S.L.,332.84
+2024-04-26,García S.L.,4556.21
+2024-04-27,Peña & Hijos,4274.61
+2024-04-28,"Fernández, Asociados",3059.23
+2024-04-29,Núñez Ortega y Cía.,2475.77
+2024-04-30,Núñez Ortega y Cía.,1874.63
+2024-05-01,"Taller ""El Rápido""",2823.74
+2024-05-02,"Taller ""El Rápido""",2749.89
+2024-05-03,Ibáñez Logística,4470.43
+2024-05-04,Peña & Hijos,112.90
+2024-05-05,"Taller ""El Rápido""",815.72
+2024-05-06,Muñoz Hermanos,923.47
+2024-05-07,Núñez Ortega y Cía.,3667.44
+2024-05-08,Muñoz Hermanos,489.98
+2024-05-09,García S.L.,3680.45
+2024-05-10,"Taller ""El Rápido""",4226.53
+2024-05-11,Acme Distribuciones S.L.,727.23
+2024-05-12,"Taller ""El Rápido""",3505.10
+2024-05-13,Muñoz Hermanos,2946.51
+2024-05-14,Ibáñez Logística,4662.65
+2024-05-15,Muñoz Hermanos,1183.56
+2024-05-16,Muñoz Hermanos,296.93
+2024-05-17,Núñez Ortega y Cía.,1995.86
+2024-05-18,Ibáñez Logística,452.14
+2024-05-19,Muñoz Hermanos,2202.11
+2024-05-20,Acme Distribuciones S.L.,1038.11
+2024-05-21,"Fernández, Asociados",431.02
+2024-05-22,Ibáñez Logística,3269.62
+2024-05-23,"Taller ""El Rápido""",3474.98
+2024-05-24,Muñoz Hermanos,2480.76
+2024-05-25,García S.L.,2750.66
+2024-05-26,Acme Distribuciones S.L.,1307.14
+2024-05-27,Peña & Hijos,4428.76
+2024-05-28,"Taller ""El Rápido""",40.51
+2024-05-29,"Taller ""El Rápido""",2813.66
+2024-05-30,Acme Distribuciones S.L.,380.82
+2024-05-31,"Fernández, Asociados",1044.55
+2024-06-01,Muñoz Hermanos,4178.72
+2024-06-02,"Taller ""El Rápido""",4141.49
+2024-06-03,Núñez Ortega y Cía.,4472.85
+2024-06-04,"Taller ""El Rápido""",1296.09
+2024-06-05,Núñez Ortega y Cía.,2592.49
+2024-06-06,Acme Distribuciones S.L.,1181.49
+2024-06-07,Ibáñez Logística,1930.00
+2024-06-08,Peña & Hijos,2636.85
+2024-06-09,Acme Distribuciones S.L.,1441.28
+2024-06-10,"Fernández, Asociados",3303.41
+2024-06-11,Acme Distribuciones S.L.,550.46
+2024-06-12,"Fernández, Asociados",1428.23
+2024-06-13,Acme Distribuciones S.L.,312.26
+2024-06-14,Acme Distribuciones S.L.,1328.86
+2024-06-15,Peña & Hijos,1170.63
+2024-06-16,Ibáñez Logística,2107.41
+2024-06-17,Acme Distribuciones S.L.,2320.40
+2024-06-18,"Taller ""El Rápido""",2388.04
+2024-06-19,Núñez Ortega y Cía.,100.45
+2024-06-20,"Fernández, Asociados",995.37
+2024-06-21,Muñoz Hermanos,2545.19
+2024-06-22,"Taller ""El Rápido""",3418.64
+2024-06-23,Muñoz Hermanos,3054.29
+2024-06-24,Peña & Hijos,2396.90
+2024-06-25,García S.L.,3316.23
+2024-06-26,Acme Distribuciones S.L.,883.10
+2024-06-27,Ibáñez Logística,4358.68
+2024-06-28,"Fernández, Asociados",2890.19
+2024-06-29,García S.L.,4052.35
+2024-06-30,Acme Distribuciones S.L.,410.60
+2024-07-01,Ibáñez Logística,46.75
+2024-07-02,"Taller ""El Rápido""",4215.92
+2024-07-03,Muñoz Hermanos,2335.82
+2024-07-04,"Fernández, Asociados",3112.19
+2024-07-05,Ibáñez Logística,3941.91
+2024-07-06,Muñoz Hermanos,1602.08
+2024-07-07,Núñez Ortega y Cía.,805.33
+2024-07-08,García S.L.,2737.62
+2024-07-09,García S.L.,544.79
+2024-07-10,"Fernández, Asociados",1468.80
+2024-07-11,"Fernández, Asociados",3829.08
+2024-07-12,"Taller ""El Rápido""",4078.45
+2024-07-13,García S.L.,1966.98
+2024-07-14,"Taller ""El Rápido""",1696.78
+2024-07-15,Peña & Hijos,1259.59
+2024-07-16,García S.L.,491.26
+2024-07-17,Núñez Ortega y Cía.,1872.85
+2024-07-18,Acme Distribuciones S.L.,858.35
+2024-07-19,Peña & Hijos,2988.35
+2024-07-20,Ibáñez Logística,3392.37
+2024-07-21,García S.L.,4078.29
+2024-07-22,García S.L.,2984.39
+2024-07-23,Núñez Ortega y Cía.,2869.09
+2024-07-24,Muñoz Hermanos,3339.50
+2024-07-25,"Taller ""El Rápido""",4811.63
+2024-07-26,"Taller ""El Rápido""",978.88
+2024-07-27,Acme Distribuciones S.L.,4005.55
+2024-07-28,Acme Distribuciones S.L.,1679.30
+2024-07-29,Ibáñez Logística,1382.75
+2024-07-30,Ibáñez Logística,2413.64
+2024-07-31,García S.L.,1539.75
+2024-08-01,"Taller ""El Rápido""",1136.17
+2024-08-02,Acme Distribuciones S.L.,4387.00
+2024-08-03,"Taller ""El Rápido""",4020.67
+2024-08-04,Ibáñez Logística,4871.92
+2024-08-05,Peña & Hijos,3804.29
+2024-08-06,Peña & Hijos,1643.67
+2024-08-07,García S.L.,3351.54
+2024-08-08,Muñoz Hermanos,153.38
+2024-08-09,"Fernández, Asociados",4753.52
+2024-08-10,Ibáñez Logística,675.38
+2024-08-11,"Fernández, Asociados",3602.27
+2024-08-12,Muñoz Hermanos,1386.26
+2024-08-13,"Fernández, Asociados",3038.39
+2024-08-14,García S.L.,401.48
+2024-08-15,"Fernández, Asociados",4963.52
+2024-08-16,Ibáñez Logística,514.77
+2024-08-17,Muñoz Hermanos,1241.27
+2024-08-18,Núñez Ortega y Cía.,103.03
+2024-08-19,"Fernández, Asociados",74.26
+2024-08-20,"Fernández, Asociados",1563.58
+2024-08-21,Peña & Hijos,4751.02
+2024-08-22,García S.L.,4453.83
+2024-08-23,Peña & Hijos,275.25
+2024-08-24,"Taller ""El Rápido""",2840.05
+2024-08-25,Muñoz Hermanos,726.24
+2024-08-26,"Taller ""El Rápido""",4519.78
+2024-08-27,García S.L.,101.19
+2024-08-28,"Taller ""El Rápido""",2195.90
+2024-08-29,Peña & Hijos,3228.14
+2024-08-30,Muñoz Hermanos,3384.88
+2024-08-31,"Fernández, Asociados",2353.73
+2024-09-01,Peña & Hijos,4218.16
+2024-09-02,García S.L.,4537.94
+2024-09-03,Peña & Hijos,158.07
+2024-09-04,"Taller ""El Rápido""",4589.90
+2024-09-05,"Fernández, Asociados",4162.60
+2024-09-06,"Fernández, Asociados",4025.69
+2024-09-07,"Taller ""El Rápido""",1604.98
+2024-09-08,Acme Distribuciones S.L.,1904.28
+2024-09-09,Núñez Ortega y Cía.,3993.21
+2024-09-10,"Taller ""El Rápido""",3317.20
+2024-09-11,Muñoz Hermanos,1181.65
+2024-09-12,Ibáñez Logística,2579.23
+2024-09-13,Ibáñez Logística,2719.33
+2024-09-14,Peña & Hijos,4982.69
+2024-09-15,"Fernández, Asociados",2544.94
+2024-09-16,García S.L.,2897.65
+2024-09-17,Acme Distribuciones S.L.,123.86
+2024-09-18,Peña & Hijos,4491.34
+2024-09-19,"Fernández, Asociados",353.62
+2024-09-20,Ibáñez Logística,3029.12
+2024-09-21,Peña & Hijos,4194.07
+2024-09-22,"Fernández, Asociados",573.06
+2024-09-23,Ibáñez Logística,4290.44
+2024-09-24,"Taller ""El Rápido""",1042.92
+2024-09-25,Acme Distribuciones S.L.,1614.45
+2024-09-26,García S.L.,456.29
+2024-09-27,García S.L.,4668.82
+2024-09-28,García S.L.,144.19
+2024-09-29,Ibáñez Logística,2690.49
+2024-09-30,"Taller ""El Rápido""",1199.07
+2024-10-01,"Taller ""El Rápido""",2087.74
+2024-10-02,Ibáñez Logística,4725.07
+2024-10-03,Peña & Hijos,3646.50
+2024-10-04,Muñoz Hermanos,3997.99
+2024-10-05,Peña & Hijos,2416.26
+2024-10-06,Núñez Ortega y Cía.,4076.43
+
+TOTAL,,761447.36

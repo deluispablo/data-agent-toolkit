@@ -1,0 +1,46 @@
+# Exportado desde SistemaXYZ v3.2
+# Empresa: Distribuciones Ejemplo S.A.
+# Periodo: 2023-05-10 a 2023-06-26
+# Moneda: EUR
+# Filas de datos: 40
+Fecha,Cliente,Importe,Concepto,Cantidad,Región,Código
+2023-05-10,Núñez Ortega y Cía.,392.39,Revisión anual de equipos,45,Cataluña,F-9295
+2023-05-11,"Taller ""El Rápido""",4513.49,Consultoría técnica,155,Madrid,A-6128
+2023-05-12,García S.L.,3796.07,Servicio de mantenimiento,408,Cataluña,C-8396
+2023-05-13,Peña & Hijos,3843.04,Servicio de mantenimiento,203,Aragón,H-3666
+2023-05-14,Ibáñez Logística,4111.09,Consultoría técnica,204,Galicia,G-4506
+2023-05-15,"Fernández, Asociados",3663.28,Formación interna,176,Aragón,B-5735
+2023-05-16,Muñoz Hermanos,2311.44,Formación interna,78,Aragón,F-9601
+2023-05-17,Peña & Hijos,3569.66,Formación interna,437,País Vasco,F-4127
+2023-05-18,Muñoz Hermanos,184.72,Formación interna,420,Galicia,A-5209
+2023-05-19,Ibáñez Logística,470.04,Revisión anual de equipos,489,País Vasco,D-7904
+2023-05-20,Acme Distribuciones S.L.,3158.86,Compra de material informático,64,Andalucía,H-7228
+2023-05-21,"Taller ""El Rápido""",2612.25,Revisión anual de equipos,482,País Vasco,H-6447
+2023-05-22,Núñez Ortega y Cía.,636.55,Formación interna,274,País Vasco,E-6687
+2023-05-23,Peña & Hijos,512.87,Formación interna,279,Aragón,H-4236
+2023-05-24,Acme Distribuciones S.L.,4342.38,Servicio de mantenimiento,200,Madrid,C-7277
+2023-05-25,"Fernández, Asociados",1206.39,Compra de material informático,186,País Vasco,G-4129
+2023-05-26,Acme Distribuciones S.L.,2308.70,Servicio de mantenimiento,432,País Vasco,B-0177
+2023-05-27,Ibáñez Logística,3222.69,Servicio de mantenimiento,167,Cataluña,B-6173
+2023-05-28,Muñoz Hermanos,2394.54,Servicio de mantenimiento,477,Madrid,F-3967
+2023-05-29,Ibáñez Logística,1708.12,Revisión anual de equipos,384,Cataluña,C-5919
+2023-05-30,Muñoz Hermanos,4950.42,Consultoría técnica,210,Galicia,B-6574
+2023-05-31,Ibáñez Logística,3092.87,Formación interna,203,País Vasco,D-8584
+2023-06-01,Ibáñez Logística,3793.24,Compra de material informático,288,País Vasco,E-9220
+2023-06-02,Acme Distribuciones S.L.,3995.67,Servicio de mantenimiento,117,Andalucía,E-1976
+2023-06-03,"Taller ""El Rápido""",3873.14,Transporte de mercancía,218,Madrid,H-6406
+2023-06-04,Acme Distribuciones S.L.,1372.56,Formación interna,486,Madrid,G-9859
+2023-06-05,Ibáñez Logística,2733.27,Compra de material informático,335,Andalucía,H-6443
+2023-06-06,Núñez Ortega y Cía.,652.72,Servicio de mantenimiento,18,Aragón,E-3305
+2023-06-07,Acme Distribuciones S.L.,3553.01,Transporte de mercancía,199,Galicia,C-3680
+2023-06-08,Peña & Hijos,3273.10,Formación interna,459,País Vasco,F-4273
+2023-06-09,Acme Distribuciones S.L.,1010.13,Transporte de mercancía,75,Madrid,A-0753
+2023-06-10,"Taller ""El Rápido""",632.19,Revisión anual de equipos,307,Aragón,H-3022
+2023-06-11,"Taller ""El Rápido""",1812.61,Compra de material informático,195,Madrid,C-0038
+2023-06-12,Ibáñez Logística,742.66,Formación interna,432,País Vasco,A-1397
+2023-06-13,"Fernández, Asociados",514.26,Servicio de mantenimiento,23,País Vasco,D-8754
+2023-06-14,Núñez Ortega y Cía.,3881.70,Compra de material informático,65,Galicia,G-2710
+2023-06-15,Muñoz Hermanos,2436.93,Consultoría técnica,74,Andalucía,B-2544
+2023-06-16,Acme Distribuciones S.L.,1261.19,Compra de material informático,223,Galicia,D-5061
+2023-06-17,"Fernández, Asociados",27.99,Formación interna,498,Cataluña,B-4775
+2023-06-18,"Taller ""El Rápido""",2131.84,Compra de material informático,91,Madrid,C-5750

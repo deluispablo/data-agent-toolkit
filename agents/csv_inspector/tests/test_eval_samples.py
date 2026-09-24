@@ -8,9 +8,22 @@ from typing import Any
 import pytest
 
 import eval_samples
-from csv_inspector import InspectionTimeoutError, LLMBackend, Settings
+from csv_inspector import (
+    ColumnSchema,
+    CSVInspectionResult,
+    InspectionTimeoutError,
+    LLMBackend,
+    Settings,
+)
 from csv_inspector.cli import DEFAULT_CLI_TIMEOUT_SECONDS
-from eval_samples import FileEvaluation, _matches_encoding, _parse_args, evaluate_file
+from eval_samples import (
+    FileEvaluation,
+    _column_diagnostics,
+    _format_file_line,
+    _matches_encoding,
+    _parse_args,
+    evaluate_file,
+)
 
 
 @pytest.mark.parametrize(
@@ -104,6 +117,98 @@ def test_evaluate_file_reports_a_timed_out_fixture_as_errored(
     assert evaluation.error is not None
     assert evaluation.error.startswith("InspectionTimeoutError")
     assert evaluation.score is None
+
+
+def _result_with_columns(*names: str) -> CSVInspectionResult:
+    """Build a minimal inspection result reporting ``names`` as its columns."""
+    return CSVInspectionResult(
+        encoding="utf-8",
+        delimiter=",",
+        header_row_index=0,
+        columns=[ColumnSchema(name=name, inferred_type="string") for name in names],
+        confidence=0.9,
+    )
+
+
+def _evaluate_with(
+    monkeypatch: pytest.MonkeyPatch, result: CSVInspectionResult, expected: dict[str, Any]
+) -> FileEvaluation:
+    """Run ``evaluate_file`` with ``inspect_csv`` faked to return ``result``."""
+
+    def fake_inspect_csv(source: object, /, **kwargs: Any) -> CSVInspectionResult:
+        return result
+
+    monkeypatch.setattr(eval_samples, "inspect_csv", fake_inspect_csv)
+    return evaluate_file(
+        "f.csv",
+        {"category": "c", "known_limitation": False, "expected": expected},
+        backend=LLMBackend.LOCAL,
+        settings=Settings(),
+        model="primary",
+        fallback_model="fallback",
+        n_bytes=4096,
+        tail_bytes=4096,
+    )
+
+
+def test_exact_column_names_match_and_score_full_diagnostics(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Names as written in the file count as a match, with full recall and count (issue #123)."""
+    evaluation = _evaluate_with(
+        monkeypatch,
+        _result_with_columns("Fecha ", " Importe"),
+        {"columns": ["Fecha ", " Importe"]},
+    )
+
+    assert evaluation.matched_fields == ["columns"]
+    assert evaluation.columns_recall == 1.0
+    assert evaluation.columns_count_match is True
+
+
+def test_paraphrased_column_name_is_a_mismatch_with_partial_recall(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``Monto`` for ``Importe`` fails the exact match; recall and count show why (issue #123)."""
+    evaluation = _evaluate_with(
+        monkeypatch,
+        _result_with_columns("Fecha", "Cliente", "Monto"),
+        {"columns": ["Fecha", "Cliente", "Importe"]},
+    )
+
+    assert evaluation.mismatched_fields == [
+        ("columns", ["Fecha", "Cliente", "Importe"], ["Fecha", "Cliente", "Monto"])
+    ]
+    assert evaluation.columns_recall == pytest.approx(2 / 3)
+    assert evaluation.columns_count_match is True
+    assert "[columns recall 67%, count match]" in _format_file_line(evaluation)
+
+
+def test_column_recall_ignores_padding_but_the_exact_match_does_not(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Stripped names count for recall; a dropped column shows as a count mismatch."""
+    evaluation = _evaluate_with(
+        monkeypatch,
+        _result_with_columns("Fecha", "Cliente"),
+        {"columns": ["Fecha ", " Cliente ", " Importe"]},
+    )
+
+    assert [name for name, _, _ in evaluation.mismatched_fields] == ["columns"]
+    assert evaluation.columns_recall == pytest.approx(2 / 3)
+    assert evaluation.columns_count_match is False
+    assert "count mismatch" in _format_file_line(evaluation)
+
+
+def test_column_diagnostics_are_none_without_expected_columns() -> None:
+    """No ground truth means no diagnostics, and an empty expectation has no recall."""
+    assert _column_diagnostics(None, ["a"]) == (None, None)
+    assert _column_diagnostics([], []) == (None, True)
+
+
+def test_column_recall_counts_duplicated_names_once_per_occurrence() -> None:
+    """A name expected twice is only fully recalled when reported twice."""
+    assert _column_diagnostics(["Fecha", "Fecha"], ["Fecha", "Otra"]) == (0.5, True)
 
 
 @pytest.mark.parametrize(

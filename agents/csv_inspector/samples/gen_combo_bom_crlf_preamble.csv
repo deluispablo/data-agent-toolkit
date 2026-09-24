@@ -1,0 +1,125 @@
+﻿# Exportado desde SistemaXYZ v3.2
+# Empresa: Distribuciones Ejemplo S.A.
+# Periodo: 2023-05-31 a 2023-10-06
+"Fecha","Cliente","Importe","Concepto","Cantidad","Región","Código","Estado"
+2023-05-31,Núñez Ortega y Cía.,1532.39,Servicio de mantenimiento,210,País Vasco,C-6534,Anulado
+2023-06-01,"Taller ""El Rápido""",4951.47,Servicio de mantenimiento,232,Cataluña,B-1748,Anulado
+2023-06-02,Núñez Ortega y Cía.,162.84,Formación interna,336,Cataluña,F-5498,Anulado
+2023-06-03,"Fernández, Asociados",2044.41,Transporte de mercancía,193,País Vasco,B-2383,En revisión
+2023-06-04,"Fernández, Asociados",975.10,Consultoría técnica,244,Cataluña,H-2637,Pendiente
+2023-06-05,García S.L.,750.87,Revisión anual de equipos,166,País Vasco,F-2154,Pagado
+2023-06-06,García S.L.,3877.38,Formación interna,47,Madrid,D-5851,Pagado
+2023-06-07,Ibáñez Logística,193.07,Consultoría técnica,361,Cataluña,F-1354,Pagado
+2023-06-08,Ibáñez Logística,1227.41,Formación interna,378,Andalucía,C-2943,En revisión
+2023-06-09,Acme Distribuciones S.L.,2684.00,Servicio de mantenimiento,5,Aragón,G-5304,Pendiente
+2023-06-10,García S.L.,2785.07,Revisión anual de equipos,280,Cataluña,A-9146,Pagado
+2023-06-11,Muñoz Hermanos,2648.94,Formación interna,56,País Vasco,D-1036,Anulado
+2023-06-12,Núñez Ortega y Cía.,2392.42,Compra de material informático,168,Cataluña,G-7534,En revisión
+2023-06-13,Muñoz Hermanos,236.06,Formación interna,360,Aragón,F-3151,Pendiente
+2023-06-14,García S.L.,14.24,Transporte de mercancía,162,Cataluña,A-1215,En revisión
+2023-06-15,Núñez Ortega y Cía.,2613.12,Transporte de mercancía,306,Aragón,C-5672,En revisión
+2023-06-16,Ibáñez Logística,3473.91,Servicio de mantenimiento,363,Andalucía,E-8351,Pendiente
+2023-06-17,Muñoz Hermanos,2489.67,Transporte de mercancía,59,Madrid,C-1518,En revisión
+2023-06-18,Peña & Hijos,2148.57,Formación interna,233,Cataluña,B-8850,En revisión
+2023-06-19,Muñoz Hermanos,4667.12,Formación interna,28,Madrid,B-4185,En revisión
+2023-06-20,García S.L.,65.14,Compra de material informático,276,País Vasco,H-8026,Anulado
+2023-06-21,Muñoz Hermanos,895.01,Transporte de mercancía,276,Galicia,F-6387,En revisión
+2023-06-22,García S.L.,2363.26,Compra de material informático,133,Cataluña,H-0588,Anulado
+2023-06-23,Muñoz Hermanos,2720.25,Consultoría técnica,212,Andalucía,D-2866,Anulado
+2023-06-24,Acme Distribuciones S.L.,3692.94,Revisión anual de equipos,105,Andalucía,G-7338,Anulado
+2023-06-25,"Fernández, Asociados",2498.01,Servicio de mantenimiento,135,Andalucía,D-2506,Pendiente
+2023-06-26,Ibáñez Logística,4495.12,Compra de material informático,476,Madrid,F-9755,Pendiente
+2023-06-27,Núñez Ortega y Cía.,2033.36,Compra de material informático,401,Aragón,A-1698,Pendiente
+2023-06-28,Núñez Ortega y Cía.,1637.96,Consultoría técnica,423,Galicia,E-9782,Pendiente
+2023-06-29,Acme Distribuciones S.L.,1099.44,Compra de material informático,343,Aragón,B-2176,Pagado
+2023-06-30,Muñoz Hermanos,769.93,Compra de material informático,322,Aragón,F-3666,Pendiente
+2023-07-01,"Taller ""El Rápido""",2870.86,Consultoría técnica,252,País Vasco,E-2226,Pendiente
+2023-07-02,Núñez Ortega y Cía.,1653.51,Revisión anual de equipos,108,Galicia,F-3114,Pendiente
+2023-07-03,"Fernández, Asociados",2824.48,Consultoría técnica,96,Aragón,E-6918,Pendiente
+2023-07-04,Acme Distribuciones S.L.,1484.97,Servicio de mantenimiento,415,Galicia,G-3129,Anulado
+2023-07-05,Muñoz Hermanos,2673.00,Formación interna,262,Aragón,G-3645,En revisión
+2023-07-06,"Fernández, Asociados",3872.54,Transporte de mercancía,219,Andalucía,A-7548,Anulado
+2023-07-07,"Fernández, Asociados",2163.44,Consultoría técnica,268,Galicia,F-8295,Pagado
+2023-07-08,Ibáñez Logística,743.47,Formación interna,189,Madrid,D-9699,Anulado
+2023-07-09,"Fernández, Asociados",4950.29,Consultoría técnica,388,Andalucía,E-2504,En revisión
+2023-07-10,Muñoz Hermanos,4427.39,Compra de material informático,360,Aragón,E-8439,En revisión
+2023-07-11,Ibáñez Logística,812.73,Transporte de mercancía,408,Cataluña,H-7761,En revisión
+2023-07-12,Muñoz Hermanos,1662.08,Revisión anual de equipos,425,Madrid,F-5744,Pagado
+2023-07-13,Núñez Ortega y Cía.,4597.61,Transporte de mercancía,195,Cataluña,C-0819,Pendiente
+2023-07-14,Acme Distribuciones S.L.,2156.86,Transporte de mercancía,165,Andalucía,G-0581,Pendiente
+2023-07-15,Muñoz Hermanos,2387.08,Consultoría técnica,46,Cataluña,E-8597,Pagado
+2023-07-16,Muñoz Hermanos,282.55,Servicio de mantenimiento,260,Aragón,E-5450,Anulado
+2023-07-17,Acme Distribuciones S.L.,2176.56,Compra de material informático,100,Galicia,G-5998,En revisión
+2023-07-18,"Fernández, Asociados",4016.13,Formación interna,135,Cataluña,D-0164,En revisión
+2023-07-19,García S.L.,2692.71,Servicio de mantenimiento,412,Andalucía,F-4319,Anulado
+2023-07-20,"Fernández, Asociados",4921.61,Revisión anual de equipos,221,Andalucía,G-7726,Anulado
+2023-07-21,"Fernández, Asociados",1012.09,Revisión anual de equipos,294,País Vasco,A-0428,En revisión
+2023-07-22,Ibáñez Logística,2012.56,Compra de material informático,88,Cataluña,D-7368,Pendiente
+2023-07-23,Acme Distribuciones S.L.,4242.69,Revisión anual de equipos,1,Cataluña,C-4686,En revisión
+2023-07-24,Muñoz Hermanos,4247.90,Transporte de mercancía,227,Aragón,G-5632,En revisión
+2023-07-25,Núñez Ortega y Cía.,4381.63,Consultoría técnica,420,Aragón,B-9809,Pagado
+2023-07-26,Peña & Hijos,4478.94,Formación interna,458,Madrid,H-1748,En revisión
+2023-07-27,Núñez Ortega y Cía.,4757.68,Servicio de mantenimiento,259,Galicia,E-3367,Pagado
+2023-07-28,Ibáñez Logística,3488.30,Formación interna,475,Aragón,H-7009,Pendiente
+2023-07-29,"Fernández, Asociados",2503.16,Formación interna,65,País Vasco,B-6762,Pagado
+2023-07-30,Ibáñez Logística,800.70,Servicio de mantenimiento,65,Galicia,F-4463,Anulado
+2023-07-31,Acme Distribuciones S.L.,1395.64,Consultoría técnica,97,Galicia,H-6831,Anulado
+2023-08-01,Núñez Ortega y Cía.,4215.03,Formación interna,307,Galicia,H-0918,Pendiente
+2023-08-02,"Fernández, Asociados",877.94,Formación interna,262,Cataluña,G-8212,Pendiente
+2023-08-03,Peña & Hijos,2427.31,Servicio de mantenimiento,496,País Vasco,F-0620,Pendiente
+2023-08-04,"Fernández, Asociados",2018.22,Revisión anual de equipos,410,Aragón,G-6120,Pagado
+2023-08-05,Peña & Hijos,3560.35,Consultoría técnica,341,Andalucía,B-2082,Anulado
+2023-08-06,Ibáñez Logística,3327.06,Formación interna,362,Galicia,E-2717,Pagado
+2023-08-07,García S.L.,3922.50,Servicio de mantenimiento,468,Galicia,G-4239,Pagado
+2023-08-08,Ibáñez Logística,4335.11,Formación interna,454,Madrid,H-4108,Pendiente
+2023-08-09,García S.L.,1425.46,Revisión anual de equipos,147,País Vasco,B-3247,Pagado
+2023-08-10,Ibáñez Logística,993.21,Transporte de mercancía,117,Cataluña,E-1734,Pagado
+2023-08-11,Muñoz Hermanos,3834.48,Consultoría técnica,285,Cataluña,E-2145,Pendiente
+2023-08-12,"Taller ""El Rápido""",2995.15,Revisión anual de equipos,481,Andalucía,H-0948,Pendiente
+2023-08-13,Muñoz Hermanos,2787.17,Transporte de mercancía,460,Andalucía,H-9612,Anulado
+2023-08-14,Núñez Ortega y Cía.,4385.83,Formación interna,277,Aragón,H-2081,Anulado
+2023-08-15,"Fernández, Asociados",4087.86,Formación interna,466,Andalucía,C-7729,Pagado
+2023-08-16,"Fernández, Asociados",3462.27,Servicio de mantenimiento,53,Cataluña,E-1762,En revisión
+2023-08-17,Muñoz Hermanos,3103.19,Transporte de mercancía,283,Andalucía,H-8222,Anulado
+2023-08-18,Núñez Ortega y Cía.,1063.47,Consultoría técnica,207,Cataluña,A-4567,Pagado
+2023-08-19,"Taller ""El Rápido""",4797.91,Revisión anual de equipos,35,Aragón,A-9873,Pendiente
+2023-08-20,"Fernández, Asociados",640.79,Revisión anual de equipos,206,Andalucía,B-2595,Pendiente
+2023-08-21,Núñez Ortega y Cía.,4379.13,Formación interna,381,Andalucía,E-5591,En revisión
+2023-08-22,Ibáñez Logística,730.07,Compra de material informático,153,Galicia,C-5541,Pagado
+2023-08-23,Núñez Ortega y Cía.,2608.86,Servicio de mantenimiento,475,País Vasco,H-1283,Pagado
+2023-08-24,Acme Distribuciones S.L.,4363.12,Revisión anual de equipos,46,Andalucía,G-5691,En revisión
+2023-08-25,"Fernández, Asociados",1174.33,Formación interna,481,Madrid,G-8974,Pagado
+2023-08-26,Núñez Ortega y Cía.,1710.49,Consultoría técnica,378,Andalucía,H-0163,Pendiente
+2023-08-27,Peña & Hijos,3769.69,Transporte de mercancía,135,País Vasco,F-8819,Anulado
+2023-08-28,Núñez Ortega y Cía.,1518.15,Transporte de mercancía,497,Aragón,E-0913,Pagado
+2023-08-29,Núñez Ortega y Cía.,1767.54,Consultoría técnica,458,Andalucía,A-4892,Pendiente
+2023-08-30,Peña & Hijos,2502.51,Revisión anual de equipos,181,Aragón,D-2937,Anulado
+2023-08-31,Peña & Hijos,4321.26,Formación interna,149,Cataluña,C-3945,Pagado
+2023-09-01,Ibáñez Logística,1933.10,Formación interna,148,Galicia,E-1857,Pendiente
+2023-09-02,"Fernández, Asociados",4017.88,Consultoría técnica,373,Andalucía,F-6737,En revisión
+2023-09-03,"Taller ""El Rápido""",1762.42,Compra de material informático,238,Aragón,D-5542,En revisión
+2023-09-04,"Taller ""El Rápido""",2361.63,Formación interna,66,Aragón,C-6656,Pendiente
+2023-09-05,Ibáñez Logística,45.76,Revisión anual de equipos,331,Andalucía,G-2544,Anulado
+2023-09-06,"Taller ""El Rápido""",1820.38,Revisión anual de equipos,17,Andalucía,C-0407,Anulado
+2023-09-07,Ibáñez Logística,4443.41,Servicio de mantenimiento,378,Andalucía,C-7843,Pendiente
+2023-09-08,Núñez Ortega y Cía.,1459.44,Transporte de mercancía,353,País Vasco,E-6688,Anulado
+2023-09-09,"Taller ""El Rápido""",4373.99,Consultoría técnica,283,Madrid,A-1333,En revisión
+2023-09-10,Núñez Ortega y Cía.,2376.74,Consultoría técnica,189,Andalucía,E-6070,Pagado
+2023-09-11,"Taller ""El Rápido""",1394.74,Revisión anual de equipos,312,Andalucía,C-4752,En revisión
+2023-09-12,Núñez Ortega y Cía.,293.18,Compra de material informático,483,Madrid,G-7571,Anulado
+2023-09-13,García S.L.,1358.73,Revisión anual de equipos,24,País Vasco,F-0930,Pendiente
+2023-09-14,Núñez Ortega y Cía.,3515.44,Transporte de mercancía,217,Madrid,D-0139,Anulado
+2023-09-15,García S.L.,560.13,Formación interna,54,Aragón,C-4446,Pagado
+2023-09-16,Peña & Hijos,3177.80,Consultoría técnica,444,Galicia,E-0427,Pagado
+2023-09-17,"Taller ""El Rápido""",4098.41,Revisión anual de equipos,424,País Vasco,E-1633,Pagado
+2023-09-18,García S.L.,2903.46,Servicio de mantenimiento,486,País Vasco,H-4078,En revisión
+2023-09-19,Núñez Ortega y Cía.,2484.73,Transporte de mercancía,316,Madrid,H-5395,En revisión
+2023-09-20,"Taller ""El Rápido""",3448.23,Compra de material informático,164,Cataluña,E-6560,Pagado
+2023-09-21,"Fernández, Asociados",1190.74,Revisión anual de equipos,69,Galicia,D-1351,En revisión
+2023-09-22,Muñoz Hermanos,2100.10,Transporte de mercancía,52,Cataluña,A-9666,En revisión
+2023-09-23,Muñoz Hermanos,1959.56,Revisión anual de equipos,192,Andalucía,D-4100,Pendiente
+2023-09-24,Peña & Hijos,1067.87,Consultoría técnica,174,Madrid,B-5308,Pagado
+2023-09-25,García S.L.,1191.34,Consultoría técnica,377,Madrid,F-8841,Anulado
+2023-09-26,Ibáñez Logística,1455.75,Servicio de mantenimiento,496,Aragón,D-2350,En revisión
+2023-09-27,"Taller ""El Rápido""",4083.25,Compra de material informático,14,Andalucía,D-4526,Pendiente
+Informe generado el 2023-10-06 a las 15:01:17

@@ -22,6 +22,37 @@ listed under **Changed (breaking)**.
   INFO log line per success reports it, and the CLI's new `--stats` flag
   prints it to stderr as JSON
   ([#121](https://github.com/deluispablo/data-agent-toolkit/issues/121)).
+- The evaluation harness scores column names. `samples/manifest.json`
+  gains `expected.columns`, derived by `samples/generate_samples.py` from
+  each fixture's header line (parsed by the stdlib `csv` module with the
+  manifest dialect, names kept as written; `column_1..N` for a header-less
+  file). `scripts/eval_samples.py` counts the exact list match in the
+  score and reports per-name recall and column-count match as
+  diagnostics next to each file, so a paraphrased name (`Monto` for
+  `Importe`) no longer scores 100 %
+  ([#123](https://github.com/deluispablo/data-agent-toolkit/issues/123)).
+- Sixteen hard-case fixtures in `samples/`, each with a one-line note
+  naming the grounding or sampling rule it guards: a header-less file
+  after preamble lines, quoted line breaks in the head and in the tail
+  window, a footer longer than the tail window, totals-shaped data rows
+  (`2024,,4241.25`, `Total Energies SA`), decimal-comma, tab-with-commas
+  and quoted-pipe dialects, a cp1252 name only in the tail, one-column,
+  one-row and exactly-4096-byte files, duplicate and blank column names,
+  a data value equal to a prompt marker, and a header of years. Four are
+  flagged `known_limitation`. A header-less fixture's positional column
+  names are now sized by its most common row width, so preamble lines do
+  not set the count
+  ([#125](https://github.com/deluispablo/data-agent-toolkit/issues/125)).
+- The fixture catalog grows from 44 to 80 files. `samples/matrix.py`
+  renders a table of `FixtureSpec`s (delimiter, quote character,
+  encoding and BOM, line ending, preamble, header, footer kind, width,
+  length, decimal comma, quoted header, ragged rows) into `gen_*.csv`
+  fixtures with their full ground truth: every footer kind on a wide and a
+  narrow file, every encoding with LF and CRLF, two files over 64 KiB,
+  quirk combinations, a 40-column UTF-16 file and a known-limitation file
+  whose lines are longer than the head window. Manifest entries gain a
+  `generated` flag
+  ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 
 ## [0.3.0] - 2026-09-24
 

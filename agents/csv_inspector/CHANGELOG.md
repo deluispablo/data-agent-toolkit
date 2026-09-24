@@ -8,6 +8,8 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-24
+
 ### Changed (breaking)
 
 - `ColumnSchema.inferred_type` is now a closed vocabulary, the new public
@@ -20,6 +22,16 @@ listed under **Changed (breaking)**.
   as an enum. It also asks for at most 3 example values per column, since
   `qwen2.5-coder:7b` otherwise listed values without end on some files
   ([#35](https://github.com/deluispablo/data-agent-toolkit/issues/35)).
+- The default fallback models are now `qwen2.5-coder:3b` (local) and
+  `gemini-2.5-flash-lite` (cloud). They used to equal the primary models,
+  so the fallback was skipped and only one model was ever tried. The local
+  fallback must be pulled (`ollama pull qwen2.5-coder:3b`); set
+  `OLLAMA_FALLBACK_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
+  fields) to the primary to keep the previous single-model behaviour
+  ([#13](https://github.com/deluispablo/data-agent-toolkit/issues/13)).
+- `n_bytes` and `tail_bytes` (and the CLI's `--bytes` / `--tail-bytes`) are
+  now capped at 16384 bytes each; larger values raise `ValueError` (a usage
+  error in the CLI) ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).
 
 ### Added
 
@@ -36,7 +48,6 @@ listed under **Changed (breaking)**.
   ends in an `InspectionTimeoutError` message instead of a hang;
   `--timeout 0` removes the limit. The library default stays `None`
   ([#39](https://github.com/deluispablo/data-agent-toolkit/issues/39)).
-
 - New guide, `docs/using-the-result.md`, on turning a result into reader
   options for the stdlib `csv` module, pandas and PySpark, with encoding
   names for Spark and BigQuery. The stdlib recipe is run by the test suite
@@ -168,19 +179,6 @@ listed under **Changed (breaking)**.
   wins, and an unknown codec name falls back to the detected encoding
   ([#22](https://github.com/deluispablo/data-agent-toolkit/issues/22)).
 
-### Changed (breaking)
-
-- The default fallback models are now `qwen2.5-coder:3b` (local) and
-  `gemini-2.5-flash-lite` (cloud). They used to equal the primary models,
-  so the fallback was skipped and only one model was ever tried. The local
-  fallback must be pulled (`ollama pull qwen2.5-coder:3b`); set
-  `OLLAMA_FALLBACK_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
-  fields) to the primary to keep the previous single-model behaviour
-  ([#13](https://github.com/deluispablo/data-agent-toolkit/issues/13)).
-- `n_bytes` and `tail_bytes` (and the CLI's `--bytes` / `--tail-bytes`) are
-  now capped at 16384 bytes each; larger values raise `ValueError` (a usage
-  error in the CLI) ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).
-
 ## [0.1.0] - 2026-09-24
 
 First release as an installable, embeddable library
@@ -250,5 +248,6 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.1.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...HEAD
+[0.2.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.1.0...csv-inspector-v0.2.0
 [0.1.0]: https://github.com/deluispablo/data-agent-toolkit/releases/tag/csv-inspector-v0.1.0

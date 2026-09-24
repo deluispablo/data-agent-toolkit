@@ -98,7 +98,7 @@ markdown, no backticks) with exactly this shape:
       "name": "<column name copied character for character from the header row>",
       "inferred_type": "<{_COLUMN_TYPE_CHOICES}>",
       "nullable": <true|false>,
-      "example_values": ["<example value 1>", "<example value 2>"]
+      "example_values": ["<at most 3 raw values copied from this column>"]
     }}
   ],
   "confidence": <number between 0.0 and 1.0 indicating your confidence>,

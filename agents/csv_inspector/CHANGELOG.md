@@ -17,7 +17,9 @@ listed under **Changed (breaking)**.
   `text` and `varchar` to `string`, `bool` to `boolean`, `timestamp` to
   `datetime`, and so on), and any other word becomes `string`. The prompt now
   offers `datetime`, and the JSON schema sent to Gemini lists the vocabulary
-  as an enum ([#35](https://github.com/deluispablo/data-agent-toolkit/issues/35)).
+  as an enum. It also asks for at most 3 example values per column, since
+  `qwen2.5-coder:7b` otherwise listed values without end on some files
+  ([#35](https://github.com/deluispablo/data-agent-toolkit/issues/35)).
 
 ### Added
 

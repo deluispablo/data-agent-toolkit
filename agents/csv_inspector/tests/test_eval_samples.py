@@ -2,9 +2,15 @@
 
 from __future__ import annotations
 
+import sys
+from typing import Any
+
 import pytest
 
-from eval_samples import FileEvaluation, _matches_encoding
+import eval_samples
+from csv_inspector import InspectionTimeoutError, LLMBackend, Settings
+from csv_inspector.cli import DEFAULT_CLI_TIMEOUT_SECONDS
+from eval_samples import FileEvaluation, _matches_encoding, _parse_args, evaluate_file
 
 
 @pytest.mark.parametrize(
@@ -68,3 +74,46 @@ def test_file_evaluation_score_is_none_on_pipeline_error() -> None:
     )
 
     assert evaluation.score is None
+
+
+def test_evaluate_file_reports_a_timed_out_fixture_as_errored(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The time budget reaches inspect_csv, and running out is a pipeline error (issue #54)."""
+    received: dict[str, Any] = {}
+
+    def fake_inspect_csv(source: object, /, **kwargs: Any) -> None:
+        received.update(kwargs)
+        raise InspectionTimeoutError("ran out of its 5s budget", attempts={})
+
+    monkeypatch.setattr(eval_samples, "inspect_csv", fake_inspect_csv)
+
+    evaluation = evaluate_file(
+        "delimiter_comma.csv",
+        {"category": "delimiter", "known_limitation": False, "expected": {}},
+        backend=LLMBackend.LOCAL,
+        settings=Settings(),
+        model="primary",
+        fallback_model="fallback",
+        n_bytes=4096,
+        tail_bytes=4096,
+        timeout_seconds=5.0,
+    )
+
+    assert received["timeout_seconds"] == 5.0
+    assert evaluation.error is not None
+    assert evaluation.error.startswith("InspectionTimeoutError")
+    assert evaluation.score is None
+
+
+@pytest.mark.parametrize(
+    ("argv", "expected"),
+    [([], DEFAULT_CLI_TIMEOUT_SECONDS), (["--timeout", "30"], 30.0), (["--timeout", "0"], None)],
+)
+def test_timeout_option_matches_the_cli(
+    monkeypatch: pytest.MonkeyPatch, argv: list[str], expected: float | None
+) -> None:
+    """``--timeout`` defaults to the CLI's budget, and 0 disables it (issue #54)."""
+    monkeypatch.setattr(sys, "argv", ["eval_samples.py", *argv])
+
+    assert _parse_args().timeout == expected

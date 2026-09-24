@@ -54,6 +54,10 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- When the last model was cut at `timeout_seconds`, a timed wait that
+  returned a hair before the clock reached the deadline (seen on Windows)
+  surfaced as `InspectionFailedError` instead of `InspectionTimeoutError`
+  ([#57](https://github.com/deluispablo/data-agent-toolkit/issues/57)).
 - A model answer whose dialect characters conflict (the delimiter equal to
   the quote or escape character, or a line break as a dialect character)
   made grounding raise a raw `ValueError` from the `csv` module, so the

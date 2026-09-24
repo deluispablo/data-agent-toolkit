@@ -29,6 +29,7 @@ from csv_inspector import (
     ainspect_csv,
     inspect_csv,
 )
+from csv_inspector import _inspect as inspect_module
 from csv_inspector._invokers import (
     ainvoke_cloud_model,
     ainvoke_ollama_model,
@@ -81,6 +82,28 @@ def test_a_slow_sync_invoker_is_cut_at_the_budget() -> None:
     elapsed = time.monotonic() - started
 
     assert elapsed < 0.3 + SLACK_SECONDS
+    assert isinstance(exc_info.value.attempts["m"], ModelTimeoutError)
+
+
+def test_a_last_model_cut_just_before_the_deadline_is_still_a_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A timed wait may return a hair early, before the clock reads expired (issue #57)."""
+    monkeypatch.setattr(inspect_module._Deadline, "expired", property(lambda self: False))
+
+    def slow_invoker(prompt: str, model: str) -> str:
+        time.sleep(3)
+        return RESULT_JSON
+
+    with pytest.raises(InspectionTimeoutError) as exc_info:
+        inspect_csv(
+            SAMPLE_CSV,
+            model="m",
+            fallback_model="m",
+            model_invoker=slow_invoker,
+            timeout_seconds=0.1,
+        )
+
     assert isinstance(exc_info.value.attempts["m"], ModelTimeoutError)
 
 

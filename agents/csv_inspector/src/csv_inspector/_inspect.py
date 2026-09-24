@@ -254,7 +254,16 @@ class _Run:
         """
         logger.warning("Model '%s' failed: %s", model, exc)
         self._errors[model] = exc
-        if self._deadline.expired:
+        # The last model's share is the whole remaining budget, so its timeout
+        # means the budget ran out, even when a timed wait returned a hair
+        # early and the clock still reads just before the deadline (seen on
+        # Windows).
+        last_timed_out = (
+            model == self._candidates[-1]
+            and self._timeout_seconds is not None
+            and isinstance(exc, ModelTimeoutError)
+        )
+        if self._deadline.expired or last_timed_out:
             raise self._timeout_error() from exc
 
     def succeeded(self, model: str, result: CSVInspectionResult) -> CSVInspectionResult:

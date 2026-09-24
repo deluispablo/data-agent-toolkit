@@ -10,3 +10,6 @@ __pycache__/
 coverage.xml
 htmlcov/
 dist/
+
+# Evaluation runs written by scripts/eval_samples.py --out
+agents/*/runs/

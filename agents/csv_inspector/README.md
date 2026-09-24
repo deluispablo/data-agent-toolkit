@@ -333,6 +333,10 @@ settings template for the CLIs (`.env.example`). See the repository's
 [CONTRIBUTING.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/CONTRIBUTING.md)
 for the development setup.
 
+To measure accuracy, cost and latency against the fixture catalog, and to
+compare models or prompt versions, see
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md).
+
 ## License
 
 MIT

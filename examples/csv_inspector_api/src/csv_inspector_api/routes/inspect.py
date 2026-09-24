@@ -134,6 +134,7 @@ def _too_large(size: int, settings: ApiSettings) -> UploadTooLargeError:
 
 
 _RAW_BODY_SCHEMA = {"type": "string", "format": "binary"}
+_OVERRIDE_OFF = "cloud calls cost money, and CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE is off"
 
 
 def build_inspect_router(settings: ApiSettings) -> APIRouter:
@@ -179,7 +180,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             LLMBackend | None,
             Query(
                 description="Backend for this request; default: the configured one. "
-                "`api` (paid) is refused with 403 unless the deployment allows overrides.",
+                "`api` (paid) on a local deployment is a 403 unless overrides are allowed.",
             ),
         ] = None,
         model: Annotated[
@@ -188,7 +189,8 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
                 min_length=1,
                 max_length=MAX_MODEL_NAME_LENGTH,
                 pattern=MODEL_NAME_PATTERN,
-                description="Primary model for this request; default: the configured one.",
+                description="Primary model for this request; default: the configured one. "
+                "On the cloud backend, a 403 unless overrides are allowed.",
             ),
         ] = None,
         fallback_model: Annotated[
@@ -197,22 +199,26 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
                 min_length=1,
                 max_length=MAX_MODEL_NAME_LENGTH,
                 pattern=MODEL_NAME_PATTERN,
-                description="Fallback model for this request; default: the configured one.",
+                description="Fallback model for this request; default: the configured one. "
+                "On the cloud backend, a 403 unless overrides are allowed.",
             ),
         ] = None,
     ) -> InspectParams:
         """Collect the query parameters shared by both routes (a FastAPI dependency).
 
         Raises:
-            BackendOverrideDisabledError: If ``backend=api`` is asked for while
-                ``settings.allow_backend_override`` is off.
+            BackendOverrideDisabledError: If, while ``settings.allow_backend_override``
+                is off, the request would switch a local deployment to the cloud
+                backend, or pick the models of a cloud call.
         """
-        if backend is LLMBackend.API and not settings.allow_backend_override:
-            msg = (
-                "backend=api is not allowed on this deployment: cloud calls cost money, "
-                "and CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE is off"
-            )
-            raise BackendOverrideDisabledError(msg)
+        if not settings.allow_backend_override:
+            configured = settings.llm_backend
+            if backend is LLMBackend.API and configured is not LLMBackend.API:
+                msg = "backend=api would move this local deployment to the paid cloud backend"
+                raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
+            if (backend or configured) is LLMBackend.API and (model or fallback_model):
+                msg = "model and fallback_model would pick the (billed) models of a cloud call"
+                raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
         return InspectParams(n_bytes, tail_bytes, timeout_seconds, backend, model, fallback_model)
 
     responses: dict[int | str, dict[str, Any]] = {

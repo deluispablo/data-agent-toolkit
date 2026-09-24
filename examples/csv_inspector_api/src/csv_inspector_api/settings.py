@@ -34,8 +34,9 @@ class ApiSettings(BaseSettings):
         default_timeout_seconds: Time budget of one inspection request.
         max_timeout_seconds: Largest time budget a request may ask for.
         max_upload_bytes: Largest accepted upload; larger ones are rejected early.
-        allow_backend_override: Whether a request may ask for ``backend=api``
-            (the paid cloud backend). ``False`` answers such requests with 403.
+        allow_backend_override: Whether a request may move a local deployment to
+            ``backend=api`` (the paid cloud backend) or choose the models of a
+            cloud call. ``False`` answers such requests with 403.
     """
 
     model_config = SettingsConfigDict(env_prefix="CSV_INSPECTOR_API_", frozen=True)
@@ -52,7 +53,8 @@ class ApiSettings(BaseSettings):
     max_timeout_seconds: float = Field(default=300, gt=0)
     max_upload_bytes: int = Field(default=256 * _MIB, gt=0)
     # Cloud calls cost money: a caller may only switch this deployment to the
-    # paid backend when the operator opts in. Keep the default False.
+    # paid backend, or pick its (pricier) models, when the operator opts in.
+    # Keep the default False.
     allow_backend_override: bool = False
 
     @model_validator(mode="after")

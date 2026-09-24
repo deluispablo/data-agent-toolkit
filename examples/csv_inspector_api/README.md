@@ -64,7 +64,7 @@ variables (all optional). To use a file, copy
 | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request |
 | `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
 | `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` | `268435456` (256 MiB) | larger uploads get `413` |
-| `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE` | `false` | let requests ask for `backend=api` (paid); see [Per-request overrides](#per-request-overrides) |
+| `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE` | `false` | let requests switch to `backend=api` (paid) or pick cloud models; see [Per-request overrides](#per-request-overrides) |
 
 The `api` backend needs the agent's `[cloud]` extra, which
 `uv sync --all-extras` installs.
@@ -125,9 +125,9 @@ The response is the library's `CSVInspectionResult`, unchanged.
 | `n_bytes` | 4096 | 512–16384 | `n_bytes` |
 | `tail_bytes` | 4096 | 0–16384 | `tail_bytes` |
 | `timeout_seconds` | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | 1–`CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `timeout_seconds` |
-| `backend` | configured | `local`, or `api` when allowed | `backend` |
-| `model` | backend's configured model | name token, 1–200 chars | `model` |
-| `fallback_model` | backend's configured fallback | name token, 1–200 chars | `fallback_model` |
+| `backend` | configured | `local`, or `api` when allowed or already configured | `backend` |
+| `model` | backend's configured model | name token, 1–200 chars; on `api` only when allowed | `model` |
+| `fallback_model` | backend's configured fallback | name token, 1–200 chars; on `api` only when allowed | `fallback_model` |
 
 - Only a bounded head and tail of the upload are read and sent to the model.
 - An upload larger than `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` is a `413`.
@@ -209,17 +209,20 @@ curl --data-binary @../../agents/csv_inspector/sample.csv \
 ```
 
 > **Cost warning.** `backend=api` sends the sample to Gemini, which is billed
-> to the deployment's credentials. It is refused with `403` (problem
-> `"Backend override disabled"`, `error: BackendOverrideDisabledError`) unless
-> the operator sets `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE=true`. The
-> default is `false` and nothing in this example turns it on (a test checks
-> it): an unauthenticated caller must never be able to move a free local
-> deployment to a paid backend. `backend=local` is always allowed.
+> to the deployment's credentials, and `model` / `fallback_model` on a cloud
+> call can pick pricier models than the configured ones. Unless the operator
+> sets `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE=true`, both are refused with
+> `403` (problem `"Backend override disabled"`,
+> `error: BackendOverrideDisabledError`):
 >
-> `model` is not guarded: on a deployment already configured with the `api`
-> backend, a caller can pick any Gemini model the credentials can use,
-> including pricier ones. Put this example behind authentication, or drop
-> the parameter, before exposing a cloud deployment.
+> - `backend=api` on a deployment configured with the `local` backend;
+> - `model` or `fallback_model` whenever the call goes to the `api` backend.
+>
+> The default is `false` and nothing in this example turns it on (a test
+> checks it): an unauthenticated caller must never be able to move a free
+> local deployment to a paid backend, or raise the cost of a cloud one.
+> What cannot add cost is always allowed: `backend=local`, `backend=api` on a
+> deployment already on `api`, and model overrides on the local backend.
 
 Model names must be plain tokens (letters, digits and `._:/@+-`, at most 200
 characters), since they appear in log lines. An unknown model is the
@@ -289,7 +292,7 @@ parsing `detail`.
 
 | exception | status | client action |
 |---|---|---|
-| `BackendOverrideDisabledError` (raised by the API) | 403 | drop `backend=api`, or ask the operator |
+| `BackendOverrideDisabledError` (raised by the API) | 403 | drop `backend=api` or the model overrides, or ask the operator |
 | `UploadTooLargeError` (raised by the API) | 413 | send a smaller file |
 | `EmptySampleError`, `FileSampleReadError` | 422 | fix the input |
 | `InspectionTimeoutError` (checked **before** `InspectionFailedError`, its parent) | 504 | retry with a larger `timeout_seconds` or smaller windows |
@@ -347,7 +350,7 @@ embeds the agent:
   64 KiB), and cancels a request mid-body to check that the blocked worker
   thread is released by the reader, not by its timeout.
 - `tests/test_overrides.py` checks that the requested models reach the fake
-  invoker and that `backend=api` is a 403 unless allowed, on both routes;
+  invoker and that cost-raising overrides are a 403 unless allowed, on both routes;
   `tests/test_request_id.py` checks the header and, with the filter on
   `caplog`'s handler, the id on the API's and the library's records.
 - `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library

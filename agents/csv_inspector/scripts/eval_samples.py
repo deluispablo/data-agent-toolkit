@@ -54,13 +54,13 @@ from csv_inspector import (
 )
 from csv_inspector.cli import (
     DEFAULT_CLI_TIMEOUT_SECONDS,
+    HEAD_BYTES,
+    TAIL_BYTES,
     add_backend_argument,
     add_log_level_argument,
     add_settings_arguments,
     configure_cli,
     load_cli_settings,
-    non_negative_int,
-    positive_int,
     resolve_backend,
     timeout_budget,
 )
@@ -352,13 +352,13 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bytes",
-        type=positive_int,
+        type=HEAD_BYTES,
         default=DEFAULT_SAMPLE_BYTES,
         help="Head sample size, in bytes.",
     )
     parser.add_argument(
         "--tail-bytes",
-        type=non_negative_int,
+        type=TAIL_BYTES,
         default=DEFAULT_TAIL_BYTES,
         help="Tail sample size, in bytes (0 disables).",
     )

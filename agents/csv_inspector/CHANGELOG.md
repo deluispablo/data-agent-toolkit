@@ -29,6 +29,10 @@ listed under **Changed (breaking)**.
 
 ### Changed
 
+- Internal cleanups; CLI range errors for `--bytes` / `--tail-bytes` now
+  come from argparse converters (`expected an integer <= 16384`), and the
+  CLI prints the result with `model_dump_json`
+  ([#103](https://github.com/deluispablo/data-agent-toolkit/issues/103)).
 - `load_settings()` reads the environment (and an explicit `.env` file)
   with the standard library instead of `pydantic-settings`, which is no
   longer a dependency of the `[cloud]` extra. A base install now reads

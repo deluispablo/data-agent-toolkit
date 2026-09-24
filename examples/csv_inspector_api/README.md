@@ -6,7 +6,7 @@ A small FastAPI service that embeds the
 meant to be read and copied. It is never built, tagged or published (see
 [Examples](../../ARCHITECTURE.md#examples)).
 
-> **Status: in progress.** `POST /inspect` works; `GET /health`, the demo
+> **Status: in progress.** `POST /inspect` and `GET /health` work; the demo
 > and the full README arrive with the rest of the milestone.
 
 ## Run
@@ -31,6 +31,26 @@ copy it to `.env` and add `--env-file .env` to the `uvicorn` command.
 library's `Settings`: the API never calls `csv_inspector.load_settings()`.
 
 ## Endpoints
+
+### `GET /health`
+
+```bash
+curl localhost:8000/health
+```
+
+```json
+{"status": "ok", "csv_inspector_version": "0.1.0", "api_version": "0.0.0",
+ "backend": "local", "model": "qwen2.5-coder:7b", "fallback_model": "qwen2.5-coder:3b"}
+```
+
+The health check never contacts Ollama or Gemini: it must stay cheap and
+free. It reports the configured backend and models, never an API key, a
+cloud project or a location. There is no `?probe=true` reachability check:
+it would need `ensure_backend_ready`, which `csv-inspector` does not export
+publicly, and the example imports only the public API.
+
+Use `/health` as the liveness and readiness probe (Kubernetes `httpGet`,
+Cloud Run startup/liveness probe with `path: /health`).
 
 ### `POST /inspect`
 

@@ -36,7 +36,7 @@ from csv_inspector._invokers import (
     invoke_cloud_model,
     invoke_ollama_model,
 )
-from csv_inspector._sampling import sample_source
+from csv_inspector._sampling import MAX_SAMPLE_BYTES, sample_source
 
 SAMPLE_CSV = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
 FAKE_KEY = "AIza-fake-test-key-000"
@@ -389,7 +389,7 @@ def test_ainspect_csv_default_backend_uses_ollama_async_client(
     result = asyncio.run(ainspect_csv(SAMPLE_CSV, timeout_seconds=5))
 
     assert result.delimiter == ";"
-    assert fake.requests[0]["options"] == {"temperature": 0.0}
+    assert fake.requests[0]["options"]["temperature"] == 0.0
     assert 0 < fake.client_kwargs[0]["timeout"] <= 5
     assert fake.closed_clients == 1
 
@@ -417,3 +417,31 @@ def test_ainspect_csv_fails_on_configuration_before_reading_the_source() -> None
                 settings=Settings(),
             )
         )
+
+
+def test_ollama_num_ctx_fits_the_largest_built_in_prompt(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Max-size numeric samples still fit the requested window, so Ollama never truncates."""
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(RESULT_JSON))
+    target = tmp_path / "numbers.csv"
+    target.write_text("a;b\n" + "1234567;7654321\n" * 5000, encoding="utf-8")
+
+    inspect_csv(target, n_bytes=MAX_SAMPLE_BYTES, tail_bytes=MAX_SAMPLE_BYTES)
+
+    request = fake.requests[0]
+    prompt_chars = sum(len(message["content"]) for message in request["messages"])
+    # ~2 characters per token for digit-heavy text, plus room for the reply.
+    assert request["options"]["num_ctx"] >= prompt_chars // 2 + 1024
+    assert request["options"]["num_ctx"] <= 32768
+
+
+def test_ollama_num_ctx_uses_the_minimum_window_for_small_prompts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Small prompts keep a stable minimum window instead of shrinking below it."""
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
+
+    invoke_ollama_model("tiny", "m")
+
+    assert fake.requests[0]["options"]["num_ctx"] == 4096

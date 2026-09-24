@@ -131,7 +131,11 @@ flowchart TD
   byte order taken from the head's BOM.
 - **Byte budgets are validated up front** (`n_bytes >= 1`, `tail_bytes >= 0`):
   a negative `read()` size means "read everything", which this library
-  promises never to do.
+  promises never to do. Each window is also capped at 16 KiB so the prompt
+  fits a local model's context window.
+- **The Ollama context window is sized to the prompt** (`num_ctx`): Ollama's
+  small default would otherwise silently drop the start of a long prompt,
+  the instructions and head sample included.
 
 **Grounding.** Small local models reliably *recognize* headers and footers
 but count and copy lines poorly: they miscount preamble lines, paraphrase

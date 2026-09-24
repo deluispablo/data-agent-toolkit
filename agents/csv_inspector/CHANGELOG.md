@@ -16,6 +16,17 @@ listed under **Changed (breaking)**.
   data. The end of the source is now known to be unsampled: the prompt says
   so and `footer_lines` is left empty
   ([#10](https://github.com/deluispablo/data-agent-toolkit/issues/10)).
+- Ollama requests never set `num_ctx`, so a prompt larger than the server's
+  small default context window lost its start (the instructions and head
+  sample) and the model answered garbage that still passed validation. The
+  window is now sized from the prompt
+  ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).
+
+### Changed (breaking)
+
+- `n_bytes` and `tail_bytes` (and the CLI's `--bytes` / `--tail-bytes`) are
+  now capped at 16384 bytes each; larger values raise `ValueError` (a usage
+  error in the CLI) ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).
 
 ## [0.1.0] - 2026-09-24
 

@@ -24,10 +24,17 @@ repos:
         language: system
         types_or: [python, pyi]
 
-      # mypy runs per agent, with that agent's configuration: one hook each.
+      # mypy runs per agent and per example, with its own configuration: one hook each.
       - id: mypy-csv-inspector
         name: mypy (csv_inspector)
         entry: uv run --frozen --directory agents/csv_inspector mypy
         language: system
         files: ^agents/csv_inspector/.*\.py$
+        pass_filenames: false
+
+      - id: mypy-csv-inspector-api
+        name: mypy (csv_inspector_api)
+        entry: uv run --frozen --directory examples/csv_inspector_api mypy
+        language: system
+        files: ^examples/csv_inspector_api/.*\.py$
         pass_filenames: false

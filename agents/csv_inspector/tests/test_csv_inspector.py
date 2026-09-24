@@ -990,6 +990,44 @@ def test_grounding_keeps_the_delimiter_of_a_one_column_file(tmp_path: Path) -> N
     assert result.delimiter == ","
 
 
+def test_grounding_replaces_a_delimiter_that_occurs_only_inside_a_value(
+    tmp_path: Path,
+) -> None:
+    """One comma inside a TSV value does not make ``,`` the delimiter (issue #97)."""
+    target = tmp_path / "ledger.tsv"
+    target.write_text(_LEDGER.replace(";", "\t").replace("Acme", "Smith, John"), encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(delimiter=",", header_row_index=0))
+
+    assert result.delimiter == "\t"
+    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+
+
+def test_grounding_keeps_a_reported_delimiter_that_splits_the_rows(tmp_path: Path) -> None:
+    """``;`` that really separates the fields stays, even with commas in values (#97)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER.replace("10.00", "10,00").replace("20.00", "20,00"), encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer())
+
+    assert result.delimiter == ";"
+
+
+def test_grounding_keeps_the_reported_delimiter_when_candidates_tie(tmp_path: Path) -> None:
+    """With no single clear winner, the model's answer is kept (#97)."""
+    target = tmp_path / "ambiguous.csv"
+    target.write_text("a,b;c|d\n1,2;3\n4,5;6\n7,8;9\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="|", footer_lines=[], columns=[{"name": "a", "inferred_type": "string"}]
+        ),
+    )
+
+    assert result.delimiter == "|"
+
+
 def test_numeric_example_values_are_accepted_as_text() -> None:
     """JSON numbers or nulls in example_values must not fail the whole inspection."""
     payload = {

@@ -53,6 +53,12 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- Delimiter grounding scores the model's delimiter like the candidates
+  instead of keeping any delimiter that occurs in the head: a `,` answered
+  for a tab-separated file whose values hold a comma (`1,5`,
+  `"Smith, John"`) is now replaced by the tab. The model's answer is still
+  kept on ties and for one-column files; a replacement is logged at INFO
+  ([#97](https://github.com/deluispablo/data-agent-toolkit/issues/97)).
 - A `quotechar` answered as `""`, `"null"`, `"none"` or JSON `null` (the
   natural answer for an unquoted file) now maps to the default `'"'` instead
   of failing validation and triggering the fallback model. The prompt asks

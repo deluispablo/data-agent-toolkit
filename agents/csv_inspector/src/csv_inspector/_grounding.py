@@ -38,7 +38,7 @@ _LINE_BREAK = re.compile(r"\r\n|\r|\n")
 # codec leaves a U+FEFF glued to the first column name.
 _BOM_CODECS = frozenset({"utf-8-sig", "utf-16", "utf-32"})
 
-# The delimiters tried when the model's one never occurs in the head.
+# The delimiters tried when the model's one does not split the head's lines.
 _CANDIDATE_DELIMITERS = ",;\t|"
 # How many lines must split into the same number of fields to pick a candidate.
 _MIN_AGREEING_LINES = 2
@@ -206,17 +206,29 @@ def _ground_encoding(reported: str, detected: str) -> str:
     return reported if reported_codec is not None else detected
 
 
-def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
-    """Pick the delimiter to report: the model's, unless it never occurs.
+def _agreement_score(lines: list[str], delimiter: str, quotechar: str) -> int:
+    """Count the lines that ``delimiter`` splits into the modal field count (2 or more)."""
+    widths = [
+        len(fields)
+        for line in lines
+        if (fields := _split_fields(line, delimiter, quotechar)) is not None and len(fields) > 1
+    ]
+    return Counter(widths).most_common(1)[0][1] if widths else 0
 
-    Small models sometimes answer ``,`` for a tab-separated file. A
-    delimiter that occurs in no line of the head is wrong for any file with
-    more than one column, so one of the usual delimiters is picked instead:
-    the one that splits the most lines into the same number (2 or more) of
-    fields. Preamble and footer lines do not block this, unlike
-    ``csv.Sniffer``, which needs nearly every line to agree. A delimiter
-    that occurs is never changed, and the model's answer is kept when no
-    candidate wins outright (e.g. a one-column file).
+
+def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
+    """Pick the delimiter to report: the model's, unless it clearly loses.
+
+    Small models sometimes answer ``,`` for a tab-separated file, whose
+    values may still hold a comma or two. Every delimiter is scored the
+    same way: the number of head lines it splits into the same number (2
+    or more) of fields. Preamble and footer lines do not block this,
+    unlike ``csv.Sniffer``, which needs nearly every line to agree. The
+    model's delimiter is replaced only when it scores below
+    ``_MIN_AGREEING_LINES`` (a delimiter that never occurs scores 0) and
+    exactly one usual delimiter scores at least that and more than it.
+    Otherwise it is kept: ties, one-column files and exotic delimiters
+    stay as reported.
 
     Args:
         result: The model's validated result.
@@ -225,25 +237,30 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     Returns:
         The reported delimiter or the chosen candidate.
     """
-    if result.delimiter in head_sample:
-        return result.delimiter
     lines = _split_lines(head_sample.lstrip("﻿"))
-    scores: dict[str, int] = {}
-    for candidate in _CANDIDATE_DELIMITERS:
-        if candidate in (result.quotechar, result.escapechar):
-            continue
-        widths = [
-            len(fields)
-            for line in lines
-            if (fields := _split_fields(line, candidate, result.quotechar)) is not None
-            and len(fields) > 1
-        ]
-        if widths:
-            scores[candidate] = Counter(widths).most_common(1)[0][1]
+    reported = (
+        _agreement_score(lines, result.delimiter, result.quotechar)
+        if result.delimiter in head_sample
+        else 0
+    )
+    if reported >= _MIN_AGREEING_LINES:
+        return result.delimiter
+    scores = {
+        candidate: _agreement_score(lines, candidate, result.quotechar)
+        for candidate in _CANDIDATE_DELIMITERS
+        if candidate not in (result.delimiter, result.quotechar, result.escapechar)
+    }
     best = max(scores.values(), default=0)
     winners = [candidate for candidate, score in scores.items() if score == best]
-    if best < _MIN_AGREEING_LINES or len(winners) != 1:
+    if best < _MIN_AGREEING_LINES or best <= reported or len(winners) != 1:
         return result.delimiter
+    logger.info(
+        "Replacing delimiter %r (%d agreeing lines) with %r (%d agreeing lines).",
+        result.delimiter,
+        reported,
+        winners[0],
+        best,
+    )
     return winners[0]
 
 
@@ -262,8 +279,8 @@ def ground_in_samples(
     deterministically from the real samples, using the model's own answer
     as the key: the header row (and the column names as actually written)
     is located from the inferred columns, and the footer is re-read
-    verbatim from the end of the file. A delimiter that never occurs in the
-    head is replaced (see :func:`_ground_delimiter`), and the reported
+    verbatim from the end of the file. A delimiter that splits too few head
+    lines is replaced (see :func:`_ground_delimiter`), and the reported
     encoding is checked against the detected one (see
     :func:`_ground_encoding`). A header that cannot be anchored is left as
     the model reported it. A footer that cannot be anchored is dropped when

@@ -10,9 +10,9 @@ import pytest
 from fastapi import FastAPI
 from pydantic import SecretStr, ValidationError
 
-from conftest import fake_model_invoker
 from csv_inspector_api import __version__, create_app
 from csv_inspector_api.settings import ApiSettings
+from fakes import FakeInvoker
 
 
 def test_public_api() -> None:
@@ -41,11 +41,13 @@ async def test_docs_are_served(client: httpx.AsyncClient) -> None:
     assert response.status_code == 200
 
 
-def test_create_app_stores_settings_and_invoker(app: FastAPI, settings: ApiSettings) -> None:
+def test_create_app_stores_settings_and_invoker(
+    app: FastAPI, settings: ApiSettings, invoker: FakeInvoker
+) -> None:
     """The factory stores both settings and the model invoker on app.state."""
     assert app.state.settings is settings
     assert app.state.library_settings == settings.to_library_settings()
-    assert app.state.model_invoker is fake_model_invoker
+    assert app.state.model_invoker is invoker
 
 
 def test_create_app_reads_settings_from_the_environment(monkeypatch: pytest.MonkeyPatch) -> None:

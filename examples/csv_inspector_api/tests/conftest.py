@@ -14,6 +14,7 @@ from fastapi import FastAPI
 
 from csv_inspector_api import create_app
 from csv_inspector_api.settings import ApiSettings
+from fakes import FakeInvoker
 
 ENV_PREFIX = "CSV_INSPECTOR_API_"
 
@@ -71,22 +72,22 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "getaddrinfo", _refuse)
 
 
-async def fake_model_invoker(prompt: str, model: str) -> str:
-    """Stand-in for the model client: never contacted in the scaffold."""
-    msg = f"unexpected model call to {model!r}"
-    raise AssertionError(msg)
+@pytest.fixture
+def invoker() -> FakeInvoker:
+    """The fake model: answers :data:`fakes.SAMPLE_ANSWER` unless a test scripts it."""
+    return FakeInvoker()
 
 
 @pytest.fixture
 def settings() -> ApiSettings:
-    """API settings built in code, independent of the environment."""
-    return ApiSettings()
+    """API settings built in code, independent of the environment, with short time budgets."""
+    return ApiSettings(default_timeout_seconds=2, max_timeout_seconds=5)
 
 
 @pytest.fixture
-def app(settings: ApiSettings) -> FastAPI:
+def app(settings: ApiSettings, invoker: FakeInvoker) -> FastAPI:
     """The application wired to the fake model invoker."""
-    return create_app(settings, model_invoker=fake_model_invoker)
+    return create_app(settings, model_invoker=invoker)
 
 
 @pytest.fixture

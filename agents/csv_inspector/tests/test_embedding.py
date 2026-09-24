@@ -23,10 +23,10 @@ from types import ModuleType
 from typing import Any
 
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 import csv_inspector
 from csv_inspector import LLMBackend, Settings, inspect_csv
+from fakes import install_fake_ollama, ollama_reply
 
 PACKAGE_DIR = Path(csv_inspector.__file__).resolve().parent
 CLI_MODULES = {"cli.py", "__main__.py"}
@@ -253,7 +253,7 @@ def test_explicit_settings_never_call_load_settings(monkeypatch: pytest.MonkeyPa
     def forbidden(**kwargs: Any) -> Settings:
         raise AssertionError("load_settings must not be called when settings are injected")
 
-    monkeypatch.setattr("csv_inspector._invokers.load_settings", forbidden)
+    monkeypatch.setattr("csv_inspector._config.load_settings", forbidden)
     install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(_ANSWER))
 
     inspect_csv(b"a;b\n1;2\n", settings=Settings())

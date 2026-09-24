@@ -8,8 +8,6 @@ only ``google-genai`` (``[cloud]`` extra).
 
 from __future__ import annotations
 
-import functools
-import importlib.util
 import logging
 import math
 from collections.abc import Awaitable, Callable
@@ -19,7 +17,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 from pydantic import SecretStr
 
 from ._backends import LLMBackend
-from ._config import CLOUD_EXTRA_HINT, CloudCredentials, Settings, load_settings
+from ._config import CLOUD_EXTRA_HINT, CloudCredentials, Settings, resolve_settings
 from ._exceptions import (
     BackendConfigurationError,
     CredentialsNotConfiguredError,
@@ -66,78 +64,6 @@ class _GenaiResponse(Protocol):
     def text(self) -> str | None:
         """The concatenated response text."""
         ...
-
-
-# ---------------------------------------------------------------------
-# Settings resolution
-# ---------------------------------------------------------------------
-
-
-def resolve_settings(settings: Settings | None, backend: LLMBackend) -> Settings:
-    """Return the settings to use: the injected ones, or the environment's.
-
-    Args:
-        settings: Explicitly injected settings. When given, the environment
-            is never read.
-        backend: The backend the settings are needed for.
-
-    Returns:
-        ``settings`` if given; otherwise settings read from the process
-        environment (:func:`load_settings`, no ``.env``). On a base install
-        without ``pydantic-settings``, the local backend falls back to the
-        built-in defaults.
-
-    Raises:
-        BackendConfigurationError: If the environment cannot be read for the
-            cloud backend (missing extra) or holds an invalid value.
-    """
-    if settings is not None:
-        return settings
-    if backend is LLMBackend.LOCAL and importlib.util.find_spec("pydantic_settings") is None:
-        logger.debug("pydantic-settings not installed; using built-in local defaults.")
-        return Settings()
-    return load_settings()
-
-
-def get_configured_backend(settings: Settings | None = None) -> LLMBackend:
-    """Return the default backend from ``settings`` or the ``LLM_BACKEND`` variable."""
-    return resolve_settings(settings, LLMBackend.LOCAL).llm_backend
-
-
-def get_default_model(backend: LLMBackend, settings: Settings | None = None) -> str:
-    """Return the primary model name for ``backend``."""
-    return resolve_settings(settings, backend).model_for(backend)
-
-
-def get_fallback_model(backend: LLMBackend, settings: Settings | None = None) -> str:
-    """Return the fallback model name for ``backend``."""
-    return resolve_settings(settings, backend).fallback_model_for(backend)
-
-
-def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) -> None:
-    """Fail fast if ``backend`` cannot be used, before any source is read.
-
-    The local backend needs nothing up front (Ollama reachability is only
-    known when it is called). The cloud backend needs sufficient
-    credentials and the ``google-genai`` package.
-
-    Raises:
-        BackendConfigurationError: If the ``[cloud]`` extra is missing or a
-            setting is invalid.
-        CredentialsNotConfiguredError: If the cloud backend has no usable
-            credentials.
-    """
-    if backend is not LLMBackend.API:
-        return
-    resolve_settings(settings, backend).cloud_credentials()
-    try:
-        sdk_installed = importlib.util.find_spec("google.genai") is not None
-    except ModuleNotFoundError:
-        sdk_installed = False
-    if not sdk_installed:
-        raise BackendConfigurationError(
-            f"The 'google-genai' package is required for the 'api' backend. {CLOUD_EXTRA_HINT}"
-        )
 
 
 # ---------------------------------------------------------------------
@@ -460,22 +386,6 @@ async def ainvoke_cloud_model(
 # ---------------------------------------------------------------------
 # Factories
 # ---------------------------------------------------------------------
-
-
-def get_model_invoker(backend: LLMBackend, *, settings: Settings | None = None) -> ModelInvoker:
-    """Return the synchronous invoker for ``backend``, bound to ``settings``."""
-    if backend is LLMBackend.API:
-        return functools.partial(invoke_cloud_model, settings=settings)
-    return invoke_ollama_model
-
-
-def get_async_model_invoker(
-    backend: LLMBackend, *, settings: Settings | None = None
-) -> AsyncModelInvoker:
-    """Return the asynchronous invoker for ``backend``, bound to ``settings``."""
-    if backend is LLMBackend.API:
-        return functools.partial(ainvoke_cloud_model, settings=settings)
-    return ainvoke_ollama_model
 
 
 def builtin_invoker(

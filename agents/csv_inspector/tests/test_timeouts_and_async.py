@@ -17,7 +17,6 @@ from typing import Any, ClassVar
 
 import httpx
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -37,8 +36,9 @@ from csv_inspector._invokers import (
     invoke_ollama_model,
 )
 from csv_inspector._sampling import MAX_SAMPLE_BYTES, sample_source
+from fakes import install_fake_ollama, ollama_reply
 
-SAMPLE_CSV = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
+SAMPLE_CSV = Path(__file__).resolve().parent.parent / "sample.csv"
 FAKE_KEY = "AIza-fake-test-key-000"
 RESULT_JSON = json.dumps(
     {
@@ -182,7 +182,9 @@ def test_a_timed_out_call_never_blocks_interpreter_exit() -> None:
                 model_invoker=hanging_invoker,
                 timeout_seconds=0.2,
             )
-        assert started.is_set()
+        # The worker may not have been scheduled yet when the budget ran out
+        # (e.g. on a loaded machine); it is still alive, blocked on `release`.
+        assert started.wait(5)
         workers = [t for t in threading.enumerate() if t.name == "csv_inspector" and t.is_alive()]
         assert workers
         assert all(worker.daemon for worker in workers)

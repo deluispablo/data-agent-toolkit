@@ -52,117 +52,33 @@ result = inspect_csv(uploaded_bytes)
 
 ## Repository layout
 
-```
-data-agent-toolkit/
-├── .github/workflows/ci.yml        # Lint, type-check, test matrix, packaging checks
-├── agents/
-│   └── csv_inspector/              # The csv-inspector package (see its README)
-│       ├── pyproject.toml          # Package metadata, dependencies, [cloud] extra, CLI entry point
-│       ├── src/csv_inspector/      # The library (public API in __init__.py; _modules are internal)
-│       ├── docs/embedding.md       # How to embed it in a host application
-│       ├── CHANGELOG.md
-│       ├── README.md               # Package README (also the PyPI long description)
-│       ├── main_demo.py            # Repo demo: the CLI on the bundled sample.csv
-│       ├── sample.csv              # Synthetic "dirty" CSV fixture
-│       ├── samples/                # 28 generated edge-case fixtures + ground-truth manifest
-│       └── scripts/
-│           ├── eval_samples.py         # Manual LLM evaluation harness (not run in CI)
-│           └── smoke_test_installed.py # Post-install smoke test used by CI
-├── tests/                          # Test suite for all agents (runs against the installed package)
-├── .env.example                    # Settings template for the CLIs
-├── .gitattributes                  # LF for sources; CSV/TSV fixtures kept byte-exact
-├── pyproject.toml                  # Repository-wide ruff, mypy and pytest configuration
-├── requirements-dev.txt            # Editable install of every agent + dev tooling
-└── LICENSE
-```
+Each agent is self-contained under `agents/<name>/`: its code, tests,
+fixtures, docs, demo and tool configuration. The root holds only what the
+agents share: the [uv](https://docs.astral.sh/uv/) workspace and lockfile,
+the shared ruff defaults, CI and the project's policies. See
+[ARCHITECTURE.md](ARCHITECTURE.md) for the full layout and the reasoning
+behind it.
 
 ## Development
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows
-# source .venv/bin/activate     # macOS/Linux
+uv sync --all-packages --all-extras   # every agent (editable) + dev tools, pinned in uv.lock
+uv run pre-commit install             # run the CI checks on every commit
 
-pip install -r requirements-dev.txt   # editable csv-inspector[cloud] + pytest, ruff, mypy, build, twine
-
-ollama serve                          # only needed for live runs, never for tests
-ollama pull qwen2.5-coder:7b
-ollama pull qwen2.5-coder:3b          # default fallback model
-
-python agents/csv_inspector/main_demo.py              # or: csv-inspector path/to/file.csv
-python agents/csv_inspector/scripts/eval_samples.py   # score a live model on the fixture catalog
+uv run ruff check . && uv run ruff format --check .
+cd agents/csv_inspector && uv run mypy && uv run pytest --cov
 ```
 
-The agents are installed in **editable** mode, so the tests and scripts
-import them exactly as an external host would (`import csv_inspector`),
-with no `sys.path` manipulation for library code. Only repository tooling
-that is deliberately not packaged (the fixture generator, the evaluation
-harness) is put on the path by `tests/conftest.py`.
+The tests are hermetic: no Ollama, no credentials, no network.
+[CI](.github/workflows/ci.yml) runs lint, strict type-checking and the tests
+for every agent. Tests run on Python 3.10–3.14 (Linux) and on Windows, with
+a coverage floor. CI also builds every agent's wheel and sdist, installs
+them with pip into clean environments, and smoke-tests them from outside the
+repository.
 
-The CLIs read settings from environment variables and, as applications,
-from `./.env` when present (copy [`.env.example`](.env.example)). The
-libraries themselves never read a `.env` file implicitly.
-
-## Testing and quality checks
-
-```bash
-ruff check .          # lint
-ruff format --check . # formatting
-mypy                  # strict static type-check (with the pydantic plugin)
-pytest                # tests: no Ollama, no credentials, no network
-```
-
-[CI](.github/workflows/ci.yml) runs on every push and pull request:
-
-- **Lint and type-check.**
-- **Tests** on Python 3.10–3.14 (Linux), plus Windows, which also guards
-  the byte-exact fixtures against CRLF conversion.
-- **Packaging.** It builds the sdist and wheel, runs `twine check`,
-  installs the wheel into a **fresh virtual environment** (without the
-  `[cloud]` extra), and smoke-tests the public API **from outside the
-  repository**. It also installs the sdist with `[cloud]`.
-
-The test suite is hermetic. An autouse fixture clears every settings
-variable and runs each test from an empty directory, and every model
-backend is faked (Ollama is replaced by a stand-in module; the Gemini
-client by a recorder that keeps the SDK's real request types). The one
-thing intentionally not covered by `pytest` is the LLM's accuracy itself.
-That is non-deterministic, so it is measured manually with
-`scripts/eval_samples.py` against a live model.
-
-## Code standards
-
-- 100% English source code, comments, and docstrings.
-- [Google-style docstrings](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)
-  on every public module, class, and function: arguments, return values, and
-  raised exceptions are documented explicitly.
-- Full static type hints (`typing` / PEP 604 union syntax) on all functions
-  and classes, checked with `mypy --strict`. Packages ship `py.typed`.
-- PEP 8 / PEP 257 compliance and formatting enforced by `ruff` (lint +
-  format, 100-column lines), configured in `pyproject.toml`.
-- **Library code never configures logging or prints**: it logs under its
-  package logger with only a `NullHandler`. `logging.basicConfig()` and
-  `print()` live in the CLI layer only (enforced by a test).
-- Explicit, typed, domain-specific exception hierarchies instead of bare
-  `Exception` handling.
-- Structured, Pydantic-validated output for every agent, designed for
-  direct consumption by downstream pipelines.
-
-## Adding a new agent
-
-1. Create `agents/<agent_name>/` as a package: `pyproject.toml`,
-   `src/<package>/` with a `py.typed` marker and an explicit `__all__` in
-   `__init__.py` (internal modules prefixed with `_`), `README.md` and
-   `CHANGELOG.md`.
-2. Default to local, free execution via Ollama; make cloud/API backends an
-   opt-in extra with lazily imported SDKs, and accept injected settings.
-3. Return Pydantic-validated structured output, never free text.
-4. Add its editable install to `requirements-dev.txt`, its `src` to
-   `mypy_path` and `files`, and its import name to `known-first-party` in
-   the root `pyproject.toml`; add a packaging job for it in CI.
-5. Add `tests/test_<agent_name>*.py`, faking every external backend so the
-   suite runs without credentials or network access.
-6. Add it to the agents table above.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development setup, the code
+standards and how to propose changes. Report vulnerabilities privately; see
+[SECURITY.md](SECURITY.md).
 
 ## License
 

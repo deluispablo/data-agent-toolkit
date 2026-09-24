@@ -1,0 +1,55 @@
+name: Bug report
+description: Something does not work as documented.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this. For a security issue, do
+        **not** open an issue: see [SECURITY.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/SECURITY.md).
+        Please never paste API keys, credentials or confidential data.
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - csv_inspector
+        - Repository tooling (CI, packaging, docs)
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The package version (e.g. `python -c "import csv_inspector; print(csv_inspector.__version__)"`) or the commit.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Python version, operating system, and the LLM backend and model (e.g. local `qwen2.5-coder:7b`, or `api` with `gemini-2.5-flash`).
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Steps to reproduce
+      description: A minimal snippet or command, and a minimal (synthetic) input file if the input matters.
+      render: python
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: Including the full traceback or log output (`--log-level DEBUG` for the CLIs).
+      render: text
+    validations:
+      required: true

@@ -7,10 +7,16 @@ build it directly and pass it to :func:`csv_inspector.inspect_csv`.
 :func:`load_settings` is the explicit, opt-in way to read settings from the
 process environment (and, only if asked, from a ``.env`` file). It needs the
 ``pydantic-settings`` package from the ``[cloud]`` extra, imported lazily.
+
+:func:`resolve_settings` picks between the two for one call, and
+:func:`ensure_backend_ready` checks that a backend is usable as configured,
+before any source is read.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import logging
 import os
 from dataclasses import dataclass
 from enum import Enum
@@ -19,6 +25,8 @@ from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, field_va
 
 from ._backends import LLMBackend
 from ._exceptions import BackendConfigurationError, CredentialsNotConfiguredError
+
+logger = logging.getLogger(__name__)
 
 # Each fallback differs from its primary: a fallback equal to the primary is
 # skipped, so it would leave only one model to try out of the box.
@@ -191,6 +199,12 @@ def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings
             f"Reading settings from the environment needs 'pydantic-settings'. {CLOUD_EXTRA_HINT}"
         ) from exc
 
+    # Defined here because pydantic-settings is optional. Settings comes first
+    # in the bases so its fields, defaults and validators define the schema;
+    # it defines no __init__, so BaseSettings.__init__ (which reads the
+    # environment and .env sources) is still the one that runs. The config
+    # overrides Settings' extra="forbid": unrelated variables in a .env file
+    # must be ignored, not rejected.
     class _EnvSettings(Settings, BaseSettings):
         model_config = SettingsConfigDict(frozen=True, extra="ignore")
 
@@ -202,4 +216,58 @@ def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings
             for error in exc.errors()
         )
         raise BackendConfigurationError(f"Invalid csv_inspector settings: {problems}") from None
+    # Hand back a plain Settings, not the env-reading subclass: copies and
+    # re-validation of the result must never go back to the environment.
     return Settings.model_validate(loaded.model_dump())
+
+
+def resolve_settings(settings: Settings | None, backend: LLMBackend) -> Settings:
+    """Return the settings to use: the injected ones, or the environment's.
+
+    Args:
+        settings: Explicitly injected settings. When given, the environment
+            is never read.
+        backend: The backend the settings are needed for.
+
+    Returns:
+        ``settings`` if given; otherwise settings read from the process
+        environment (:func:`load_settings`, no ``.env``). On a base install
+        without ``pydantic-settings``, the local backend falls back to the
+        built-in defaults.
+
+    Raises:
+        BackendConfigurationError: If the environment cannot be read for the
+            cloud backend (missing extra) or holds an invalid value.
+    """
+    if settings is not None:
+        return settings
+    if backend is LLMBackend.LOCAL and importlib.util.find_spec("pydantic_settings") is None:
+        logger.debug("pydantic-settings not installed; using built-in local defaults.")
+        return Settings()
+    return load_settings()
+
+
+def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) -> None:
+    """Fail fast if ``backend`` cannot be used, before any source is read.
+
+    The local backend needs nothing up front (Ollama reachability is only
+    known when it is called). The cloud backend needs sufficient
+    credentials and the ``google-genai`` package.
+
+    Raises:
+        BackendConfigurationError: If the ``[cloud]`` extra is missing or a
+            setting is invalid.
+        CredentialsNotConfiguredError: If the cloud backend has no usable
+            credentials.
+    """
+    if backend is not LLMBackend.API:
+        return
+    resolve_settings(settings, backend).cloud_credentials()
+    try:
+        sdk_installed = importlib.util.find_spec("google.genai") is not None
+    except ModuleNotFoundError:
+        sdk_installed = False
+    if not sdk_installed:
+        raise BackendConfigurationError(
+            f"The 'google-genai' package is required for the 'api' backend. {CLOUD_EXTRA_HINT}"
+        )

@@ -22,7 +22,7 @@ from csv_inspector import (
 )
 from csv_inspector._sampling import STREAM_CHUNK_BYTES, describe_source, sample_source
 
-AGENT_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector"
+AGENT_DIR = Path(__file__).resolve().parent.parent
 SAMPLES_DIR = AGENT_DIR / "samples"
 
 # Small (head only), production-sized (head + tail) and UTF-16 (aligned tail).

@@ -1,10 +1,11 @@
 """Smoke test for an installed csv-inspector distribution (no repository needed).
 
-CI installs the built wheel into a fresh virtual environment and runs this
-file from a directory outside the repository, so the package can only be
-found through the installation itself: no ``sys.path`` tricks, no editable
-install. It exercises the public API end to end with a fake model invoker
-(no Ollama, no network).
+CI installs the built wheel (and, separately, the sdist) into a fresh
+virtual environment and runs this file with that environment's Python from
+a directory outside the repository, so the package can only be found through
+the installation itself: no ``sys.path`` tricks, no editable install. It
+exercises the public API end to end with a fake model invoker (no Ollama, no
+network) and checks that the ``csv-inspector`` console script runs.
 
 Usage:
     python smoke_test_installed.py
@@ -16,6 +17,9 @@ import asyncio
 import importlib.metadata
 import io
 import json
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
 import csv_inspector
@@ -92,6 +96,13 @@ def main() -> None:
         pass
     else:
         raise SystemExit("SMOKE TEST FAILED: the timeout was not enforced")
+
+    # Console scripts live next to the interpreter of the environment under test.
+    script = shutil.which("csv-inspector", path=str(Path(sys.executable).parent))
+    if script is None:
+        raise SystemExit("SMOKE TEST FAILED: the csv-inspector console script is not installed")
+    completed = subprocess.run([script, "--help"], capture_output=True, check=False)
+    _check(completed.returncode == 0, "csv-inspector --help failed")
 
     print(f"csv-inspector {csv_inspector.__version__} smoke test passed ({installed_at.parent})")
 

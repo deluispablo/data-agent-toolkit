@@ -9,7 +9,6 @@ variable and runs each test from an empty directory.
 
 from __future__ import annotations
 
-import functools
 import importlib.util
 import json
 import logging
@@ -20,7 +19,6 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -30,18 +28,16 @@ from csv_inspector import (
     ModelInvocationError,
     inspect_csv,
 )
-from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
-from csv_inspector._invokers import (
+from csv_inspector._config import (
+    DEFAULT_MODEL,
+    FALLBACK_MODEL,
     ensure_backend_ready,
-    get_configured_backend,
-    get_default_model,
-    get_fallback_model,
-    get_model_invoker,
-    invoke_cloud_model,
-    invoke_ollama_model,
+    resolve_settings,
 )
+from csv_inspector._invokers import invoke_cloud_model
+from fakes import install_fake_ollama, ollama_reply
 
-AGENT_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector"
+AGENT_DIR = Path(__file__).resolve().parent.parent
 SAMPLE_CSV_PATH = AGENT_DIR / "sample.csv"
 FAKE_KEY = "AIza-fake-test-key-000"
 
@@ -115,27 +111,23 @@ def test_backend_values_match_the_cli_choices() -> None:
     assert [backend.value for backend in LLMBackend] == ["local", "api"]
 
 
-def test_get_model_invoker_maps_each_backend() -> None:
-    """Each backend resolves to its own invoker."""
-    assert get_model_invoker(LLMBackend.LOCAL) is invoke_ollama_model
-    cloud_invoker = get_model_invoker(LLMBackend.API)
-    assert isinstance(cloud_invoker, functools.partial)
-    assert cloud_invoker.func is invoke_cloud_model
-
-
 def test_local_models_default_to_the_built_in_names() -> None:
     """Without configuration, the local backend keeps today's model names."""
-    assert get_default_model(LLMBackend.LOCAL) == DEFAULT_MODEL
-    assert get_fallback_model(LLMBackend.LOCAL) == FALLBACK_MODEL
+    settings = resolve_settings(None, LLMBackend.LOCAL)
+
+    assert settings.model_for(LLMBackend.LOCAL) == DEFAULT_MODEL
+    assert settings.fallback_model_for(LLMBackend.LOCAL) == FALLBACK_MODEL
 
 
 def test_local_backend_needs_no_cloud_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     """Base requirements only: local defaults and backend resolution still work."""
     _without_cloud_extra(monkeypatch)
 
-    assert get_default_model(LLMBackend.LOCAL) == DEFAULT_MODEL
-    assert get_fallback_model(LLMBackend.LOCAL) == FALLBACK_MODEL
-    assert get_configured_backend() is LLMBackend.LOCAL
+    settings = resolve_settings(None, LLMBackend.LOCAL)
+
+    assert settings.model_for(LLMBackend.LOCAL) == DEFAULT_MODEL
+    assert settings.fallback_model_for(LLMBackend.LOCAL) == FALLBACK_MODEL
+    assert settings.llm_backend is LLMBackend.LOCAL
     ensure_backend_ready(LLMBackend.LOCAL)
 
 
@@ -146,29 +138,31 @@ def test_api_backend_without_cloud_extra_says_how_to_install_it(
     _without_cloud_extra(monkeypatch)
 
     with pytest.raises(BackendConfigurationError, match=r"csv-inspector\[cloud\]"):
-        get_default_model(LLMBackend.API)
+        resolve_settings(None, LLMBackend.API)
 
 
 @needs_cloud_extra
-def test_model_factories_read_the_configured_names(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolved_settings_read_the_configured_names(monkeypatch: pytest.MonkeyPatch) -> None:
     """Configured names are used per backend."""
     monkeypatch.setenv("OLLAMA_MODEL", "llama3.1:8b")
     monkeypatch.setenv("CLOUD_MODEL", "gemini-x")
     monkeypatch.setenv("CLOUD_FALLBACK_MODEL", "gemini-y")
 
-    assert get_default_model(LLMBackend.LOCAL) == "llama3.1:8b"
-    assert get_default_model(LLMBackend.API) == "gemini-x"
-    assert get_fallback_model(LLMBackend.API) == "gemini-y"
+    settings = resolve_settings(None, LLMBackend.API)
+
+    assert settings.model_for(LLMBackend.LOCAL) == "llama3.1:8b"
+    assert settings.model_for(LLMBackend.API) == "gemini-x"
+    assert settings.fallback_model_for(LLMBackend.API) == "gemini-y"
 
 
 @needs_cloud_extra
 def test_configured_backend_follows_llm_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """LLM_BACKEND selects the default backend; unset means local."""
-    assert get_configured_backend() is LLMBackend.LOCAL
+    assert resolve_settings(None, LLMBackend.LOCAL).llm_backend is LLMBackend.LOCAL
 
     monkeypatch.setenv("LLM_BACKEND", "api")
 
-    assert get_configured_backend() is LLMBackend.API
+    assert resolve_settings(None, LLMBackend.LOCAL).llm_backend is LLMBackend.API
 
 
 @needs_cloud_extra

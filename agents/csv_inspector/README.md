@@ -254,10 +254,11 @@ unsupported source or a text-mode stream.
 
 The package lives in the
 [data-agent-toolkit](https://github.com/deluispablo/data-agent-toolkit)
-monorepo, next to its fixture catalog (`samples/`), the evaluation harness
-(`scripts/eval_samples.py`) and the demo (`main_demo.py`); the tests live
-in the repository's `tests/`. See the repository README for the
-development setup.
+monorepo, next to its tests (`tests/`), fixture catalog (`samples/`),
+evaluation harness (`scripts/eval_samples.py`), demo (`main_demo.py`) and a
+settings template for the CLIs (`.env.example`). See the repository's
+[CONTRIBUTING.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/CONTRIBUTING.md)
+for the development setup.
 
 ## License
 

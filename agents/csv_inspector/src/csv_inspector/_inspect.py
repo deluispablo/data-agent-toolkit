@@ -19,11 +19,11 @@ import concurrent.futures
 import logging
 import threading
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
 
 from ._backends import LLMBackend
-from ._config import Settings
+from ._config import Settings, ensure_backend_ready, resolve_settings
 from ._exceptions import (
     BackendConfigurationError,
     InspectionFailedError,
@@ -39,8 +39,6 @@ from ._invokers import (
     ModelInvoker,
     builtin_async_invoker,
     builtin_invoker,
-    ensure_backend_ready,
-    resolve_settings,
 )
 from ._models import CSVInspectionResult
 from ._prompt import build_prompt, parse_and_validate
@@ -139,15 +137,6 @@ def _candidates(primary: str, fallback: str) -> tuple[str, ...]:
     return (primary,) if primary == fallback else (primary, fallback)
 
 
-def _prompt_for(samples: Samples) -> str:
-    return build_prompt(
-        samples.head_text,
-        samples.encoding,
-        tail_sample=samples.tail_text,
-        covers_whole_file=samples.covers_whole_file,
-    )
-
-
 def _timed_out(model: str, remaining: float) -> ModelTimeoutError:
     return ModelTimeoutError(f"Model '{model}' did not answer within {max(remaining, 0):.2f}s.")
 
@@ -182,46 +171,18 @@ def _call_with_deadline(call: _SyncCall, prompt: str, model: str, remaining: flo
         raise _timed_out(model, remaining) from None
 
 
-class _Attempts:
-    """Collects per-model failures and turns them into the final error."""
+async def _acall_with_deadline(
+    call: _AsyncCall, prompt: str, model: str, remaining: float | None
+) -> str:
+    """Await one async model call, cancelling it after ``remaining`` seconds.
 
-    def __init__(self, description: str) -> None:
-        self._description = description
-        self.errors: dict[str, Exception] = {}
-
-    def record(self, model: str, exc: Exception) -> None:
-        logger.warning("Model '%s' failed: %s", model, exc)
-        self.errors[model] = exc
-
-    def timeout_error(self, timeout_seconds: float | None) -> InspectionTimeoutError:
-        return InspectionTimeoutError(
-            f"Inspection of '{self._description}' ran out of its {timeout_seconds}s budget. "
-            f"Tried: {list(self.errors)}.",
-            attempts=self.errors,
-        )
-
-    def failure_error(self) -> InspectionFailedError:
-        return InspectionFailedError(
-            f"No configured model produced a valid inspection result for "
-            f"'{self._description}'. Tried: {list(self.errors)}.",
-            attempts=self.errors,
-        )
-
-
-def _succeeded(model: str, result: CSVInspectionResult, samples: Samples) -> CSVInspectionResult:
-    logger.info(
-        "Inspection of '%s' succeeded with model '%s' (confidence=%.2f).",
-        samples.description,
-        model,
-        result.confidence,
-    )
-    return ground_in_samples(
-        result,
-        samples.head_text,
-        samples.tail_text,
-        covers_whole_file=samples.covers_whole_file,
-        detected_encoding=samples.encoding,
-    )
+    Raises:
+        ModelTimeoutError: If the budget runs out first.
+    """
+    try:
+        return await asyncio.wait_for(call(prompt, model, remaining), remaining)
+    except asyncio.TimeoutError:
+        raise _timed_out(model, remaining or 0) from None
 
 
 _RETRYABLE: tuple[type[Exception], ...] = (
@@ -241,6 +202,92 @@ def _retryable(custom_invoker: bool) -> tuple[type[Exception], ...]:
     :class:`BackendConfigurationError` is re-raised before this applies.
     """
     return (Exception,) if custom_invoker else _RETRYABLE
+
+
+class _Run:
+    """The model phase of one inspection, shared by the sync and async entry points.
+
+    Owns everything but the I/O mechanics of a model call: the prompt, the
+    order of the candidate models, each one's share of the time budget, the
+    errors that count as a failed attempt, and the final error when every
+    model fails.
+    """
+
+    def __init__(
+        self,
+        plan: _Plan,
+        samples: Samples,
+        timeout_seconds: float | None,
+        *,
+        custom_invoker: bool,
+    ) -> None:
+        self.prompt = build_prompt(
+            samples.head_text,
+            samples.encoding,
+            tail_sample=samples.tail_text,
+            covers_whole_file=samples.covers_whole_file,
+        )
+        self.retryable = _retryable(custom_invoker)
+        self._candidates = plan.candidates
+        self._samples = samples
+        self._timeout_seconds = timeout_seconds
+        self._deadline = _Deadline(timeout_seconds)
+        self._errors: dict[str, Exception] = {}
+
+    def attempts(self) -> Iterator[tuple[str, float | None]]:
+        """Yield each model to try, in order, with its share of the time budget.
+
+        Raises:
+            InspectionTimeoutError: If the budget runs out before a model starts.
+        """
+        for index, model in enumerate(self._candidates):
+            if self._deadline.expired:
+                raise self._timeout_error()
+            logger.info("Inspecting '%s' with model '%s'.", self._samples.description, model)
+            yield model, self._deadline.share(len(self._candidates) - index)
+
+    def failed(self, model: str, exc: Exception) -> None:
+        """Record a failed attempt; the next model is tried if time is left.
+
+        Raises:
+            InspectionTimeoutError: If the budget has run out.
+        """
+        logger.warning("Model '%s' failed: %s", model, exc)
+        self._errors[model] = exc
+        if self._deadline.expired:
+            raise self._timeout_error() from exc
+
+    def succeeded(self, model: str, result: CSVInspectionResult) -> CSVInspectionResult:
+        """Ground a validated answer in the samples and return it."""
+        samples = self._samples
+        logger.info(
+            "Inspection of '%s' succeeded with model '%s' (confidence=%.2f).",
+            samples.description,
+            model,
+            result.confidence,
+        )
+        return ground_in_samples(
+            result,
+            samples.head_text,
+            samples.tail_text,
+            covers_whole_file=samples.covers_whole_file,
+            detected_encoding=samples.encoding,
+        )
+
+    def failure_error(self) -> InspectionFailedError:
+        """The error for when every model has failed."""
+        return InspectionFailedError(
+            f"No configured model produced a valid inspection result for "
+            f"'{self._samples.description}'. Tried: {list(self._errors)}.",
+            attempts=self._errors,
+        )
+
+    def _timeout_error(self) -> InspectionTimeoutError:
+        return InspectionTimeoutError(
+            f"Inspection of '{self._samples.description}' ran out of its "
+            f"{self._timeout_seconds}s budget. Tried: {list(self._errors)}.",
+            attempts=self._errors,
+        )
 
 
 def inspect_csv(
@@ -317,7 +364,6 @@ def inspect_csv(
         uses_builtin_invoker=model_invoker is None,
     )
     samples = sample_source(source, n_bytes, tail_bytes)
-    prompt = _prompt_for(samples)
 
     call: _SyncCall
     if model_invoker is not None:
@@ -326,26 +372,18 @@ def inspect_csv(
     else:
         call = builtin_invoker(backend, plan.settings)
 
-    retryable = _retryable(custom_invoker=model_invoker is not None)
-    deadline = _Deadline(timeout_seconds)
-    attempts = _Attempts(samples.description)
-    for index, candidate in enumerate(plan.candidates):
-        if deadline.expired:
-            raise attempts.timeout_error(timeout_seconds)
-        logger.info("Inspecting '%s' with model '%s'.", samples.description, candidate)
-        budget = deadline.share(len(plan.candidates) - index)
+    run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
+    for candidate, budget in run.attempts():
         try:
-            raw = _call_with_deadline(call, prompt, candidate, budget)
+            raw = _call_with_deadline(call, run.prompt, candidate, budget)
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
-        except retryable as exc:
-            attempts.record(candidate, exc)
-            if deadline.expired:
-                raise attempts.timeout_error(timeout_seconds) from exc
+        except run.retryable as exc:
+            run.failed(candidate, exc)
             continue
-        return _succeeded(candidate, result, samples)
-    raise attempts.failure_error()
+        return run.succeeded(candidate, result)
+    raise run.failure_error()
 
 
 async def ainspect_csv(
@@ -397,7 +435,6 @@ async def ainspect_csv(
         uses_builtin_invoker=model_invoker is None,
     )
     samples = await asyncio.to_thread(sample_source, source, n_bytes, tail_bytes)
-    prompt = _prompt_for(samples)
 
     call: _AsyncCall
     if model_invoker is not None:
@@ -406,26 +443,15 @@ async def ainspect_csv(
     else:
         call = builtin_async_invoker(backend, plan.settings)
 
-    retryable = _retryable(custom_invoker=model_invoker is not None)
-    deadline = _Deadline(timeout_seconds)
-    attempts = _Attempts(samples.description)
-    for index, candidate in enumerate(plan.candidates):
-        if deadline.expired:
-            raise attempts.timeout_error(timeout_seconds)
-        logger.info("Inspecting '%s' with model '%s'.", samples.description, candidate)
-        budget = deadline.share(len(plan.candidates) - index)
+    run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
+    for candidate, budget in run.attempts():
         try:
-            try:
-                raw = await asyncio.wait_for(call(prompt, candidate, budget), budget)
-            except asyncio.TimeoutError:
-                raise _timed_out(candidate, budget or 0) from None
+            raw = await _acall_with_deadline(call, run.prompt, candidate, budget)
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
-        except retryable as exc:
-            attempts.record(candidate, exc)
-            if deadline.expired:
-                raise attempts.timeout_error(timeout_seconds) from exc
+        except run.retryable as exc:
+            run.failed(candidate, exc)
             continue
-        return _succeeded(candidate, result, samples)
-    raise attempts.failure_error()
+        return run.succeeded(candidate, result)
+    raise run.failure_error()

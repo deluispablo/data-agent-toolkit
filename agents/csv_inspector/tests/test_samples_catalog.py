@@ -26,7 +26,7 @@ from csv_inspector._sampling import (
 )
 from generate_samples import CASES, SampleCase, build_manifest
 
-SAMPLES_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
 
 # Non-fixture files living alongside the generated CSVs.

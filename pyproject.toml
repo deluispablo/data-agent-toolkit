@@ -1,6 +1,27 @@
-# Tool configuration only: agents are self-contained script folders, not an
-# installable distribution, so there is intentionally no [project] table.
+# Repository root: a virtual uv workspace (no [project] table; it is not a
+# distribution) holding what every agent shares. Each agent under agents/ is
+# its own package with its own pyproject.toml, which owns that agent's mypy,
+# pytest and coverage configuration and extends the ruff defaults below.
+# See ARCHITECTURE.md.
 
+[tool.uv.workspace]
+# Every agent is a member just by existing: adding one needs no edit here.
+members = ["agents/*"]
+
+[dependency-groups]
+# Development tooling, installed by `uv sync` and pinned in uv.lock.
+dev = [
+    "build>=1.2",
+    "mypy>=2.0",
+    "pre-commit>=4.0",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "ruff>=0.16",
+    "twine>=6.0",
+]
+
+# Repository-wide ruff defaults. An agent's pyproject.toml inherits them with
+# `extend = "../../pyproject.toml"` and adds only what is specific to it.
 [tool.ruff]
 line-length = 100
 target-version = "py310"
@@ -25,41 +46,11 @@ select = [
     "PL",       # pylint
     "RUF",      # ruff-specific
 ]
-ignore = [
-    "PLR0913",  # many keyword-only knobs are the public API of inspect_csv
-]
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"
 
-[tool.ruff.lint.isort]
-known-first-party = ["csv_inspector", "eval_samples", "generate_samples"]
-
 [tool.ruff.lint.per-file-ignores]
 # Tests: literal expectations, white-box helpers, and duck-typed fakes whose
 # methods implement well-known protocols (read/readable/seekable, clients).
-"tests/**" = ["PLR2004", "PLC2701", "ANN401", "D102", "D107"]
-# Fixture catalog: long prose `description`/`notes` strings are data, not code.
-"agents/csv_inspector/samples/generate_samples.py" = ["E501"]
-
-[tool.mypy]
-strict = true
-plugins = ["pydantic.mypy"]
-warn_unreachable = true
-mypy_path = "agents/csv_inspector/src,agents/csv_inspector/scripts,agents/csv_inspector/samples,tests"
-explicit_package_bases = true
-files = [
-    "agents/csv_inspector/src",
-    "agents/csv_inspector/scripts",
-    "agents/csv_inspector/samples",
-    "agents/csv_inspector/main_demo.py",
-    "tests",
-]
-
-[[tool.mypy.overrides]]
-module = ["chardet", "chardet.*"]
-ignore_missing_imports = true
-
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-addopts = ["-ra", "--strict-markers", "--strict-config"]
+"**/tests/**" = ["PLR2004", "PLC2701", "ANN401", "D102", "D107"]

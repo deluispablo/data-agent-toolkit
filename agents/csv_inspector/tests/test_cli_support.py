@@ -7,7 +7,6 @@ import json
 from pathlib import Path
 
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -25,6 +24,7 @@ from csv_inspector.cli import (
     positive_int,
     resolve_backend,
 )
+from fakes import install_fake_ollama, ollama_reply
 
 
 @pytest.mark.parametrize(("raw", "expected"), [("1", 1), ("4096", 4096)])

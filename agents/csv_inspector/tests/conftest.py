@@ -1,12 +1,11 @@
-"""Shared pytest configuration for the data-agent-toolkit test suite.
+"""Shared pytest configuration for the csv_inspector test suite.
 
-The csv_inspector **library** is imported as an installed package
-(``pip install -e ./agents/csv_inspector[cloud]``, via
-``requirements-dev.txt``), exactly as any external host imports it; there
-is no ``sys.path`` manipulation for it.
+The csv_inspector **library** is imported as an installed package (an
+editable install of the workspace, ``uv sync``), exactly as any external
+host imports it; there is no ``sys.path`` manipulation for it.
 
-Only the repository's **tooling** that is deliberately not part of the
-package (the fixture generator in ``samples/`` and the evaluation harness in
+Only the agent's **tooling** that is deliberately not part of the package
+(the fixture generator in ``samples/`` and the evaluation harness in
 ``scripts/``) is put on ``sys.path`` so tests can import it by name.
 """
 
@@ -17,9 +16,8 @@ from pathlib import Path
 
 import pytest
 
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-_CSV_INSPECTOR_DIR = _REPO_ROOT / "agents" / "csv_inspector"
-_TOOLING_DIRS = (_CSV_INSPECTOR_DIR / "samples", _CSV_INSPECTOR_DIR / "scripts")
+_AGENT_DIR = Path(__file__).resolve().parent.parent
+_TOOLING_DIRS = (_AGENT_DIR / "samples", _AGENT_DIR / "scripts")
 
 for _directory in _TOOLING_DIRS:
     if str(_directory) not in sys.path:

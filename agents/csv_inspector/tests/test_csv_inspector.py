@@ -22,7 +22,6 @@ from types import SimpleNamespace
 from typing import IO, Any
 
 import pytest
-from fakes import install_fake_ollama
 from pydantic import ValidationError
 
 from csv_inspector import (
@@ -47,8 +46,9 @@ from csv_inspector._sampling import (
     read_sample_bytes,
     read_tail_bytes,
 )
+from fakes import install_fake_ollama
 
-SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
+SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "sample.csv"
 
 VALID_RESULT_PAYLOAD: dict[str, object] = {
     "encoding": "utf-8",

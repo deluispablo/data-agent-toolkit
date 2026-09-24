@@ -66,6 +66,7 @@ class _RecordingClient:
     instances: ClassVar[list[_RecordingClient]] = []
     response_text: ClassVar[str | None] = VALID_RESULT_JSON
     error: ClassVar[Exception | None] = None
+    response: ClassVar[Any] = None
 
     def __init__(self, **kwargs: Any) -> None:
         self.init_kwargs = kwargs
@@ -79,6 +80,8 @@ class _RecordingClient:
         error = type(self).error
         if error is not None:
             raise error
+        if type(self).response is not None:
+            return type(self).response
         return SimpleNamespace(text=type(self).response_text)
 
     def __enter__(self) -> _RecordingClient:
@@ -95,6 +98,7 @@ def recording_client(monkeypatch: pytest.MonkeyPatch) -> type[_RecordingClient]:
     _RecordingClient.instances = []
     _RecordingClient.response_text = VALID_RESULT_JSON
     _RecordingClient.error = None
+    _RecordingClient.response = None
     monkeypatch.setattr(genai, "Client", _RecordingClient)
     return _RecordingClient
 
@@ -219,6 +223,7 @@ def test_cloud_invoker_sends_a_deterministic_json_request_with_the_schema(
     assert config.response_mime_type == "application/json"
     assert config.response_json_schema == CSVInspectionResult.model_json_schema()
     assert config.system_instruction
+    assert config.automatic_function_calling.disable
 
 
 @needs_cloud_extra
@@ -232,7 +237,7 @@ def test_cloud_invoker_response_parses_into_a_validated_result(
 
     assert isinstance(result, CSVInspectionResult)
     assert result.delimiter == ";"
-    assert recording_client.instances[0].requests[0]["model"] == "gemini-2.5-flash"
+    assert recording_client.instances[0].requests[0]["model"] == "gemini-3.6-flash"
 
 
 @needs_cloud_extra
@@ -262,6 +267,30 @@ def test_cloud_invoker_rejects_an_empty_response(
     recording_client.response_text = text
 
     with pytest.raises(ModelInvocationError, match="empty response"):
+        invoke_cloud_model("prompt", "gemini-2.5-flash")
+
+
+@needs_cloud_extra
+@pytest.mark.parametrize(
+    ("response_fields", "reason"),
+    [
+        ({"prompt_feedback": {"block_reason": "SAFETY"}}, "prompt blocked: SAFETY"),
+        ({"candidates": [{"finish_reason": "RECITATION"}]}, "finish reason: RECITATION"),
+    ],
+)
+def test_cloud_invoker_reports_why_a_response_is_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    recording_client: type[_RecordingClient],
+    response_fields: dict[str, Any],
+    reason: str,
+) -> None:
+    """A blocked prompt or a stopped candidate has no text; the error says why."""
+    from google.genai import types  # noqa: PLC0415 - needs the [cloud] extra.
+
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.response = types.GenerateContentResponse.model_validate(response_fields)
+
+    with pytest.raises(ModelInvocationError, match=rf"empty response \({reason}\)"):
         invoke_cloud_model("prompt", "gemini-2.5-flash")
 
 

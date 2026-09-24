@@ -118,7 +118,7 @@ from csv_inspector import LLMBackend, Settings, inspect_csv
 
 settings = Settings(
     gemini_api_key=SecretStr(secret_manager.get("gemini-api-key")),
-    cloud_model="gemini-2.5-flash",
+    cloud_model="gemini-3.6-flash",
 )
 result = inspect_csv(data, backend=LLMBackend.API, settings=settings)
 ```

@@ -28,7 +28,7 @@ body:
     id: environment
     attributes:
       label: Environment
-      description: Python version, operating system, and the LLM backend and model (e.g. local `qwen2.5-coder:7b`, or `api` with `gemini-2.5-flash`).
+      description: Python version, operating system, and the LLM backend and model (e.g. local `qwen2.5-coder:7b`, or `api` with `gemini-3.6-flash`).
     validations:
       required: true
   - type: textarea

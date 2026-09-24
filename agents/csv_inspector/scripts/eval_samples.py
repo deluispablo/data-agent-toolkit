@@ -28,7 +28,7 @@ Prerequisites:
 Usage:
     python eval_samples.py
     python eval_samples.py --model qwen3:8b --bytes 8192 --category encoding
-    python eval_samples.py --backend api --model gemini-2.5-flash
+    python eval_samples.py --backend api --model gemini-3.6-flash
 """
 
 from __future__ import annotations

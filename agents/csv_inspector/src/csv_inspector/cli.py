@@ -9,7 +9,7 @@ Usage:
     csv-inspector data.csv
     csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
     csv-inspector data.csv --bytes 8192 --timeout 30
-    csv-inspector data.csv --backend api --model gemini-2.5-flash --env-file secrets.env
+    csv-inspector data.csv --backend api --model gemini-3.6-flash --env-file secrets.env
 """
 
 from __future__ import annotations

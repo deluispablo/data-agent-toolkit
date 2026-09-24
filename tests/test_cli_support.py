@@ -15,6 +15,7 @@ from csv_inspector import (
     LLMBackend,
     Settings,
 )
+from csv_inspector._sampling import MAX_SAMPLE_BYTES
 from csv_inspector.cli import (
     add_log_level_argument,
     load_cli_settings,
@@ -136,3 +137,15 @@ def test_cli_main_prints_the_result_and_passes_the_timeout(
 
     assert json.loads(capsys.readouterr().out)["delimiter"] == ";"
     assert 0 < fake.client_kwargs[0]["timeout"] <= 5
+
+
+@pytest.mark.parametrize("option", ["--bytes", "--tail-bytes"])
+def test_cli_rejects_sample_budgets_above_the_maximum(tmp_path: Path, option: str) -> None:
+    """Oversized sample windows are a usage error, not a traceback."""
+    target = tmp_path / "data.csv"
+    target.write_text("a,b\n1,2\n", encoding="utf-8")
+
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(target), option, str(MAX_SAMPLE_BYTES + 1), "--no-env-file"])
+
+    assert excinfo.value.code == 2

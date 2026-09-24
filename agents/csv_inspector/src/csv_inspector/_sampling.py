@@ -24,9 +24,13 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_SAMPLE_BYTES: int = 4096
 DEFAULT_TAIL_BYTES: int = 4096
+MAX_SAMPLE_BYTES: int = 16384
+"""Upper bound for each sample window, so the prompt fits a local model's context."""
 
 
-def _validate_byte_budget(name: str, value: int, *, minimum: int) -> None:
+def _validate_byte_budget(
+    name: str, value: int, *, minimum: int, maximum: int | None = None
+) -> None:
     """Reject byte budgets that would break the bounded-read guarantee.
 
     A negative size passed to ``file.read()`` means "read everything", so an
@@ -36,12 +40,15 @@ def _validate_byte_budget(name: str, value: int, *, minimum: int) -> None:
         name: Parameter name, used in the error message.
         value: The requested byte budget.
         minimum: The smallest accepted value.
+        maximum: The largest accepted value, or ``None`` for no upper bound.
 
     Raises:
-        ValueError: If ``value`` is below ``minimum``.
+        ValueError: If ``value`` is outside ``[minimum, maximum]``.
     """
     if value < minimum:
         raise ValueError(f"{name} must be >= {minimum}, got {value}.")
+    if maximum is not None and value > maximum:
+        raise ValueError(f"{name} must be <= {maximum}, got {value}.")
 
 
 def read_sample_bytes(path: str | os.PathLike[str], n_bytes: int = DEFAULT_SAMPLE_BYTES) -> bytes:
@@ -440,8 +447,10 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
 
     Args:
         source: The source to sample; see :data:`CSVSource`.
-        n_bytes: Head window size, in bytes. Must be at least 1.
+        n_bytes: Head window size, in bytes. Must be between 1 and
+            :data:`MAX_SAMPLE_BYTES`.
         tail_bytes: Maximum tail window size, in bytes; ``0`` disables it.
+            At most :data:`MAX_SAMPLE_BYTES`.
 
     Returns:
         The decoded :class:`Samples`.
@@ -452,8 +461,8 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         FileSampleReadError: If the source cannot be read.
         EmptySampleError: If the source is empty.
     """
-    _validate_byte_budget("n_bytes", n_bytes, minimum=1)
-    _validate_byte_budget("tail_bytes", tail_bytes, minimum=0)
+    _validate_byte_budget("n_bytes", n_bytes, minimum=1, maximum=MAX_SAMPLE_BYTES)
+    _validate_byte_budget("tail_bytes", tail_bytes, minimum=0, maximum=MAX_SAMPLE_BYTES)
     description = describe_source(source)
 
     try:

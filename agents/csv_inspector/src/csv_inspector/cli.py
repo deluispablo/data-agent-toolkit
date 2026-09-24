@@ -27,7 +27,7 @@ from ._config import Settings, load_settings
 from ._exceptions import BackendConfigurationError, CSVInspectorError
 from ._inspect import inspect_csv
 from ._invokers import ensure_backend_ready
-from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES
+from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, MAX_SAMPLE_BYTES
 
 logger = logging.getLogger(__name__)
 
@@ -189,13 +189,16 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
         "--bytes",
         type=positive_int,
         default=DEFAULT_SAMPLE_BYTES,
-        help="Number of leading (head) bytes to sample.",
+        help=f"Number of leading (head) bytes to sample (at most {MAX_SAMPLE_BYTES}).",
     )
     parser.add_argument(
         "--tail-bytes",
         type=non_negative_int,
         default=DEFAULT_TAIL_BYTES,
-        help="Number of trailing (tail) bytes to sample, for footer detection (0 disables).",
+        help=(
+            "Number of trailing (tail) bytes to sample, for footer detection "
+            f"(0 disables; at most {MAX_SAMPLE_BYTES})."
+        ),
     )
     parser.add_argument(
         "--timeout",
@@ -205,7 +208,11 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
     )
     add_settings_arguments(parser)
     add_log_level_argument(parser)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    for option, value in (("--bytes", args.bytes), ("--tail-bytes", args.tail_bytes)):
+        if value > MAX_SAMPLE_BYTES:
+            parser.error(f"{option}: expected an integer <= {MAX_SAMPLE_BYTES}, got {value}")
+    return args
 
 
 def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None) -> None:

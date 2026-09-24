@@ -37,6 +37,7 @@ from csv_inspector._grounding import _extends_footer
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
 from csv_inspector._prompt import _extract_json_payload, build_prompt
 from csv_inspector._sampling import (
+    MAX_SAMPLE_BYTES,
     decode_sample,
     detect_encoding,
     read_sample_bytes,
@@ -572,7 +573,12 @@ def test_read_tail_bytes_zero_budget_returns_empty_bytes(tmp_path: Path) -> None
 
 @pytest.mark.parametrize(
     ("n_bytes", "tail_bytes", "bad_name"),
-    [(0, 64, "n_bytes"), (64, -1, "tail_bytes")],
+    [
+        (0, 64, "n_bytes"),
+        (64, -1, "tail_bytes"),
+        (MAX_SAMPLE_BYTES + 1, 64, "n_bytes"),
+        (64, MAX_SAMPLE_BYTES + 1, "tail_bytes"),
+    ],
 )
 def test_inspect_csv_validates_budgets_before_touching_the_file(
     tmp_path: Path, n_bytes: int, tail_bytes: int, bad_name: str

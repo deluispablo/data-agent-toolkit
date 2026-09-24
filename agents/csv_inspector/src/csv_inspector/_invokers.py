@@ -185,6 +185,32 @@ def _import_ollama() -> ModuleType:
     return ollama
 
 
+_OLLAMA_MIN_NUM_CTX = 4096
+_OLLAMA_MAX_NUM_CTX = 32768
+_OLLAMA_RESPONSE_TOKENS = 1024
+
+
+def _ollama_num_ctx(prompt: str) -> int:
+    """Context window (tokens) large enough for the system prompt, ``prompt`` and the reply.
+
+    Ollama's default window is small and it silently drops the *start* of an
+    overflowing prompt (the instructions and head sample), so the window is
+    sized from the prompt. Numeric CSV text tokenizes poorly, so this assumes
+    ~2 characters per token. The result is rounded up to a power of two to
+    limit model reloads (Ollama reloads a model when ``num_ctx`` changes) and
+    capped; the sampling limits keep built-in prompts under the cap.
+    """
+    needed = (len(SYSTEM_PROMPT) + len(prompt)) // 2 + _OLLAMA_RESPONSE_TOKENS
+    if needed > _OLLAMA_MAX_NUM_CTX:
+        logger.warning(
+            "Prompt needs ~%d tokens; capping Ollama num_ctx at %d, so it may be truncated.",
+            needed,
+            _OLLAMA_MAX_NUM_CTX,
+        )
+        return _OLLAMA_MAX_NUM_CTX
+    return max(_OLLAMA_MIN_NUM_CTX, 1 << (needed - 1).bit_length())
+
+
 def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
     """Keyword arguments for an Ollama chat request."""
     return {
@@ -194,7 +220,7 @@ def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
             {"role": "user", "content": prompt},
         ],
         "format": "json",
-        "options": {"temperature": 0.0},
+        "options": {"temperature": 0.0, "num_ctx": _ollama_num_ctx(prompt)},
     }
 
 

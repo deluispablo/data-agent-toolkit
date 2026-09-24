@@ -54,6 +54,10 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- The configured Gemini API key is redacted (`***`) from the `WARNING` logged
+  for a failed model attempt, so a custom `model_invoker` whose error message
+  contains the key no longer leaks it into the host's logs
+  ([#81](https://github.com/deluispablo/data-agent-toolkit/issues/81)).
 - When the last model was cut at `timeout_seconds`, a timed wait that
   returned a hair before the clock reached the deadline (seen on Windows)
   surfaced as `InspectionFailedError` instead of `InspectionTimeoutError`

@@ -37,6 +37,7 @@ from ._grounding import ground_in_samples
 from ._invokers import (
     AsyncModelInvoker,
     ModelInvoker,
+    _redact,
     builtin_async_invoker,
     builtin_invoker,
 )
@@ -233,6 +234,9 @@ class _Run:
         self._timeout_seconds = timeout_seconds
         self._deadline = _Deadline(timeout_seconds)
         self._errors: dict[str, Exception] = {}
+        # The built-in invokers redact their own errors; a custom invoker's
+        # message may still carry the configured key, so the log line is redacted too.
+        self._secret = plan.settings.gemini_api_key
 
     def attempts(self) -> Iterator[tuple[str, float | None]]:
         """Yield each model to try, in order, with its share of the time budget.
@@ -252,7 +256,7 @@ class _Run:
         Raises:
             InspectionTimeoutError: If the budget has run out.
         """
-        logger.warning("Model '%s' failed: %s", model, exc)
+        logger.warning("Model '%s' failed: %s", model, _redact(str(exc), self._secret))
         self._errors[model] = exc
         # The last model's share is the whole remaining budget, so its timeout
         # means the budget ran out, even when a timed wait returned a hair

@@ -23,10 +23,9 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from ._backends import LLMBackend
-from ._config import Settings, load_settings
+from ._config import Settings, ensure_backend_ready, load_settings
 from ._exceptions import BackendConfigurationError, CSVInspectorError
 from ._inspect import inspect_csv
-from ._invokers import ensure_backend_ready
 from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, MAX_SAMPLE_BYTES
 
 logger = logging.getLogger(__name__)

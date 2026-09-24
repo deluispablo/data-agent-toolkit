@@ -8,7 +8,14 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -22,7 +29,14 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -36,7 +50,14 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -50,7 +71,14 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -64,7 +92,13 @@
       "quotechar": "\"",
       "header_row_index": 0,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": "The model must not mistake the comma inside the quoted field for a fourth column."
@@ -75,7 +109,13 @@
     "expected": {
       "encoding": "utf-8-sig",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": "chardet typically reports this as 'UTF-8-SIG'; the BOM itself must not leak into the first column name."
@@ -86,7 +126,13 @@
     "expected": {
       "encoding": "latin-1 or cp1252 (not utf-8)",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": "These bytes are not valid UTF-8; the agent must not silently mangle accented characters."
@@ -97,7 +143,14 @@
     "expected": {
       "encoding": "utf-16 or utf-16-le",
       "delimiter": "\t",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": "A classic 'unexpected file' gotcha: every other byte is 0x00 when misread as a single-byte encoding."
@@ -110,7 +163,14 @@
       "delimiter": ";",
       "header_row_index": 2,
       "footer_rows_to_skip": 0,
-      "footer_lines": []
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripción",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -122,7 +182,12 @@
       "encoding": "utf-8",
       "delimiter": ",",
       "has_header": false,
-      "header_row_index": null
+      "header_row_index": null,
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3"
+      ]
     },
     "known_limitation": false,
     "notes": "There is no real header row: the agent should answer has_header=false and header_row_index=null, not assert a fabricated header row."
@@ -133,7 +198,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": "The duplicated header mid-file is a structural anomaly the agent should flag in 'notes', not treat as a data row."
@@ -148,6 +218,12 @@
       "footer_rows_to_skip": 1,
       "footer_lines": [
         "TOTAL,,,274887.10"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
@@ -165,6 +241,12 @@
         "",
         "--- Fin del informe ---",
         "Generado el 2024-08-08 10:00:00"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
@@ -182,6 +264,12 @@
         "",
         "TOTAL;;;274887.10",
         "--- Fin del informe ---"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
       ]
     },
     "known_limitation": false,
@@ -195,7 +283,13 @@
       "delimiter": ",",
       "quotechar": "\"",
       "doublequote": true,
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -209,7 +303,13 @@
       "quotechar": "\"",
       "escapechar": "\\",
       "doublequote": false,
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -220,7 +320,13 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": true,
     "notes": "Byte-prefix/suffix sampling cannot reliably parse multi-line quoted records: a head or tail window may cut this field mid-record. Documented as a known limitation rather than solved by this iteration."
@@ -232,7 +338,13 @@
       "encoding": "utf-8",
       "delimiter": ",",
       "quotechar": "\"",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -243,7 +355,13 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -254,7 +372,13 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": "Row 2 is missing a field, row 3 has an extra one; the agent should note this rather than error out."
@@ -265,7 +389,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -276,7 +405,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -287,7 +421,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -298,7 +437,8 @@
     "expected": {
       "encoding": null,
       "delimiter": null,
-      "header_row_index": null
+      "header_row_index": null,
+      "columns": []
     },
     "known_limitation": false,
     "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
@@ -309,7 +449,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null
@@ -320,7 +465,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
     },
     "known_limitation": false,
     "notes": "'Importe' should ideally be inferred as a numeric type despite the European formatting, not as a plain string; worth tracking separately as a column-typing quality metric."
@@ -331,7 +481,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ",",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Observaciones"
+      ]
     },
     "known_limitation": false,
     "notes": "'Observaciones' should be flagged nullable=True; the mix of null markers is worth a mention in 'notes'."
@@ -342,7 +497,12 @@
     "expected": {
       "encoding": "utf-8",
       "delimiter": ";",
-      "header_row_index": 0
+      "header_row_index": 0,
+      "columns": [
+        "Fecha ",
+        " Cliente ",
+        " Importe"
+      ]
     },
     "known_limitation": false,
     "notes": null

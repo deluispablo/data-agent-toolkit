@@ -2,7 +2,8 @@
 
 Running this script (re)writes every fixture under ``samples/`` plus
 ``samples/manifest.json``, which records the ground truth (expected
-dialect, header/footer position, and known limitations) for each fixture.
+dialect, header/footer position, column names and known limitations) for
+each fixture. Column names are derived from the fixture bytes, not typed.
 Fixtures are generated rather than hand-typed so the catalog stays
 reviewable in a diff and easy to extend as new real-world "CSVs we didn't
 expect" show up.
@@ -21,6 +22,8 @@ Usage:
 
 from __future__ import annotations
 
+import csv
+import io
 import json
 import logging
 from collections.abc import Sequence
@@ -53,6 +56,10 @@ class SampleCase:
             limitation of the current byte-window sampling approach, rather
             than a case the agent is expected to fully solve today.
         notes: Optional free-text context surfaced in the manifest.
+        columns: Expected column names, set only for fixtures the
+            derivation in :func:`derive_columns` cannot be trusted to parse.
+            Every other fixture gets ``expected["columns"]`` derived from
+            its bytes by :func:`build_manifest`.
     """
 
     filename: str
@@ -62,6 +69,7 @@ class SampleCase:
     expected: dict[str, Any] = field(default_factory=dict)
     known_limitation: bool = False
     notes: str | None = None
+    columns: list[str] | None = None
 
 
 def _encode(text: str, encoding: str, *, bom: bytes = b"") -> bytes:
@@ -468,6 +476,9 @@ CASES: list[SampleCase] = [
         known_limitation=True,
         notes="Byte-prefix/suffix sampling cannot reliably parse multi-line quoted records: a head or tail window "
         "may cut this field mid-record. Documented as a known limitation rather than solved by this iteration.",
+        # The manifest records no quotechar for the multi-line record, so the
+        # names are given explicitly and checked against the derived value.
+        columns=["Fecha", "Cliente", "Descripcion", "Importe"],
     ),
     SampleCase(
         filename="quoting_inconsistent.csv",
@@ -585,6 +596,8 @@ CASES: list[SampleCase] = [
         notes="read_sample_bytes and read_tail_bytes must both return b'' without raising; "
         "inspect_csv then raises EmptySampleError before invoking any model, since there is "
         "nothing to infer from.",
+        # No encoding or delimiter to parse with: there are no columns at all.
+        columns=[],
     ),
     SampleCase(
         filename="header_only_no_data.csv",
@@ -596,6 +609,9 @@ CASES: list[SampleCase] = [
             "delimiter": ",",
             "header_row_index": 0,
         },
+        # Structural edge case: given explicitly, and checked against the
+        # derived value by the catalog tests.
+        columns=["Fecha", "Cliente", "Importe"],
     ),
     # -------------------------------------------------------------
     # F. Data-format gotchas
@@ -658,8 +674,54 @@ CASES: list[SampleCase] = [
 ]
 
 
+def derive_columns(case: SampleCase) -> list[str] | None:
+    """Read the expected column names from a fixture's bytes.
+
+    The bytes are decoded with the manifest encoding (the first alternative
+    of an "A or B" label, BOM stripped) and parsed by the stdlib ``csv``
+    module with the manifest dialect (``"`` when no quotechar is recorded).
+    Names are kept verbatim, surrounding spaces included, as grounding
+    reports them. A header-less fixture gets positional names
+    (``column_1`` ...) sized by its first row.
+
+    Args:
+        case: The fixture to read.
+
+    Returns:
+        The column names, or ``None`` when the manifest gives no encoding,
+        delimiter or row to read them from.
+    """
+    expected = case.expected
+    encoding = expected.get("encoding")
+    delimiter = expected.get("delimiter")
+    header_row_index = expected.get("header_row_index")
+    has_header = expected.get("has_header", True)
+    if not encoding or not delimiter:
+        return None
+
+    codec = encoding.split(" or ")[0].strip()
+    text = case.raw_bytes.decode(codec).lstrip("﻿")
+    rows = list(
+        csv.reader(
+            io.StringIO(text, newline=""),
+            delimiter=delimiter,
+            quotechar=expected.get("quotechar") or '"',
+            escapechar=expected.get("escapechar"),
+            doublequote=expected.get("doublequote", True) is not False,
+        )
+    )
+    if not has_header:
+        return [f"column_{number}" for number in range(1, len(rows[0]) + 1)] if rows else None
+    if header_row_index is None or header_row_index >= len(rows):
+        return None
+    return rows[header_row_index]
+
+
 def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
     """Build the ``manifest.json`` payload describing ``cases``.
+
+    ``expected["columns"]`` is derived by :func:`derive_columns`, or taken
+    from :attr:`SampleCase.columns` when a fixture sets it.
 
     Args:
         cases: The fixtures to describe, typically :data:`CASES`.
@@ -672,7 +734,10 @@ def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
         case.filename: {
             "category": case.category,
             "description": case.description,
-            "expected": case.expected,
+            "expected": {
+                **case.expected,
+                "columns": case.columns if case.columns is not None else derive_columns(case),
+            },
             "known_limitation": case.known_limitation,
             "notes": case.notes,
         }

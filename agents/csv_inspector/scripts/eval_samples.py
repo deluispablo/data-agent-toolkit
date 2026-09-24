@@ -14,6 +14,12 @@ per-file and aggregate *score*, not a pass/fail assertion. Use it to:
   before switching ``DEFAULT_MODEL``.
 - Notice regressions after a prompt change, by eye.
 
+Column names are scored three ways: the exact list match (names as written
+in the file, the value that counts in the score), plus two diagnostics shown
+next to each file: per-name recall (how many expected names the model
+reported, so a paraphrase like ``Monto`` for ``Importe`` shows) and whether
+the column count matches.
+
 Fixtures flagged ``known_limitation`` in the manifest (e.g. a quoted field
 with an embedded real newline, which byte-window sampling cannot reliably
 parse) are reported separately and excluded from the aggregate score: they
@@ -39,6 +45,7 @@ import json
 import logging
 import re
 import sys
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -81,6 +88,7 @@ _COMPARABLE_FIELDS: tuple[str, ...] = (
     "header_row_index",
     "footer_lines",
     "footer_rows_to_skip",
+    "columns",
 )
 
 
@@ -101,6 +109,12 @@ class FileEvaluation:
             (e.g. ``header_row_index`` for a file with no real header).
         error: The exception message, if the inspection pipeline itself
             failed (file unreadable, every model failed, etc.).
+        columns_recall: Diagnostic, not part of the score: the fraction of
+            expected column names (surrounding spaces ignored) the model
+            reported, or ``None`` when there is nothing to compare.
+        columns_count_match: Diagnostic, not part of the score: whether the
+            model reported as many columns as expected, or ``None`` when
+            there is nothing to compare.
     """
 
     filename: str
@@ -110,6 +124,8 @@ class FileEvaluation:
     mismatched_fields: list[tuple[str, Any, Any]] = field(default_factory=list)
     skipped_fields: list[str] = field(default_factory=list)
     error: str | None = None
+    columns_recall: float | None = None
+    columns_count_match: bool | None = None
 
     @property
     def comparable_count(self) -> int:
@@ -172,6 +188,32 @@ def _normalize_lines(lines: list[str]) -> list[str]:
     return [line.strip() for line in lines]
 
 
+def _column_diagnostics(
+    expected: list[str] | None, actual: list[str]
+) -> tuple[float | None, bool | None]:
+    """Score the column names beyond the exact list match.
+
+    Recall counts each expected name at most once per occurrence, ignoring
+    surrounding spaces, so it measures paraphrased or missing names rather
+    than padding (the exact match already covers that).
+
+    Args:
+        expected: The manifest's expected column names, if any.
+        actual: The column names the model reported.
+
+    Returns:
+        A ``(recall, count_match)`` tuple. Recall is ``None`` when no
+        names are expected; both are ``None`` without ground truth.
+    """
+    if expected is None:
+        return None, None
+    count_match = len(expected) == len(actual)
+    if not expected:
+        return None, count_match
+    found = Counter(name.strip() for name in expected) & Counter(name.strip() for name in actual)
+    return sum(found.values()) / len(expected), count_match
+
+
 def _compare(
     expected: dict[str, Any], result: CSVInspectionResult
 ) -> tuple[list[str], list[tuple[str, Any, Any]], list[str]]:
@@ -196,7 +238,10 @@ def _compare(
             continue
 
         expected_value = expected[field_name]
-        actual_value = getattr(result, field_name)
+        if field_name == "columns":
+            actual_value = [column.name for column in result.columns]
+        else:
+            actual_value = getattr(result, field_name)
         if field_name == "encoding":
             is_match = _matches_encoding(str(expected_value), str(actual_value))
         elif field_name == "footer_lines":
@@ -266,6 +311,9 @@ def evaluate_file(
     evaluation.matched_fields = matched
     evaluation.mismatched_fields = mismatched
     evaluation.skipped_fields = skipped
+    evaluation.columns_recall, evaluation.columns_count_match = _column_diagnostics(
+        entry["expected"].get("columns"), [column.name for column in result.columns]
+    )
     return evaluation
 
 
@@ -280,6 +328,9 @@ def _format_file_line(evaluation: FileEvaluation) -> str:
 
     matched = len(evaluation.matched_fields)
     line = f"{prefix} {matched}/{evaluation.comparable_count} ({score:.0%})"
+    if evaluation.columns_recall is not None:
+        line += f" [columns recall {evaluation.columns_recall:.0%}"
+        line += ", count match]" if evaluation.columns_count_match else ", count mismatch]"
     if evaluation.mismatched_fields:
         details = ", ".join(
             f"{name} (expected={expected!r}, got={actual!r})"

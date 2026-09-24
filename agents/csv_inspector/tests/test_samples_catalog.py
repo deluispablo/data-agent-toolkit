@@ -9,6 +9,7 @@ instance and not part of this suite).
 
 from __future__ import annotations
 
+import csv
 import json
 from pathlib import Path
 from typing import Any
@@ -23,7 +24,7 @@ from csv_inspector._sampling import (
     read_sample_bytes,
     read_tail_bytes,
 )
-from generate_samples import CASES, SampleCase, build_manifest
+from generate_samples import CASES, SampleCase, build_manifest, derive_columns
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
@@ -227,3 +228,80 @@ def test_combined_fixture_keeps_the_header_preamble_in_the_head() -> None:
     lines = head_text.splitlines()
     assert all(line.startswith("#") for line in lines[:header_row_index])
     assert lines[header_row_index] == "Fecha;Cliente;Concepto;Importe"
+
+
+# ---------------------------------------------------------------------
+# Expected column names (issue #123)
+# ---------------------------------------------------------------------
+
+_HEADER_FIXTURES = sorted(
+    name
+    for name, entry in MANIFEST.items()
+    if entry["expected"].get("has_header", True)
+    and entry["expected"].get("header_row_index") is not None
+)
+
+
+def test_catalog_has_header_fixtures() -> None:
+    """Guard against the parametrized column tests below silently running on nothing."""
+    assert "delimiter_comma.csv" in _HEADER_FIXTURES
+    assert "whitespace_padded_fields.csv" in _HEADER_FIXTURES
+    assert "header_none_data_only.csv" not in _HEADER_FIXTURES
+
+
+@pytest.mark.parametrize("filename", sorted(MANIFEST))
+def test_every_manifest_entry_lists_expected_columns(filename: str) -> None:
+    """Every fixture has a ``columns`` list, non-empty whenever the file has a header."""
+    columns = MANIFEST[filename]["expected"]["columns"]
+
+    assert isinstance(columns, list)
+    if filename in _HEADER_FIXTURES:
+        assert columns
+        assert all(isinstance(name, str) for name in columns)
+
+
+@pytest.mark.parametrize("filename", _HEADER_FIXTURES)
+def test_expected_columns_equal_the_header_line_parsed_with_the_manifest_dialect(
+    filename: str,
+) -> None:
+    """``columns`` is the file's header line, split by ``csv`` with the manifest dialect."""
+    expected = MANIFEST[filename]["expected"]
+    codec = expected["encoding"].split(" or ")[0].strip()
+    text = (SAMPLES_DIR / filename).read_bytes().decode(codec).lstrip("﻿")
+    header_line = text.splitlines()[expected["header_row_index"]]
+
+    fields = next(
+        csv.reader(
+            [header_line],
+            delimiter=expected["delimiter"],
+            quotechar=expected.get("quotechar") or '"',
+            escapechar=expected.get("escapechar"),
+        )
+    )
+
+    assert expected["columns"] == fields
+
+
+def test_header_less_fixture_expects_positional_column_names() -> None:
+    """A file without a header row expects ``column_1..N``, one per field of its first row."""
+    expected = MANIFEST["header_none_data_only.csv"]["expected"]
+
+    assert expected["columns"] == ["column_1", "column_2", "column_3"]
+
+
+def test_whitespace_padded_header_keeps_the_names_as_written() -> None:
+    """Expected names are verbatim, surrounding spaces included, as grounding reports them."""
+    expected = MANIFEST["whitespace_padded_fields.csv"]["expected"]
+
+    assert expected["columns"] == ["Fecha ", " Cliente ", " Importe"]
+
+
+@pytest.mark.parametrize(
+    "case", [case for case in CASES if case.columns is not None], ids=lambda case: case.filename
+)
+def test_column_overrides_agree_with_the_derivation_when_it_can_parse(case: SampleCase) -> None:
+    """An explicit ``SampleCase.columns`` never contradicts what the bytes say."""
+    derived = derive_columns(case)
+
+    if derived is not None:
+        assert case.columns == derived

@@ -294,6 +294,61 @@ the library would consume a forward-only stream instead of seeking, and
 closes it in a `finally`. The blocking reads run in the library's sampling
 worker thread, never on the event loop.
 
+**IAM: least privilege.** The route needs exactly one permission on the
+objects it reads, `storage.objects.get`: no `storage.objects.list`, no
+`storage.buckets.get`, nothing on other buckets. On Cloud Run, give the
+service its own service account and grant it on the bucket only, never on
+the project:
+
+- the simplest predefined role is `roles/storage.objectViewer` **on the
+  bucket**; it also grants `storage.objects.list`, which this API never
+  uses;
+- tighter: a custom role holding only `storage.objects.get`, bound on the
+  bucket (optionally with an IAM condition on an object-name prefix).
+
+```bash
+gcloud iam service-accounts create csv-inspector-api
+gcloud iam roles create csvInspectorObjectReader --project=PROJECT \
+  --title="csv-inspector object reader" --permissions=storage.objects.get
+gcloud storage buckets add-iam-policy-binding gs://BUCKET \
+  --member=serviceAccount:csv-inspector-api@PROJECT.iam.gserviceaccount.com \
+  --role=projects/PROJECT/roles/csvInspectorObjectReader
+```
+
+Then add `--service-account=csv-inspector-api@PROJECT.iam.gserviceaccount.com`
+to the `gcloud run deploy` command of [Docker](#docker). The container finds
+the credentials on the metadata server: never ship a key file in the image.
+Without `storage.objects.list`, Cloud Storage answers a missing object with
+`403` rather than `404`, so it cannot be probed for object names either.
+google-cloud-storage 3.x may also read the bucket's metadata once per process
+in the background for its telemetry; it ignores a `403` there, so
+`storage.buckets.get` is not needed.
+
+**Cost.** Per request, whatever the object's size: one object metadata
+`GET` and two ranged media `GET`s (head and tail; one when the object fits
+in the first 256 KiB chunk), all class B (read) operations, no class A
+operation. Egress is at most the first chunk plus the tail window, about
+260 KiB with the default windows (up to 512 KiB with the largest ones);
+it is free from Cloud Run in the bucket's region. The model call is billed
+separately (free on the local backend).
+
+**Not supported.**
+
+- Requester-pays buckets: no billing project is sent, so Cloud Storage
+  refuses the read (`502`).
+- Signed URLs, `https://storage.googleapis.com/...` or any other scheme:
+  `422`. Only `gs://` URIs, read with the server's credentials.
+- A bucket without an object (`gs://bucket`, `gs://bucket/`): `422`.
+- Wildcards: `gs://bucket/*.csv` is read as an object literally named
+  `*.csv`, usually a `404`. List the objects yourself and inspect them one
+  by one.
+- Compressed objects (`.csv.gz`, or stored with `Content-Encoding: gzip`):
+  the library needs the raw CSV bytes.
+
+**Errors.** Failures of Cloud Storage are answered like the library's ones
+(see [Errors](#errors)); the `detail` never repeats the SDK's message, which
+names the bucket and says whether it exists.
+
 ### Per-request overrides
 
 All inspection routes take `backend`, `model` and `fallback_model` query
@@ -391,6 +446,11 @@ parsing `detail`.
 | `BackendOverrideDisabledError` (raised by the API) | 403 | drop `backend=api` or the model overrides, or ask the operator |
 | `UploadTooLargeError` (raised by the API) | 413 | send a smaller file |
 | `GcsNotInstalledError` (raised by the API) | 503 | none: install the `[gcs]` extra on the server |
+| `NotFound` (Cloud Storage) | 404 | check the URI; a missing bucket and a missing object answer the same, so buckets cannot be enumerated |
+| `Forbidden` (Cloud Storage) | 403 | ask the operator to grant `storage.objects.get` to the server's service account |
+| `Unauthorized`, `DefaultCredentialsError`, `RefreshError` (Cloud Storage) | 503 | none: the deployment's credentials are missing or unusable |
+| `TooManyRequests` (Cloud Storage) | 429 | retry after `Retry-After` seconds, passed through when Cloud Storage sends it |
+| any other `GoogleAPICallError`, `RetryError` (Cloud Storage) | 502 | retry later: Cloud Storage failed or is unavailable |
 | `EmptySampleError`, `FileSampleReadError` | 422 | fix the input |
 | `InspectionTimeoutError` (checked **before** `InspectionFailedError`, its parent) | 504 | retry with a larger `timeout_seconds` or smaller windows |
 | `CredentialsNotConfiguredError`, `BackendConfigurationError` | 503 | none: the deployment is misconfigured; retrying elsewhere may help |
@@ -401,6 +461,15 @@ A misconfigured backend is a 503, not a 500: the request was fine and
 another instance may be configured correctly. `ValueError` and `TypeError`
 from the library are bugs in this host, not domain failures: they are not
 handled and surface as FastAPI's plain 500.
+
+The Cloud Storage rows come from a second handler, registered next to the
+library's one in [`errors.py`](src/csv_inspector_api/errors.py) only when
+the `[gcs]` extra is installed; it imports `google.*` inside the
+registration, so the module imports without the extra. `detail` is a fixed
+sentence per row, and the SDK's message only reaches the server log.
+`RefreshError` (credentials that stop refreshing, such as an unreachable
+metadata server) is mapped with `DefaultCredentialsError`: both mean the
+deployment, not the request, is at fault.
 
 ## How it embeds csv-inspector
 
@@ -456,6 +525,9 @@ embeds the agent:
   Storage client whose reader records every `read` and `seek`: only the
   head and tail windows are read, the reader is closed, `generation` is
   forwarded, and no `google.*` import sits at module level;
+  `tests/test_gcs_errors.py` makes the fake reader raise every exception of
+  the table and checks the status, the problem body (no bucket name, no SDK
+  message), `Retry-After` and the log level;
   `tests/test_request_id.py` checks the header and, with the filter on
   `caplog`'s handler, the id on the API's and the library's records.
 - `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library

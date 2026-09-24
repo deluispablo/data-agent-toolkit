@@ -36,7 +36,7 @@ documentation to read and copy: never built, tagged or published.
 
 | Example | What it shows | How to run |
 |---|---|---|
-| `csv_inspector_api` | A FastAPI service that embeds `csv-inspector` behind HTTP endpoints (work in progress). | `cd examples/csv_inspector_api && uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory` · [README](examples/csv_inspector_api/README.md) |
+| `csv_inspector_api` | A FastAPI service that embeds `csv-inspector`: inspect an upload (`POST /inspect`), a streamed body (`POST /inspect/raw`) or a Cloud Storage object read with ranged requests only (`POST /inspect/gcs`, optional `[gcs]` extra). | `cd examples/csv_inspector_api && uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory` · [README](examples/csv_inspector_api/README.md) |
 
 ## Design principles
 

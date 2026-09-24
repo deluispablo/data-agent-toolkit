@@ -347,7 +347,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         summary="Inspect a Cloud Storage object with ranged reads",
         responses={
             200: {**responses[200], "headers": _OBJECT_HEADERS},
-            **problem_responses(403, 422, 502, 503, 504),
+            **problem_responses(403, 404, 422, 429, 502, 503, 504, gcs=True),
         },
     )
     async def inspect_gcs(

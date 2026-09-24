@@ -281,9 +281,7 @@ class _CloudCall:
     """Everything needed for one Gemini request, prepared before any network use."""
 
     def __init__(self, settings: Settings | None, timeout_seconds: float | None) -> None:
-        self.credentials: CloudCredentials = resolve_settings(
-            settings, LLMBackend.API
-        ).cloud_credentials()
+        self.credentials: CloudCredentials = resolve_settings(settings).cloud_credentials()
         try:
             # Lazily imported: only this backend needs them. google-auth ships with google-genai.
             from google import genai  # noqa: PLC0415

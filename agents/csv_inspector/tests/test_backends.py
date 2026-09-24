@@ -53,14 +53,14 @@ VALID_RESULT_JSON = json.dumps(
 )
 
 needs_cloud_extra = pytest.mark.skipif(
-    any(importlib.util.find_spec(name) is None for name in ("pydantic_settings", "google")),
+    importlib.util.find_spec("google") is None,
     reason="needs the [cloud] extra",
 )
 
 
 def _without_cloud_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulate a base install, without ``pydantic-settings`` (imported lazily)."""
-    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
+    """Simulate a base install, without ``google-genai`` (imported lazily)."""
+    monkeypatch.setitem(sys.modules, "google.genai", None)
 
 
 class _RecordingClient:
@@ -141,17 +141,18 @@ def test_backend_values_match_the_cli_choices() -> None:
 
 def test_local_models_default_to_the_built_in_names() -> None:
     """Without configuration, the local backend keeps today's model names."""
-    settings = resolve_settings(None, LLMBackend.LOCAL)
+    settings = resolve_settings(None)
 
     assert settings.model_for(LLMBackend.LOCAL) == DEFAULT_MODEL
     assert settings.fallback_model_for(LLMBackend.LOCAL) == FALLBACK_MODEL
 
 
 def test_local_backend_needs_no_cloud_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Base requirements only: local defaults and backend resolution still work."""
+    """Base requirements only: settings load from the environment, local backend ready (#99)."""
     _without_cloud_extra(monkeypatch)
+    monkeypatch.setenv("OLLAMA_FALLBACK_MODEL", FALLBACK_MODEL)
 
-    settings = resolve_settings(None, LLMBackend.LOCAL)
+    settings = resolve_settings(None)
 
     assert settings.model_for(LLMBackend.LOCAL) == DEFAULT_MODEL
     assert settings.fallback_model_for(LLMBackend.LOCAL) == FALLBACK_MODEL
@@ -164,9 +165,10 @@ def test_api_backend_without_cloud_extra_says_how_to_install_it(
 ) -> None:
     """Selecting the API backend on a base install fails with an actionable message."""
     _without_cloud_extra(monkeypatch)
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
 
     with pytest.raises(BackendConfigurationError, match=r"csv-inspector\[cloud\]"):
-        resolve_settings(None, LLMBackend.API)
+        ensure_backend_ready(LLMBackend.API)
 
 
 @needs_cloud_extra
@@ -176,7 +178,7 @@ def test_resolved_settings_read_the_configured_names(monkeypatch: pytest.MonkeyP
     monkeypatch.setenv("CLOUD_MODEL", "gemini-x")
     monkeypatch.setenv("CLOUD_FALLBACK_MODEL", "gemini-y")
 
-    settings = resolve_settings(None, LLMBackend.API)
+    settings = resolve_settings(None)
 
     assert settings.model_for(LLMBackend.LOCAL) == "llama3.1:8b"
     assert settings.model_for(LLMBackend.API) == "gemini-x"
@@ -186,11 +188,11 @@ def test_resolved_settings_read_the_configured_names(monkeypatch: pytest.MonkeyP
 @needs_cloud_extra
 def test_configured_backend_follows_llm_backend(monkeypatch: pytest.MonkeyPatch) -> None:
     """LLM_BACKEND selects the default backend; unset means local."""
-    assert resolve_settings(None, LLMBackend.LOCAL).llm_backend is LLMBackend.LOCAL
+    assert resolve_settings(None).llm_backend is LLMBackend.LOCAL
 
     monkeypatch.setenv("LLM_BACKEND", "api")
 
-    assert resolve_settings(None, LLMBackend.LOCAL).llm_backend is LLMBackend.API
+    assert resolve_settings(None).llm_backend is LLMBackend.API
 
 
 @needs_cloud_extra

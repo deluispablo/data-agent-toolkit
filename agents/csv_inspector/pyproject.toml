@@ -33,11 +33,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Opt-in cloud backend (Gemini Developer API / Vertex AI) and reading
-# settings from the environment with load_settings().
+# Opt-in cloud backend (Gemini Developer API / Vertex AI).
 cloud = [
     "google-genai>=2.0,<3",
-    "pydantic-settings>=2.0,<3",
 ]
 
 [project.scripts]

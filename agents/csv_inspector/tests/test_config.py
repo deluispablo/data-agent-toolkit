@@ -7,11 +7,10 @@ sets exactly the environment it describes.
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
 import pytest
-
-pytest.importorskip("pydantic_settings", reason="settings need the cloud extra")
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -245,3 +244,55 @@ def test_the_api_key_never_appears_in_repr_or_description(
 
     for text in (repr(settings), str(settings), repr(credentials), credentials.describe()):
         assert FAKE_KEY not in text
+
+
+# ---------------------------------------------------------------------
+# The stdlib loader (issue #99)
+# ---------------------------------------------------------------------
+
+
+def test_settings_load_without_pydantic_settings(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A base install reads the environment: no pydantic-settings is imported."""
+    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
+    monkeypatch.setenv("OLLAMA_MODEL", "from-env")
+
+    assert load_settings().ollama_model == "from-env"
+
+
+def test_dotenv_syntax(tmp_path: Path) -> None:
+    """Comments, blanks, export, quotes and inline comments; unknown keys ignored."""
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        "# a comment\n"
+        "\n"
+        "export OLLAMA_MODEL=exported\n"
+        'CLOUD_MODEL="double quoted # not a comment"\n'
+        "CLOUD_FALLBACK_MODEL='single quoted'\n"
+        "GOOGLE_CLOUD_PROJECT=bare # trailing comment\n"
+        "ollama_fallback_model=lower-case-key\n"
+        "UNRELATED_VARIABLE=ignored\n"
+        "not a setting line\n",
+        encoding="utf-8",
+    )
+
+    settings = load_settings(env_file=env_file)
+
+    assert settings.ollama_model == "exported"
+    assert settings.cloud_model == "double quoted # not a comment"
+    assert settings.cloud_fallback_model == "single quoted"
+    assert settings.google_cloud_project == "bare"
+    assert settings.ollama_fallback_model == "lower-case-key"
+
+
+def test_a_missing_dotenv_file_is_ignored(tmp_path: Path) -> None:
+    """As before, a .env path that does not exist adds nothing."""
+    assert load_settings(env_file=tmp_path / "missing.env") == Settings()
+
+
+def test_an_unreadable_dotenv_file_is_a_configuration_error(tmp_path: Path) -> None:
+    """A .env that exists but is not text fails with the file's name."""
+    env_file = tmp_path / "binary.env"
+    env_file.write_bytes(b"\xff\xfe\x00bad")
+
+    with pytest.raises(BackendConfigurationError, match=r"binary\.env"):
+        load_settings(env_file=env_file)

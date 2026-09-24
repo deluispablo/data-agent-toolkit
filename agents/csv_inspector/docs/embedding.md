@@ -152,8 +152,8 @@ result = inspect_csv(data, backend=LLMBackend.API, settings=settings)
   affected by the machine they run on.
 - `Settings` is frozen and rejects unknown fields, so a typo such as
   `gemini_key=` fails immediately.
-- `Settings` needs no extra package; only the `api` backend needs
-  `csv-inspector[cloud]`.
+- `Settings` and `load_settings` need no extra package; only the `api`
+  backend needs `csv-inspector[cloud]`.
 - The Ollama server is part of `Settings` too: pass
   `Settings(ollama_host="http://ollama:11434")` instead of exporting
   `OLLAMA_HOST`. Left unset, the Ollama SDK uses its default (and still

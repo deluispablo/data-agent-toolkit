@@ -133,7 +133,7 @@ def _plan(
             settings=settings if settings is not None else Settings(),
         )
 
-    resolved = resolve_settings(settings, backend)
+    resolved = resolve_settings(settings)
     if uses_builtin_invoker:
         ensure_backend_ready(backend, resolved)
     primary = model if model is not None else resolved.model_for(backend)

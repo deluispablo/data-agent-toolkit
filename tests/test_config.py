@@ -13,10 +13,19 @@ import pytest
 
 pytest.importorskip("pydantic_settings", reason="settings need the cloud extra")
 
-from backends import LLMBackend
-from config import DEFAULT_CLOUD_MODEL, CloudAuthMode, load_settings
-from exceptions import BackendConfigurationError, CredentialsNotConfiguredError
-from inspector import DEFAULT_MODEL, FALLBACK_MODEL
+from csv_inspector import (
+    BackendConfigurationError,
+    CredentialsNotConfiguredError,
+    LLMBackend,
+    Settings,
+    load_settings,
+)
+from csv_inspector._config import (
+    DEFAULT_CLOUD_MODEL,
+    DEFAULT_MODEL,
+    FALLBACK_MODEL,
+    CloudAuthMode,
+)
 
 FAKE_KEY = "AIza-fake-test-key-000"
 
@@ -65,14 +74,64 @@ def test_model_names_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (settings.cloud_model, settings.cloud_fallback_model) == ("gemini-x", "gemini-y")
 
 
-def test_settings_are_read_from_a_dotenv_file_in_the_working_directory(tmp_path: Path) -> None:
-    """A ``.env`` file next to where the scripts run is honored."""
+def test_a_dotenv_in_the_working_directory_is_ignored_by_default(tmp_path: Path) -> None:
+    """The library never reads ``./.env`` implicitly: the host's cwd is not trusted."""
     (tmp_path / ".env").write_text("LLM_BACKEND=api\nCLOUD_MODEL=gemini-from-dotenv\n")
 
     settings = load_settings()
 
+    assert settings.llm_backend is LLMBackend.LOCAL
+    assert settings.cloud_model == DEFAULT_CLOUD_MODEL
+
+
+def test_a_dotenv_file_is_read_only_when_requested(tmp_path: Path) -> None:
+    """``env_file=`` opts in to a specific file."""
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text("LLM_BACKEND=api\nCLOUD_MODEL=gemini-from-dotenv\n")
+
+    settings = load_settings(env_file=env_file)
+
     assert settings.llm_backend is LLMBackend.API
     assert settings.cloud_model == "gemini-from-dotenv"
+
+
+def test_environment_variables_win_over_the_dotenv_file(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Process variables take precedence over values in the requested file."""
+    env_file = tmp_path / "secrets.env"
+    env_file.write_text("CLOUD_MODEL=from-file\n")
+    monkeypatch.setenv("CLOUD_MODEL", "from-env")
+
+    assert load_settings(env_file=env_file).cloud_model == "from-env"
+
+
+def test_loaded_settings_are_plain_settings() -> None:
+    """``load_settings`` returns a plain ``Settings``, which never reads the environment."""
+    assert type(load_settings()) is Settings
+
+
+def test_explicit_settings_ignore_the_environment_entirely(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Constructing ``Settings`` directly never looks at variables or files."""
+    monkeypatch.setenv("LLM_BACKEND", "api")
+    monkeypatch.setenv("CLOUD_MODEL", "from-env")
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    (tmp_path / ".env").write_text("OLLAMA_MODEL=from-dotenv\n")
+
+    settings = Settings()
+
+    assert settings.llm_backend is LLMBackend.LOCAL
+    assert settings.cloud_model == DEFAULT_CLOUD_MODEL
+    assert settings.ollama_model == DEFAULT_MODEL
+    assert settings.gemini_api_key is None
+
+
+def test_explicit_settings_reject_unknown_fields() -> None:
+    """A typo in an injected setting fails loudly instead of being silently ignored."""
+    with pytest.raises(ValueError, match="gemini_key"):
+        Settings(gemini_key="x")  # type: ignore[call-arg]
 
 
 # ---------------------------------------------------------------------

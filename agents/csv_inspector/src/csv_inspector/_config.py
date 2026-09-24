@@ -1,25 +1,30 @@
-"""Environment-driven settings for the csv_inspector agent.
+"""Settings for csv_inspector: explicit by default, environment on request.
 
-Settings are read from environment variables and, if present, a ``.env``
-file in the current working directory (see ``.env.example`` at the
-repository root). This module needs ``pydantic-settings``, which ships in
-the optional ``requirements-cloud.txt`` extra, so it is only ever imported
-lazily: the default local backend works without it.
+:class:`Settings` is a plain, frozen Pydantic model: constructing one never
+reads environment variables or files. Hosts that manage their own secrets
+build it directly and pass it to :func:`csv_inspector.inspect_csv`.
+
+:func:`load_settings` is the explicit, opt-in way to read settings from the
+process environment (and, only if asked, from a ``.env`` file). It needs the
+``pydantic-settings`` package from the ``[cloud]`` extra, imported lazily.
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from enum import Enum
 
-from pydantic import SecretStr, ValidationError, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, field_validator
 
-from backends import LLMBackend
-from exceptions import BackendConfigurationError, CredentialsNotConfiguredError
-from inspector import DEFAULT_MODEL, FALLBACK_MODEL
+from ._backends import LLMBackend
+from ._exceptions import BackendConfigurationError, CredentialsNotConfiguredError
 
+DEFAULT_MODEL: str = "qwen2.5-coder:7b"
+FALLBACK_MODEL: str = "qwen2.5-coder:7b"
 DEFAULT_CLOUD_MODEL: str = "gemini-2.5-flash"
+
+CLOUD_EXTRA_HINT = "Install it with: pip install 'csv-inspector[cloud]'."
 
 
 class CloudAuthMode(str, Enum):
@@ -58,27 +63,27 @@ class CloudCredentials:
         return f"Vertex AI (project={self.project!r}, location={self.location!r}, ADC)"
 
 
-class Settings(BaseSettings):
-    """csv_inspector settings, one field per environment variable.
+class Settings(BaseModel):
+    """csv_inspector settings, injectable explicitly or loaded from the environment.
+
+    Constructing ``Settings(...)`` never reads the environment; unknown
+    fields are rejected to catch typos. :func:`load_settings` maps each
+    field to the upper-cased environment variable of the same name (e.g.
+    ``gemini_api_key`` ← ``GEMINI_API_KEY``).
 
     Attributes:
-        llm_backend: Default backend (``LLM_BACKEND``): ``local`` or ``api``.
-        ollama_model: Primary local model (``OLLAMA_MODEL``).
-        ollama_fallback_model: Fallback local model (``OLLAMA_FALLBACK_MODEL``).
-        gemini_api_key: Gemini Developer API key (``GEMINI_API_KEY``). Held
-            as a ``SecretStr`` so it is masked in ``repr`` and logs.
-        google_cloud_project: Vertex AI project (``GOOGLE_CLOUD_PROJECT``).
-        google_cloud_location: Vertex AI location (``GOOGLE_CLOUD_LOCATION``).
-        cloud_model: Primary cloud model (``CLOUD_MODEL``).
-        cloud_fallback_model: Fallback cloud model (``CLOUD_FALLBACK_MODEL``).
+        llm_backend: Default backend: ``local`` or ``api``.
+        ollama_model: Primary local model.
+        ollama_fallback_model: Fallback local model.
+        gemini_api_key: Gemini Developer API key. Held as a ``SecretStr`` so
+            it is masked in ``repr`` and logs.
+        google_cloud_project: Vertex AI project.
+        google_cloud_location: Vertex AI location.
+        cloud_model: Primary cloud model.
+        cloud_fallback_model: Fallback cloud model.
     """
 
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        env_file_encoding="utf-8",
-        extra="ignore",
-        frozen=True,
-    )
+    model_config = ConfigDict(frozen=True, extra="forbid")
 
     llm_backend: LLMBackend = LLMBackend.LOCAL
     ollama_model: str = DEFAULT_MODEL
@@ -92,7 +97,7 @@ class Settings(BaseSettings):
     @field_validator("llm_backend", mode="before")
     @classmethod
     def _normalize_backend(cls, value: object) -> object:
-        """Accept ``LLM_BACKEND`` case-insensitively (e.g. ``API``, `` local ``)."""
+        """Accept the backend case-insensitively (e.g. ``API``, `` local ``)."""
         return value.strip().lower() if isinstance(value, str) else value
 
     @field_validator(
@@ -104,6 +109,16 @@ class Settings(BaseSettings):
         if isinstance(value, str) and not value.strip():
             return None
         return value
+
+    def model_for(self, backend: LLMBackend) -> str:
+        """Return the primary model configured for ``backend``."""
+        return self.cloud_model if backend is LLMBackend.API else self.ollama_model
+
+    def fallback_model_for(self, backend: LLMBackend) -> str:
+        """Return the fallback model configured for ``backend``."""
+        if backend is LLMBackend.API:
+            return self.cloud_fallback_model
+        return self.ollama_fallback_model
 
     def cloud_credentials(self) -> CloudCredentials:
         """Resolve which cloud credentials to use.
@@ -117,7 +132,7 @@ class Settings(BaseSettings):
 
         Raises:
             CredentialsNotConfiguredError: If neither route is fully
-                configured. The message names the missing variable(s).
+                configured. The message names the missing setting(s).
         """
         if self.gemini_api_key is not None:
             return CloudCredentials(mode=CloudAuthMode.GEMINI_API, api_key=self.gemini_api_key)
@@ -139,26 +154,49 @@ class Settings(BaseSettings):
         raise CredentialsNotConfiguredError(
             "The 'api' backend needs credentials: set GEMINI_API_KEY (Gemini Developer API), "
             "or GOOGLE_CLOUD_PROJECT and GOOGLE_CLOUD_LOCATION (Vertex AI with Application "
-            "Default Credentials). See .env.example."
+            "Default Credentials)."
         )
 
 
-def load_settings() -> Settings:
-    """Load settings from the environment and an optional ``.env`` file.
+def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings:
+    """Read :class:`Settings` from the process environment, explicitly.
+
+    Only environment variables are read by default. A ``.env`` file is read
+    only when ``env_file`` is given: the library never assumes that the
+    process's working directory is a safe place to load secrets from.
+
+    Args:
+        env_file: Optional path to a ``.env`` file. Environment variables
+            take precedence over its values.
 
     Returns:
-        The loaded :class:`Settings`.
+        The loaded settings, as a plain :class:`Settings`.
 
     Raises:
-        BackendConfigurationError: If a variable holds an invalid value (e.g.
-            ``LLM_BACKEND=cloud``). The message names the variable but never
-            echoes the value, which could be a secret.
+        BackendConfigurationError: If ``pydantic-settings`` (``[cloud]``
+            extra) is not installed, or a variable holds an invalid value.
+            The message names the variable but never echoes the value,
+            which could be a secret.
     """
     try:
-        return Settings()
+        from pydantic_settings import (  # noqa: PLC0415 - optional extra, imported lazily.
+            BaseSettings,
+            SettingsConfigDict,
+        )
+    except ImportError as exc:
+        raise BackendConfigurationError(
+            f"Reading settings from the environment needs 'pydantic-settings'. {CLOUD_EXTRA_HINT}"
+        ) from exc
+
+    class _EnvSettings(Settings, BaseSettings):
+        model_config = SettingsConfigDict(frozen=True, extra="ignore")
+
+    try:
+        loaded = _EnvSettings(_env_file=None if env_file is None else os.fspath(env_file))
     except ValidationError as exc:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in error['loc']).upper()}: {error['msg']}"
             for error in exc.errors()
         )
         raise BackendConfigurationError(f"Invalid csv_inspector settings: {problems}") from None
+    return Settings.model_validate(loaded.model_dump())

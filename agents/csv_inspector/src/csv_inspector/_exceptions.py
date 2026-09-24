@@ -70,3 +70,19 @@ class InspectionFailedError(CSVInspectorError):
         """
         super().__init__(message)
         self.attempts = attempts
+
+
+class ModelTimeoutError(ModelInvocationError):
+    """Raised when a single model call exceeds the time it was allowed."""
+
+
+class InspectionTimeoutError(InspectionFailedError):
+    """Raised when the inspection's overall ``timeout_seconds`` budget runs out.
+
+    The budget is shared by the primary and fallback models, so no fallback
+    is attempted once it is spent. A host can map this to an HTTP 504.
+
+    Attributes:
+        attempts: Mapping of model name to the exception raised for that
+            model, for every model tried before the budget ran out.
+    """

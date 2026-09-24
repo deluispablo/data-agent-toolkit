@@ -24,7 +24,7 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements-dev.txt
-            agents/*/requirements.txt
+            agents/*/pyproject.toml
       - run: pip install -r requirements-dev.txt
       - run: ruff check --output-format=github .
       - run: ruff format --check .
@@ -50,6 +50,43 @@ jobs:
           cache: pip
           cache-dependency-path: |
             requirements-dev.txt
-            agents/*/requirements.txt
+            agents/*/pyproject.toml
       - run: pip install -r requirements-dev.txt
       - run: pytest
+
+  package:
+    # Builds csv-inspector exactly as a consumer receives it and installs the
+    # wheel into a fresh virtual environment, without the repository on the
+    # path and without the [cloud] extra, then smoke-tests it from outside.
+    name: Package (build, check, clean install - Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Build sdist and wheel
+        run: |
+          python -m pip install --upgrade build twine
+          python -m build --outdir dist agents/csv_inspector
+      - name: Check distribution metadata
+        run: python -m twine check --strict dist/*
+      - name: Install the wheel into a clean virtual environment
+        run: |
+          python -m venv "$RUNNER_TEMP/clean-venv"
+          "$RUNNER_TEMP/clean-venv/bin/python" -m pip install dist/*.whl
+      - name: Smoke-test from outside the repository
+        working-directory: ${{ runner.temp }}
+        run: |
+          cp "$GITHUB_WORKSPACE/agents/csv_inspector/scripts/smoke_test_installed.py" .
+          "$RUNNER_TEMP/clean-venv/bin/python" smoke_test_installed.py
+          "$RUNNER_TEMP/clean-venv/bin/csv-inspector" --help > /dev/null
+      - name: Install the sdist with the cloud extra
+        run: |
+          python -m venv "$RUNNER_TEMP/sdist-venv"
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip install "csv-inspector[cloud] @ file://$PWD/$(ls dist/*.tar.gz)"
+          cd "$RUNNER_TEMP" && "$RUNNER_TEMP/sdist-venv/bin/python" -c "import csv_inspector, pydantic_settings, google.genai; print(csv_inspector.__version__)"

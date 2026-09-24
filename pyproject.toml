@@ -33,30 +33,28 @@ ignore = [
 convention = "google"
 
 [tool.ruff.lint.isort]
-known-first-party = [
-    "backends",
-    "config",
-    "cli_support",
-    "eval_samples",
-    "exceptions",
-    "generate_samples",
-    "inspector",
-    "main_demo",
-    "models",
-]
+known-first-party = ["csv_inspector", "eval_samples", "generate_samples"]
 
 [tool.ruff.lint.per-file-ignores]
-# Tests: literal expectations, white-box helpers, and duck-typed fakes for io.open/ollama.
-"tests/**" = ["PLR2004", "PLC2701", "ANN401"]
+# Tests: literal expectations, white-box helpers, and duck-typed fakes whose
+# methods implement well-known protocols (read/readable/seekable, clients).
+"tests/**" = ["PLR2004", "PLC2701", "ANN401", "D102", "D107"]
 # Fixture catalog: long prose `description`/`notes` strings are data, not code.
 "agents/csv_inspector/samples/generate_samples.py" = ["E501"]
 
 [tool.mypy]
 strict = true
+plugins = ["pydantic.mypy"]
 warn_unreachable = true
-mypy_path = "agents/csv_inspector,agents/csv_inspector/samples"
+mypy_path = "agents/csv_inspector/src,agents/csv_inspector/scripts,agents/csv_inspector/samples,tests"
 explicit_package_bases = true
-files = ["agents", "tests"]
+files = [
+    "agents/csv_inspector/src",
+    "agents/csv_inspector/scripts",
+    "agents/csv_inspector/samples",
+    "agents/csv_inspector/main_demo.py",
+    "tests",
+]
 
 [[tool.mypy.overrides]]
 module = ["chardet", "chardet.*"]

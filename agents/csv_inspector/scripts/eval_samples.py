@@ -20,6 +20,7 @@ parse) are reported separately and excluded from the aggregate score: they
 are not expected to pass today.
 
 Prerequisites:
+    - The package installed: ``pip install -e ./agents/csv_inspector``.
     - Ollama running locally (``ollama serve``).
     - The target model pulled locally, e.g. ``ollama pull qwen2.5-coder:7b``.
 
@@ -41,28 +42,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backends import LLMBackend
-from cli_support import (
+from csv_inspector import CSVInspectionResult, CSVInspectorError, LLMBackend, Settings, inspect_csv
+from csv_inspector._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES
+from csv_inspector.cli import (
     add_backend_argument,
     add_log_level_argument,
+    add_settings_arguments,
     configure_cli,
+    load_cli_settings,
     non_negative_int,
     positive_int,
     resolve_backend,
 )
-from exceptions import CSVInspectorError
-from inspector import (
-    DEFAULT_SAMPLE_BYTES,
-    DEFAULT_TAIL_BYTES,
-    get_default_model,
-    get_fallback_model,
-    inspect_csv,
-)
-from models import CSVInspectionResult
 
 logger = logging.getLogger(__name__)
 
-SAMPLES_DIR = Path(__file__).parent / "samples"
+SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
 
 # CSVInspectionResult fields the harness knows how to score against the manifest.
@@ -211,6 +206,7 @@ def evaluate_file(
     entry: dict[str, Any],
     *,
     backend: LLMBackend,
+    settings: Settings,
     model: str,
     fallback_model: str,
     n_bytes: int,
@@ -222,6 +218,7 @@ def evaluate_file(
         filename: Name of the fixture under ``samples/``.
         entry: This fixture's manifest entry.
         backend: The LLM backend to evaluate.
+        settings: Settings for the backend (credentials, models).
         model: Primary model to evaluate.
         fallback_model: Fallback model.
         n_bytes: Head sample size, in bytes.
@@ -239,6 +236,7 @@ def evaluate_file(
         result = inspect_csv(
             SAMPLES_DIR / filename,
             backend=backend,
+            settings=settings,
             model=model,
             fallback_model=fallback_model,
             n_bytes=n_bytes,
@@ -351,6 +349,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--category", default=None, help="Restrict the run to one manifest category."
     )
+    add_settings_arguments(parser)
     add_log_level_argument(parser)
     return parser.parse_args()
 
@@ -361,9 +360,10 @@ def main() -> None:
     configure_cli(args.log_level)
 
     try:
-        backend = resolve_backend(args.backend)
-        model = args.model or get_default_model(backend)
-        fallback_model = args.fallback_model or get_fallback_model(backend)
+        settings = load_cli_settings(args.env_file, no_env_file=args.no_env_file)
+        backend = resolve_backend(args.backend, settings)
+        model = args.model or settings.model_for(backend)
+        fallback_model = args.fallback_model or settings.fallback_model_for(backend)
     except CSVInspectorError as exc:
         # Fail once, up front, instead of reporting the same error per fixture.
         logger.error("Cannot run the evaluation: %s", exc)
@@ -381,6 +381,7 @@ def main() -> None:
                 filename,
                 entry,
                 backend=backend,
+                settings=settings,
                 model=model,
                 fallback_model=fallback_model,
                 n_bytes=args.bytes,

@@ -16,7 +16,7 @@ class LLMBackend(str, Enum):
         LOCAL: A local Ollama model. Free, needs no credentials; the default.
         API: A Google Gemini model, through the Gemini Developer API (API
             key) or Vertex AI (Application Default Credentials). Opt-in;
-            requires the ``requirements-cloud.txt`` extra.
+            requires the ``[cloud]`` extra.
     """
 
     LOCAL = "local"

@@ -15,17 +15,16 @@ from typing import Any
 
 import pytest
 
-from exceptions import InspectionFailedError, ModelInvocationError
-from generate_samples import CASES, SampleCase, build_manifest
-from inspector import (
+from csv_inspector import InspectionFailedError, ModelInvocationError, inspect_csv
+from csv_inspector._sampling import (
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
     decode_sample,
     detect_encoding,
-    inspect_csv,
     read_sample_bytes,
     read_tail_bytes,
 )
+from generate_samples import CASES, SampleCase, build_manifest
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"

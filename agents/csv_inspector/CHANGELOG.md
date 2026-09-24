@@ -104,6 +104,10 @@ listed under **Changed (breaking)**.
 
 ### Documentation
 
+- Known limitations are documented: the prompt's plain-text sample
+  markers (bounded by grounding), the 64 MiB forward-scan limit of
+  non-seekable streams, and header-less files with preamble lines
+  ([#105](https://github.com/deluispablo/data-agent-toolkit/issues/105)).
 - The grounding rules moved from the README to
   `docs/using-the-result.md` ("How the result is grounded"); the README
   keeps a one-paragraph summary

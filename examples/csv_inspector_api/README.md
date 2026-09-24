@@ -75,12 +75,18 @@ logging in the container and a Cloud Run deploy command.
 
 ## Endpoints
 
-| route | body | source handed to the library |
-|---|---|---|
-| `GET /health` | none | none: no model call and no secrets. `?probe=true` also runs `ensure_backend_ready` (configuration only, `503` on failure); use it as the readiness probe |
-| `POST /inspect` | `multipart/form-data`, field `file` | seekable spooled upload |
-| `POST /inspect/raw` | the file bytes (chunked is fine) | non-seekable stream, inspected as it arrives |
-| `POST /inspect/gcs` | `{"uri": "gs://bucket/object", "generation": 123}` (`generation` optional) | seekable ranged reader, never a download |
+`GET /health` makes no model call and reports no secrets.
+`?probe=true` also runs `ensure_backend_ready` (configuration only, `503` on
+failure); use it as the readiness probe.
+
+| route | body | source handed to the library | cost of reading the file |
+|---|---|---|---|
+| `POST /inspect` | `multipart/form-data`, field `file` | seekable spooled upload | 2 bounded reads (the body is first spooled by Starlette) |
+| `POST /inspect/raw` | the file bytes (chunked is fine) | non-seekable stream | streams up to 64 MiB past the head in 8 KiB thread hops; no footer beyond that |
+| `POST /inspect/gcs` | `{"uri": "gs://bucket/object", "generation": 123}` (`generation` optional) | seekable ranged reader | 1 metadata GET + at most 2 ranged GETs |
+
+Use `/inspect/raw` for pipes and small bodies only: reaching the tail of a
+non-seekable stream means reading everything before it.
 
 ```bash
 curl -F file=@../../agents/csv_inspector/sample.csv "localhost:8000/inspect?timeout_seconds=120"

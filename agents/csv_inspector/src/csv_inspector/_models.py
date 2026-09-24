@@ -21,6 +21,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic.json_schema import SkipJsonSchema
 
 # How models spell a tab or "no escape character" instead of the value itself.
 _TAB_SPELLINGS = frozenset({"\\t", "tab"})
@@ -106,6 +107,37 @@ class ColumnSchema(BaseModel):
         ]
 
 
+class Usage(BaseModel):
+    """What the model phase of one successful inspection cost.
+
+    Attached to the result as ``CSVInspectionResult.usage`` and never
+    serialized: it describes the call, not the file.
+
+    Attributes:
+        model: The model whose answer was kept.
+        prompt_tokens: Prompt tokens summed over every model attempt of the
+            inspection (a failed primary still costs tokens), or ``None``
+            when no attempt reported them (e.g. a custom model invoker).
+        completion_tokens: Completion tokens, summed like ``prompt_tokens``.
+        latency_seconds: Wall time of the model phase, all attempts included.
+        attempts: How many models were called.
+        retries: Transient cloud errors (429/503) retried within an attempt.
+        load_seconds: Time Ollama spent loading the model, summed over the
+            attempts, or ``None`` when no attempt reported it (cloud backend,
+            custom invoker).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    model: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    latency_seconds: float
+    attempts: int
+    retries: int = 0
+    load_seconds: float | None = None
+
+
 class CSVInspectionResult(BaseModel):
     """Structured, validated result of inspecting a CSV/TSV file fragment.
 
@@ -158,6 +190,12 @@ class CSVInspectionResult(BaseModel):
     columns: list[ColumnSchema]
     confidence: float = Field(ge=0.0, le=1.0)
     notes: str | None = None
+    # Tokens, latency and attempts of the inspection that returned this result
+    # (see Usage); None on a result built any other way. Kept out of the JSON
+    # Schema sent to the model and out of every dump, so the serialized result
+    # keeps its contract. Documented here, not in the docstring above: that
+    # docstring is the schema's description, part of every cloud request.
+    usage: SkipJsonSchema[Usage | None] = Field(default=None, exclude=True)
 
     @field_validator("delimiter", "quotechar", "escapechar", mode="before")
     @classmethod

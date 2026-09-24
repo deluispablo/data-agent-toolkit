@@ -132,6 +132,26 @@ the budget leaves out is logged at INFO, to help tune `timeout_seconds`. The lib
 also passes each model's share to the HTTP clients. When it runs out,
 `InspectionTimeoutError` is raised (for example, map it to HTTP 504).
 
+### Usage
+
+Every result returned by `inspect_csv` or `ainspect_csv` carries
+`result.usage`: what the model phase cost.
+
+| Field | Meaning |
+|---|---|
+| `model` | The model whose answer was kept (the fallback when the primary failed) |
+| `prompt_tokens`, `completion_tokens` | Summed over every model attempt, since a failed primary still costs tokens. `None` when no attempt reported them (a custom `model_invoker` returns text only) |
+| `latency_seconds` | Wall time of the model phase, all attempts included |
+| `attempts` | How many models were called |
+| `retries` | Transient cloud errors (429/503) retried within an attempt |
+| `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
+
+An attempt that fails without an answer (timeout, transport error, empty
+reply) reports no tokens. `usage` is not part of the JSON contract: it is
+left out of `model_dump()`, `model_dump_json()` and `model_json_schema()`.
+It does take part in `==`, so compare two results' `model_dump()` to
+ignore it. The library logs it in one INFO line per success.
+
 ## How it works
 
 ```mermaid
@@ -264,6 +284,7 @@ never appears in logs or exceptions.
 csv-inspector data.csv                                   # or: python -m csv_inspector data.csv
 csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
 csv-inspector data.csv --bytes 8192 --tail-bytes 8192 --timeout 60
+csv-inspector data.csv --stats                           # usage as JSON on stderr
 csv-inspector data.csv --backend api --model gemini-3.6-flash --env-file secrets.env
 ```
 
@@ -271,7 +292,8 @@ As an application, the CLI reads `./.env` when it exists (`--env-file PATH`
 to choose another file, `--no-env-file` to disable it); environment
 variables always win. It prints the result as JSON on stdout, logs on
 stderr, and on an expected failure prints a one-line error and exits with
-code 1.
+code 1. `--stats` also prints the [usage](#usage) to stderr as JSON, after
+the result, so stdout stays the result alone.
 
 `--model` and `--fallback-model` override the backend's configured model
 pair. Unlike the library, the CLI has a default time budget of 300 seconds

@@ -493,6 +493,34 @@ def test_a_transient_error_does_not_reach_the_fallback_model(
 
 
 @needs_cloud_extra
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+def test_cloud_usage_reports_tokens_and_the_retry(
+    recording_client: type[_RecordingClient], sleeps: list[float], use_async: bool
+) -> None:
+    """Gemini's usage_metadata and the one 503 retry reach result.usage (#121)."""
+    recording_client.errors = [_api_error(503)]
+    recording_client.response = SimpleNamespace(
+        text=VALID_RESULT_JSON,
+        prompt_feedback=None,
+        candidates=None,
+        usage_metadata=SimpleNamespace(prompt_token_count=120, candidates_token_count=30),
+    )
+    settings = Settings(gemini_api_key=SecretStr(FAKE_KEY), cloud_model="primary")
+
+    if use_async:
+        result = asyncio.run(
+            ainspect_csv(SAMPLE_CSV_PATH, backend=LLMBackend.API, settings=settings)
+        )
+    else:
+        result = inspect_csv(SAMPLE_CSV_PATH, backend=LLMBackend.API, settings=settings)
+
+    usage = result.usage
+    assert usage is not None
+    assert (usage.model, usage.prompt_tokens, usage.completion_tokens) == ("primary", 120, 30)
+    assert (usage.attempts, usage.retries, usage.load_seconds) == (1, 1, None)
+
+
+@needs_cloud_extra
 def test_missing_application_default_credentials_is_a_credentials_error(
     monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient]
 ) -> None:

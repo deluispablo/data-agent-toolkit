@@ -284,3 +284,57 @@ async def test_openapi_documents_the_contract(client: httpx.AsyncClient) -> None
 def test_problem_responses_without_422() -> None:
     """Statuses other than 422 only document the problem body."""
     assert list(problem_responses(504)[504]["content"]) == [PROBLEM_MEDIA_TYPE]
+
+
+@pytest.mark.anyio
+async def test_usage_headers_name_the_model(
+    client: httpx.AsyncClient, invoker: FakeInvoker
+) -> None:
+    """The answering model is a header; a custom invoker reports no token headers."""
+    response = await client.post("/inspect", files=_upload())
+
+    assert response.status_code == 200
+    assert response.headers["X-Inspection-Model"] == invoker.calls[-1][1]
+    assert "X-Inspection-Prompt-Tokens" not in response.headers
+    assert "X-Inspection-Completion-Tokens" not in response.headers
+    assert "usage" not in response.json()
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("path", ["/inspect", "/inspect/raw"])
+async def test_usage_headers_carry_the_token_counts(
+    client: httpx.AsyncClient, monkeypatch: pytest.MonkeyPatch, path: str
+) -> None:
+    """Token counts reported by the backend reach the headers, and never the body."""
+    real = csv_inspector.ainspect_csv
+
+    async def _with_tokens(source: Any, /, **kwargs: Any) -> csv_inspector.CSVInspectionResult:
+        result = await real(source, **kwargs)
+        assert result.usage is not None
+        usage = result.usage.model_copy(update={"prompt_tokens": 1200, "completion_tokens": 80})
+        return result.model_copy(update={"usage": usage})
+
+    monkeypatch.setattr(inspect_route, "ainspect_csv", _with_tokens)
+    if path == "/inspect":
+        response = await client.post(path, files=_upload())
+    else:
+        response = await client.post(path, content=SAMPLE)
+
+    assert response.status_code == 200
+    assert response.headers["X-Inspection-Prompt-Tokens"] == "1200"
+    assert response.headers["X-Inspection-Completion-Tokens"] == "80"
+    assert "usage" not in response.json()
+
+
+@pytest.mark.anyio
+async def test_openapi_documents_the_usage_headers(client: httpx.AsyncClient) -> None:
+    """Every inspection route declares the ``X-Inspection-*`` headers on its 200."""
+    paths = (await client.get("/openapi.json")).json()["paths"]
+
+    for path in ("/inspect", "/inspect/raw", "/inspect/gcs"):
+        headers = paths[path]["post"]["responses"]["200"]["headers"]
+        assert {
+            "X-Inspection-Model",
+            "X-Inspection-Prompt-Tokens",
+            "X-Inspection-Completion-Tokens",
+        } <= set(headers), path

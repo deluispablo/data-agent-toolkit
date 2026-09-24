@@ -121,14 +121,24 @@ class InspectParams:
 
 
 async def _inspect(
-    request: Request, source: CSVSource, params: InspectParams, *, label: str
+    request: Request,
+    response: Response,
+    source: CSVSource,
+    params: InspectParams,
+    *,
+    label: str,
 ) -> CSVInspectionResult:
-    """Run one inspection with the app's settings and log its outcome.
+    """Run one inspection with the app's settings, log it and set the usage headers.
 
-    Library errors propagate to the handler in ``errors.py``.
+    Library errors propagate to the handler in ``errors.py``. The result's
+    ``usage`` is never in the body (the library keeps it out of every dump),
+    so the model that answered and its token counts go in the
+    ``X-Inspection-*`` headers; a token header is left out when the backend
+    did not report the count (e.g. a custom model invoker).
 
     Args:
         request: The current request; its app holds the settings and the invoker.
+        response: The response whose headers receive the usage.
         source: What ``ainspect_csv`` samples.
         params: The request's query parameters.
         label: Log-safe description of the source, for the log line.
@@ -158,6 +168,13 @@ async def _inspect(
         time.perf_counter() - started,
         result.confidence,
     )
+    usage = result.usage
+    if usage is not None:
+        response.headers["X-Inspection-Model"] = usage.model
+        if usage.prompt_tokens is not None:
+            response.headers["X-Inspection-Prompt-Tokens"] = str(usage.prompt_tokens)
+        if usage.completion_tokens is not None:
+            response.headers["X-Inspection-Completion-Tokens"] = str(usage.completion_tokens)
     return result
 
 
@@ -189,6 +206,20 @@ async def _gcs_client(request: Request) -> GcsClient:
     return client
 
 
+_USAGE_HEADERS = {
+    "X-Inspection-Model": {
+        "description": "Model whose answer was kept (the fallback when the primary failed).",
+        "schema": {"type": "string"},
+    },
+    "X-Inspection-Prompt-Tokens": {
+        "description": "Prompt tokens over every model attempt; absent when not reported.",
+        "schema": {"type": "integer"},
+    },
+    "X-Inspection-Completion-Tokens": {
+        "description": "Completion tokens over every model attempt; absent when not reported.",
+        "schema": {"type": "integer"},
+    },
+}
 _OBJECT_HEADERS = {
     "X-Object-Size": {
         "description": "Size of the object, in bytes.",
@@ -288,7 +319,10 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         return InspectParams(n_bytes, tail_bytes, timeout_seconds, backend, model, fallback_model)
 
     responses: dict[int | str, dict[str, Any]] = {
-        200: {"content": {"application/json": {"example": _EXAMPLE_RESULT}}},
+        200: {
+            "content": {"application/json": {"example": _EXAMPLE_RESULT}},
+            "headers": _USAGE_HEADERS,
+        },
         **problem_responses(403, 413, 422, 502, 503, 504),
     }
 
@@ -300,6 +334,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
     )
     async def inspect_upload(
         request: Request,
+        response: Response,
         file: Annotated[UploadFile, File(description="The CSV/TSV file, in any encoding.")],
         params: Annotated[InspectParams, Depends(inspect_params)],
     ) -> CSVInspectionResult:
@@ -318,7 +353,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         # UploadFile.file is a seekable SpooledTemporaryFile: passed as is, the
         # library reads only its sampled windows and restores the position.
         return await _inspect(
-            request, file.file, params, label=f"{file.filename!r} ({file.size} bytes)"
+            request, response, file.file, params, label=f"{file.filename!r} ({file.size} bytes)"
         )
 
     @router.post(
@@ -337,7 +372,9 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         },
     )
     async def inspect_raw(
-        request: Request, params: Annotated[InspectParams, Depends(inspect_params)]
+        request: Request,
+        response: Response,
+        params: Annotated[InspectParams, Depends(inspect_params)],
     ) -> CSVInspectionResult:
         """Infer the same as ``POST /inspect``, streaming the body with bounded memory.
 
@@ -358,7 +395,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             read_timeout_seconds=params.timeout_seconds,
         )
         try:
-            return await _inspect(request, reader, params, label="request body")
+            return await _inspect(request, response, reader, params, label="request body")
         except FileSampleReadError as exc:
             if reader.limit_exceeded:
                 raise _too_large(reader.bytes_read, settings) from exc
@@ -373,7 +410,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         response_model=CSVInspectionResult,
         summary="Inspect a Cloud Storage object with ranged reads",
         responses={
-            200: {**responses[200], "headers": _OBJECT_HEADERS},
+            200: {**responses[200], "headers": {**_USAGE_HEADERS, **_OBJECT_HEADERS}},
             **problem_responses(403, 404, 422, 429, 502, 503, 504, gcs=True),
         },
     )
@@ -399,7 +436,9 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         try:
             # The library samples the seekable reader in its worker thread, so
             # the blocking ranged reads never run on the event loop.
-            result = await _inspect(request, gcs_object.reader, params, label=repr(body.uri))
+            result = await _inspect(
+                request, response, gcs_object.reader, params, label=repr(body.uri)
+            )
         finally:
             gcs_object.reader.close()
         blob = gcs_object.blob

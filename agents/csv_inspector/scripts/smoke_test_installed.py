@@ -76,7 +76,10 @@ def main() -> None:
     from_bytes = inspect_csv(CSV, model_invoker=invoker, **kwargs)  # type: ignore[arg-type]
     from_stream = inspect_csv(io.BytesIO(CSV), model_invoker=invoker, **kwargs)  # type: ignore[arg-type]
     _check(isinstance(from_bytes, CSVInspectionResult), "no CSVInspectionResult returned")
-    _check(from_bytes == from_stream, "bytes and stream sources disagree")
+    # model_dump() leaves out result.usage, whose latency differs between calls.
+    _check(from_bytes.model_dump() == from_stream.model_dump(), "bytes and stream sources disagree")
+    usage = from_bytes.usage
+    _check(usage is not None and usage.attempts == 1, "no usage attached to the result")
     # Grounding fixes the header row (the model said 0) and the blank separator.
     _check(from_bytes.header_row_index == 1, "header row was not grounded")
     _check(from_bytes.footer_lines == ["", "TOTAL;;10.00"], "footer was not grounded")
@@ -85,7 +88,7 @@ def main() -> None:
         return ANSWER
 
     async_result = asyncio.run(ainspect_csv(CSV, model_invoker=async_invoker, **kwargs))  # type: ignore[arg-type]
-    _check(async_result == from_bytes, "async and sync results disagree")
+    _check(async_result.model_dump() == from_bytes.model_dump(), "async and sync results disagree")
 
     def slow_invoker(prompt: str, model: str) -> str:
         import time  # noqa: PLC0415

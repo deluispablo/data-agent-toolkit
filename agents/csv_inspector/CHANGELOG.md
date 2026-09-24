@@ -10,6 +10,18 @@ listed under **Changed (breaking)**.
 
 ### Added
 
+- Every successful inspection records what its model phase cost in
+  `result.usage`: the model whose answer was kept, prompt and completion
+  tokens summed over every attempt (a failed primary's tokens included;
+  `None` when not reported, e.g. by a custom `model_invoker`), wall-time
+  latency, attempts, transient cloud retries, and Ollama's model load time.
+  The built-in invokers read the counts the Ollama and Gemini SDKs already
+  return, with no extra call. `usage` is left out of `model_dump()`,
+  `model_dump_json()` and `model_json_schema()`, so the JSON contract and
+  the schema sent to Gemini are unchanged; it does take part in `==`. One
+  INFO log line per success reports it, and the CLI's new `--stats` flag
+  prints it to stderr as JSON
+  ([#121](https://github.com/deluispablo/data-agent-toolkit/issues/121)).
 - The evaluation harness scores column names. `samples/manifest.json`
   gains `expected.columns`, derived by `samples/generate_samples.py` from
   each fixture's header line (parsed by the stdlib `csv` module with the

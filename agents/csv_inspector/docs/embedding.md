@@ -271,9 +271,21 @@ import logging
 logging.getLogger("csv_inspector").setLevel(logging.WARNING)
 ```
 
-- `INFO`: one line per model attempt and one per success.
+- `INFO`: one line per model attempt, and two per success: the outcome and
+  its usage (`model=… prompt_tokens=… completion_tokens=… latency=…s
+  attempts=… retries=…`).
 - `WARNING`: a failed attempt before the fallback.
 - `DEBUG`: backend details.
+
+To meter cost per request, log or export `result.usage` yourself (it is
+not in the serialized result); the API example returns the model and token
+counts as `X-Inspection-*` response headers:
+
+```python
+result = inspect_csv(path)
+if result.usage is not None:
+    metrics.record(result.usage.model, result.usage.prompt_tokens, result.usage.completion_tokens)
+```
 
 Records describe sources by path or size (e.g. `<52311 bytes in memory>`)
 and never include their content. The Gemini API key never appears in logs

@@ -22,6 +22,7 @@ import threading
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from dataclasses import dataclass
+from typing import TypeVar
 
 from ._backends import LLMBackend
 from ._config import Settings, ensure_backend_ready, resolve_settings
@@ -37,12 +38,13 @@ from ._exceptions import (
 from ._grounding import ground_in_samples
 from ._invokers import (
     AsyncModelInvoker,
+    InvokerResponse,
     ModelInvoker,
     _redact,
     builtin_async_invoker,
     builtin_invoker,
 )
-from ._models import CSVInspectionResult
+from ._models import CSVInspectionResult, Usage
 from ._prompt import build_prompt, parse_and_validate
 from ._sampling import (
     DEFAULT_SAMPLE_BYTES,
@@ -57,8 +59,9 @@ logger = logging.getLogger(__name__)
 PRIMARY_SHARE = 0.7
 """Fraction of the remaining budget a model may use when another one follows it."""
 
-_SyncCall = Callable[[str, str, float | None], str]
-_AsyncCall = Callable[[str, str, float | None], Awaitable[str]]
+_SyncCall = Callable[[str, str, float | None], InvokerResponse]
+_AsyncCall = Callable[[str, str, float | None], Awaitable[InvokerResponse]]
+_N = TypeVar("_N", int, float)
 
 
 @dataclass(frozen=True)
@@ -152,7 +155,9 @@ def _timed_out(model: str, remaining: float) -> ModelTimeoutError:
     return ModelTimeoutError(f"Model '{model}' did not answer within {max(remaining, 0):.2f}s.")
 
 
-def _call_with_deadline(call: _SyncCall, prompt: str, model: str, remaining: float | None) -> str:
+def _call_with_deadline(
+    call: _SyncCall, prompt: str, model: str, remaining: float | None
+) -> InvokerResponse:
     """Run one sync model call, returning no later than ``remaining`` seconds.
 
     With a budget, the call runs in a daemon worker thread and is abandoned
@@ -167,7 +172,7 @@ def _call_with_deadline(call: _SyncCall, prompt: str, model: str, remaining: flo
     """
     if remaining is None:
         return call(prompt, model, None)
-    future: concurrent.futures.Future[str] = concurrent.futures.Future()
+    future: concurrent.futures.Future[InvokerResponse] = concurrent.futures.Future()
 
     def run() -> None:
         try:
@@ -184,7 +189,7 @@ def _call_with_deadline(call: _SyncCall, prompt: str, model: str, remaining: flo
 
 async def _acall_with_deadline(
     call: _AsyncCall, prompt: str, model: str, remaining: float | None
-) -> str:
+) -> InvokerResponse:
     """Await one async model call, cancelling it after ``remaining`` seconds.
 
     Raises:
@@ -194,6 +199,13 @@ async def _acall_with_deadline(
         return await asyncio.wait_for(call(prompt, model, remaining), remaining)
     except asyncio.TimeoutError:
         raise _timed_out(model, remaining or 0) from None
+
+
+def _add(total: _N | None, value: _N | None) -> _N | None:
+    """Sum two optional counters; ``None`` only when neither was reported."""
+    if value is None:
+        return total
+    return value if total is None else total + value
 
 
 _RETRYABLE: tuple[type[Exception], ...] = (
@@ -244,6 +256,13 @@ class _Run:
         self._timeout_seconds = timeout_seconds
         self._deadline = _Deadline(timeout_seconds)
         self._errors: dict[str, Exception] = {}
+        # Usage, accumulated over every attempt that returned an answer.
+        self._started = 0.0
+        self._attempts = 0
+        self._prompt_tokens: int | None = None
+        self._completion_tokens: int | None = None
+        self._retries = 0
+        self._load_seconds: float | None = None
         # The built-in invokers redact their own errors; a custom invoker's
         # message may still carry the configured key, so the log line is redacted too.
         self._secret = plan.settings.gemini_api_key
@@ -259,7 +278,23 @@ class _Run:
                 self._log_skipped(self._candidates[index:])
                 raise self._timeout_error()
             logger.info("Inspecting '%s' with model '%s'.", self._samples.description, model)
+            if not self._attempts:
+                self._started = time.monotonic()
+            self._attempts += 1
             yield model, self._deadline.share(len(self._candidates) - index)
+
+    def responded(self, response: InvokerResponse) -> str:
+        """Add one answer's usage to the inspection's, and return its raw text.
+
+        Called before the answer is parsed, so an answer that then fails
+        validation still counts. An attempt that raises (timeout, empty
+        reply, transport error) reports nothing.
+        """
+        self._prompt_tokens = _add(self._prompt_tokens, response.prompt_tokens)
+        self._completion_tokens = _add(self._completion_tokens, response.completion_tokens)
+        self._load_seconds = _add(self._load_seconds, response.load_seconds)
+        self._retries += response.retries
+        return response.text
 
     def failed(self, model: str, exc: Exception) -> None:
         """Record a failed attempt; the next model is tried if time is left.
@@ -295,7 +330,16 @@ class _Run:
             )
 
     def succeeded(self, model: str, result: CSVInspectionResult) -> CSVInspectionResult:
-        """Ground a validated answer in the samples and return it."""
+        """Ground a validated answer in the samples and return it with its usage attached."""
+        usage = Usage(
+            model=model,
+            prompt_tokens=self._prompt_tokens,
+            completion_tokens=self._completion_tokens,
+            latency_seconds=time.monotonic() - self._started,
+            attempts=self._attempts,
+            retries=self._retries,
+            load_seconds=self._load_seconds,
+        )
         samples = self._samples
         logger.info(
             "Inspection of '%s' succeeded with model '%s' (confidence=%.2f).",
@@ -303,13 +347,25 @@ class _Run:
             model,
             result.confidence,
         )
-        return ground_in_samples(
+        logger.info(
+            "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
+            "attempts=%d retries=%d",
+            usage.model,
+            usage.prompt_tokens,
+            usage.completion_tokens,
+            usage.latency_seconds,
+            usage.attempts,
+            usage.retries,
+        )
+        grounded = ground_in_samples(
             result,
             samples.head_text,
             samples.tail_text,
             covers_whole_file=samples.covers_whole_file,
             detected_encoding=samples.encoding,
         )
+        # The model is frozen: attach the usage to a copy.
+        return grounded.model_copy(update={"usage": usage})
 
     def failure_error(self) -> InspectionFailedError:
         """The error for when every model has failed."""
@@ -406,14 +462,14 @@ def inspect_csv(
     call: _SyncCall
     if model_invoker is not None:
         custom = model_invoker
-        call = lambda prompt, model, _timeout: custom(prompt, model)  # noqa: E731
+        call = lambda prompt, model, _timeout: InvokerResponse(custom(prompt, model))  # noqa: E731
     else:
         call = builtin_invoker(backend, plan.settings)
 
     run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
     for candidate, budget in run.attempts():
         try:
-            raw = _call_with_deadline(call, run.prompt, candidate, budget)
+            raw = run.responded(_call_with_deadline(call, run.prompt, candidate, budget))
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
@@ -477,14 +533,18 @@ async def ainspect_csv(
     call: _AsyncCall
     if model_invoker is not None:
         custom = model_invoker
-        call = lambda prompt, model, _timeout: custom(prompt, model)  # noqa: E731
+
+        async def call(prompt: str, model: str, _timeout: float | None) -> InvokerResponse:
+            return InvokerResponse(await custom(prompt, model))
+
     else:
         call = builtin_async_invoker(backend, plan.settings)
 
     run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
     for candidate, budget in run.attempts():
         try:
-            raw = await _acall_with_deadline(call, run.prompt, candidate, budget)
+            response = await _acall_with_deadline(call, run.prompt, candidate, budget)
+            raw = run.responded(response)
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise

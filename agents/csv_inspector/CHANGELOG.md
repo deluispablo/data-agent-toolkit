@@ -8,6 +8,18 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Added
+
+- The evaluation harness scores column names. `samples/manifest.json`
+  gains `expected.columns`, derived by `samples/generate_samples.py` from
+  each fixture's header line (parsed by the stdlib `csv` module with the
+  manifest dialect, names kept as written; `column_1..N` for a header-less
+  file). `scripts/eval_samples.py` counts the exact list match in the
+  score and reports per-name recall and column-count match as
+  diagnostics next to each file, so a paraphrased name (`Monto` for
+  `Importe`) no longer scores 100 %
+  ([#123](https://github.com/deluispablo/data-agent-toolkit/issues/123)).
+
 ## [0.3.0] - 2026-09-24
 
 ### Changed (breaking)

@@ -249,4 +249,203 @@ uv run --directory agents/csv_inspector python scripts/eval_samples.py --backend
 | `data_format` | `numeric_european_format.csv`, `null_representations_mixed.csv` |
 | `combo` | `gen_combo_eu_legacy.csv`, `gen_combo_bom_crlf_preamble.csv` |
 
-No cloud results are recorded here yet.
+The first cloud results are in [Baseline 0.3.0](#baseline-030) (item 6).
+
+## Baseline 0.3.0
+
+The reference every M5/M6 pull request compares against
+([#128](https://github.com/deluispablo/data-agent-toolkit/issues/128)).
+Measured on 2026-09-24 on `main` after M4. The inspection behaviour is
+that of 0.3.0: M4 added measurement only (`Usage`, `PROMPT_VERSION`), and
+the prompt text is unchanged.
+
+| | |
+|---|---|
+| Harness version | 1 |
+| `PROMPT_VERSION` | `2026.09-a` |
+| Catalog | 80 fixtures (44 hand-written, 36 matrix), 6 known limitations |
+| Local run | `runs/qwen2.5-coder-7b-r3.jsonl`: `qwen2.5-coder:7b`, default fallback `qwen2.5-coder:3b`, `n_bytes` 4096, `tail_bytes` 4096, timeout 300 s, `--repeat 3` (240 inspections, 282 model calls, 29 min) |
+| Cloud run | `runs/gemini-flash-lite-latest-cloud.jsonl`: `gemini-flash-lite-latest` as its own fallback, [cloud subset](#cloud-subset), 15 calls |
+| Machine | Intel i5-13600KF, 64 GB RAM, NVIDIA RTX 4070 12 GB, Windows 11, Ollama 0.34.3 |
+
+Commands (from `agents/csv_inspector`; run files are git-ignored):
+
+```bash
+uv run python scripts/eval_samples.py --no-env-file --model qwen2.5-coder:7b \
+  --repeat 3 --keep-raw --out "runs/{model}-r3.jsonl"
+uv run python scripts/eval_samples.py --backend api --env-file .env \
+  --model gemini-flash-lite-latest --fallback-model gemini-flash-lite-latest \
+  --max-calls 18 --rpm 10 --keep-raw --out "runs/{model}-cloud.jsonl" \
+  <the 15 --fixture flags of the cloud subset>
+```
+
+The breakdowns below are arithmetic on those run files (raw answers,
+`usage` and fixture sizes); each table states its method.
+
+### 1. Prompt tokens
+
+Mean prompt of a single-attempt call: **2,658 tokens** (198 calls; the
+mean over every call, fallbacks included, is 2,834). Ollama has no
+tokenize endpoint, so the parts are measured and estimated like this. The
+instruction template, system prompt and chat wrapping were measured once on
+`qwen2.5-coder:7b` with empty samples: 926 tokens without the tail section,
+998 with it, of which the system prompt and chat wrapping are 27. The rest
+of each call's `prompt_tokens` is sample text, split between head and tail
+by character count at the calibrated 1.81 characters per token. CSV text
+tokenizes densely, well below the 2 characters per token that the
+library's `num_ctx` sizing assumes.
+
+| Part | Tokens (mean) | Share |
+|---|---|---|
+| Instruction template + system prompt + chat wrapping | ~950 | 36 % |
+| Head sample (1,848 characters mean) | ~1,019 | 38 % |
+| Tail sample (1,251 characters mean; none when the head covers the file) | ~689 | 26 % |
+
+Inside the template (3,540 characters), the JSON shape description takes
+34 %, the footer rules 27 %, the header rules 14 %, the "Keep in mind"
+list 12 % and the introduction and sample markers 12 %.
+
+Cloud: `gemini-flash-lite-latest` used 2,118 prompt tokens per call on the
+cloud subset (another tokenizer and a smaller subset: not comparable token
+for token).
+
+### 2. Completion tokens
+
+Mean **389 completion tokens** per inspection (p95 589). Shares of the
+answer characters over the 210 answers that parse (66 answers were cut off
+by the 1,024-token reply cap, see item 5), counting each field's key and
+serialized value. Converting characters to tokens proportionally is an
+approximation.
+
+| Output field | Share of answer characters |
+|---|---|
+| `columns[].example_values` | 26.7 % |
+| `columns[].inferred_type` + `nullable` | 17.1 % |
+| `columns[].name` | 7.1 % |
+| `notes` | 7.7 % |
+| `footer_lines` | 3.4 % |
+| Everything else (dialect fields, `confidence`, JSON punctuation and indentation) | 38.1 % |
+
+Whitespace (indentation and line breaks) is 23.5 % of the answer
+characters; it tokenizes cheaply, so its token share is lower.
+
+### 3. Accuracy
+
+Aggregate **92.8 %** over 195 scored inspections (known limitations and
+errored inspections excluded). The majority vote over the 3 repeats is also
+92.8 %: at `temperature=0` every field agreed in 100 % of the repeats, and
+no fixture changed its answer between repeats (no unstable fixture).
+
+| Category | Score |
+|---|---|
+| `combo`, `data_format`, `delimiter` | 100 % |
+| `quoting` | 97.6 % |
+| `structural` | 95.7 % |
+| `header_footer` | 87.9 % |
+| `encoding` | 85.7 % |
+
+| Field | Score |
+|---|---|
+| `encoding`, `quotechar`, `escapechar` | 100 % |
+| `columns` (exact list) | 96.9 % |
+| `header_row_index` | 96.8 % |
+| `delimiter` | 92.3 % |
+| `footer_lines`, `footer_rows_to_skip` | 77.1 % |
+| `has_header` | 75.0 % |
+| `doublequote` | 50.0 % (2 scored fixtures) |
+
+`columns` diagnostics: mean per-name recall 98.1 %, column count right in
+98.5 %. The misses, grouped (each fixture gave the same answer in every
+repeat):
+
+- Footer, 9 fixtures: a data row reported as a footer line
+  (`encoding_cp1252_tail_only.csv`, `exactly_head_window_size.csv`,
+  `footer_after_total_energies_row.csv`, `gen_encoding_cp1252_lf.csv`,
+  `gen_encoding_utf8_bom_crlf.csv`, `gen_footer_none_narrow.csv`,
+  `gen_headerless_marker.csv`), or a footer missed
+  (`footer_end_marker.csv`, `gen_encoding_utf8_lf.csv`).
+- Delimiter, 4 tab files reported as `,` because their values hold commas
+  and grounding keeps the dominated answer
+  ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)):
+  `gen_encoding_utf16le_lf.csv`, `gen_encoding_utf16le_crlf.csv`,
+  `gen_footer_marker_narrow.csv` and `gen_preamble_5_footer.csv` (which also
+  gets `header_row_index` 4 for 5). `single_column.csv` is reported as tab.
+- `header_years.csv`: a header of years read as a header-less file.
+- `header_duplicate_and_blank_names.csv`: the blank first name is dropped.
+- `quoting_backslash_escape.csv`: `doublequote` true for a
+  backslash-escaped file.
+
+### 4. Latency and reloads
+
+Harness wall time per inspection, all attempts included: p50 **5.0 s**,
+p95 **20.9 s**.
+
+| Fixture size | Inspections | p50 | p95 |
+|---|---|---|---|
+| < 4 KiB (the head covers the file) | 132 | 3.5 s | 6.4 s |
+| 4–16 KiB | 72 | 6.0 s | 15.9 s |
+| 16–64 KiB | 0 (all fail, item 5) | — | — |
+| >= 64 KiB | 3 | 5.6 s | 5.6 s |
+
+Every call reports a `load_seconds` above 0 (a few milliseconds when the
+model is resident). Real reloads, over 1 s: **10** of 207 successful
+inspections (2.7 to 6.6 s each, about 50 s of the 29-minute run), all in the
+first of the three passes; 2 of them are inspections that used the
+fallback.
+
+### 5. Failure modes
+
+| Outcome | Count |
+|---|---|
+| Failed inspections (`InspectionFailedError`) | 30 (27 regular, 3 on a known limitation) |
+| of which every attempt was cut off by the 1,024-token reply cap (40-column files) | 24 ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)) |
+| `EmptySampleError` on `empty_file.csv` (expected, but counted as an error by the harness: [#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)) | 3 |
+| Failed attempts with `ResponseParsingError` | 60 |
+| `SchemaValidationError`, `InspectionTimeoutError` | 0 |
+| Fallback used successfully | 9 |
+
+Every `ResponseParsingError` in the run is a truncated answer, not
+malformed JSON. The eight 40-column fixtures fail in every repeat on both
+default models, and a 12-column file already exceeds the cap on the 7b
+model (it succeeds through the 3b fallback).
+
+### 6. Cloud
+
+`gemini-flash-lite-latest` on the cloud subset, `--max-calls 18 --rpm 10`:
+**15 calls, 0 retries, no 429 or 503**, 98.1 % (only
+`quoting_backslash_escape.csv` misses, on `escapechar` and `doublequote`),
+31,774 prompt and 6,043 completion tokens, p50 1.7 s, p95 2.5 s. At list
+price the run costs about **$0.025**: $0.0016 per inspection, about $1.64
+per 1,000 files. That price takes the alias as Gemini 3.5 Flash-Lite, the
+newest Flash-Lite on Google's pricing page ($0.30 input and $2.50 output
+per million tokens, standard paid tier, page dated 2026-09-24). The free
+tier costs nothing but allows about 20 requests per model per day.
+
+`gemini-3.6-flash` (the default cloud primary): no result. The key's daily
+free-tier quota for it was already spent (8 answers `429
+RESOURCE_EXHAUSTED ... limit: 20`, 1 answer 503), and the run stopped at its
+18-call limit. It is pending, with the model comparison, in
+[#148](https://github.com/deluispablo/data-agent-toolkit/issues/148).
+
+### 7. Decision table for M5/M6
+
+GO: do it as specified. RESCOPE: do it with the issue body adjusted to
+these numbers (the issue says what changed). DROP: close. Each issue has a
+comment with its row.
+
+| Issue | Baseline number it attacks | Projected effect | Verdict |
+|---|---|---|---|
+| [#129](https://github.com/deluispablo/data-agent-toolkit/issues/129) columns as names only | `example_values` 26.7 %, `inferred_type` + `nullable` 17.1 %, `notes` 7.7 % of answer characters; 24 inspections cut off (#147) | about half of the 389 mean completion tokens; unblocks the 40-column files | GO |
+| [#130](https://github.com/deluispablo/data-agent-toolkit/issues/130) Ollama schema output | JSON shape description = 34 % of the template (~315 tokens) | ~12 % of the mean prompt; no parsing gain measured (every parse failure was a truncation) | GO |
+| [#131](https://github.com/deluispablo/data-agent-toolkit/issues/131) row-0 shape rule | `has_header` 75.0 %, `header_footer` 87.9 % | accuracy guard for #129; `header_years.csv` must keep its header | GO |
+| [#132](https://github.com/deluispablo/data-agent-toolkit/issues/132) first footer line only | `footer_lines` 77.1 % (weakest dialect field); 3.4 % of answer characters | small completion saving; the value is the `_ModelAnswer` split and footer accuracy | GO |
+| [#133](https://github.com/deluispablo/data-agent-toolkit/issues/133) prompt <= 600 tokens | template ~950 tokens measured (not ~1,350), 36 % of the prompt | ~350 tokens per call, ~13 % of the mean prompt | RESCOPE |
+| [#134](https://github.com/deluispablo/data-agent-toolkit/issues/134) line windows | samples = 64 % of the prompt (head ~1,019, tail ~689 tokens) | the largest prompt lever on narrow files; more rows on wide ones | GO |
+| [#135](https://github.com/deluispablo/data-agent-toolkit/issues/135) deterministic pre-pass | `encoding` already 100 %, `delimiter` 92.3 % (every miss is #151); the two fields are a few output tokens | small token saving; the accuracy part is mostly covered by #151 | RESCOPE |
+| [#136](https://github.com/deluispablo/data-agent-toolkit/issues/136) `tail_bytes=0` mode | tail = 26 % of the prompt (~689 tokens) when present | ~26 % of the prompt for hosts that need no footer | GO |
+| [#137](https://github.com/deluispablo/data-agent-toolkit/issues/137) quota-aware calls | no per-minute 429 at 10 rpm; all 8 429s were the daily quota; harness guards already shipped in #122 | a per-minute limiter does not address the 429s observed | RESCOPE |
+| [#138](https://github.com/deluispablo/data-agent-toolkit/issues/138) num_ctx / num_predict | 10 reloads in 207 inspections (~50 s of 29 min); `num_predict` 1,024 too small for wide files (#147) | little latency to win from reloads; reply sizing is the real fix | RESCOPE |
+
+Issues opened from this baseline: #147 (wide files cut off, M5), #148
+(model comparison, deferred from #126), #149 (harness follow-ups) and #151
+(delimiter grounding).

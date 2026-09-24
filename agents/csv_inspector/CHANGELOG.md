@@ -83,6 +83,11 @@ listed under **Changed (breaking)**.
   limitations, the prompt-change checklist and a fifteen-fixture cloud
   subset. Linked from the README and `ARCHITECTURE.md`
   ([#122](https://github.com/deluispablo/data-agent-toolkit/issues/122)).
+- `docs/evaluation.md` records the 0.3.0 baseline on the 80-fixture
+  catalog: prompt and completion token breakdowns, accuracy per category
+  and field, latency and reloads, failure modes, a cloud run with its list
+  price, and the GO/RESCOPE/DROP verdict for each planned optimization
+  ([#128](https://github.com/deluispablo/data-agent-toolkit/issues/128)).
 
 ## [0.3.0] - 2026-09-24
 

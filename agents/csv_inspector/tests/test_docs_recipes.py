@@ -35,7 +35,7 @@ read_rows = _load_read_rows()
 
 
 def _result(
-    encoding: str, delimiter: str, header_row_index: int, footer_lines: list[str]
+    encoding: str, delimiter: str, header_row_index: int | None, footer_lines: list[str]
 ) -> CSVInspectionResult:
     return CSVInspectionResult(
         encoding=encoding,
@@ -77,7 +77,7 @@ def test_read_rows_skips_preamble_and_footer_of_fixture(case: SampleCase, tmp_pa
     rows = list(read_rows(path, result))
 
     lines = case.raw_bytes.decode(expected["encoding"]).splitlines()
-    body = lines[result.header_row_index : len(lines) - result.footer_rows_to_skip]
+    body = lines[result.header_row_index or 0 : len(lines) - result.footer_rows_to_skip]
     oracle = [row for row in csv.reader(body, delimiter=result.delimiter) if row]
     assert rows == oracle
     assert {len(row) for row in rows} == {len(rows[0])}
@@ -98,3 +98,13 @@ def test_read_rows_without_preamble_or_footer(tmp_path: Path) -> None:
     path.write_bytes(b"A;B\n1;2\n")
 
     assert list(read_rows(path, _result("utf-8", ";", 0, []))) == [["A", "B"], ["1", "2"]]
+
+
+def test_read_rows_of_a_header_less_file(tmp_path: Path) -> None:
+    """has_header=False: every row is data, nothing is skipped (issue #94)."""
+    path = tmp_path / "data_only.csv"
+    path.write_bytes(b"2024-01-15,Acme,1\n2024-01-16,Beta,2\n")
+
+    rows = list(read_rows(path, _result("utf-8", ",", None, [])))
+
+    assert rows == [["2024-01-15", "Acme", "1"], ["2024-01-16", "Beta", "2"]]

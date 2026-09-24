@@ -55,7 +55,9 @@ class ColumnSchema(BaseModel):
     """Preliminary schema inferred for a single CSV column.
 
     Attributes:
-        name: The column name as it appears in the header row.
+        name: The column name as it appears in the header row, or a
+            positional name (``column_1``, ``column_2``, ...) when the
+            file has no header row.
         inferred_type: The inferred logical type, one of ``string``,
             ``integer``, ``float``, ``date``, ``datetime`` or ``boolean``.
         nullable: Whether the column is expected to contain missing values.
@@ -115,9 +117,13 @@ class CSVInspectionResult(BaseModel):
             character inside a field.
         doublequote: Whether embedded quote characters are escaped by
             doubling them, per RFC 4180.
+        has_header: Whether the file has a row of column names. ``False``
+            for a header-less file, whose first row is already data.
         header_row_index: Zero-based index of the row containing the real
             column names; equivalently, the number of preamble lines (export
             banners, comments, blank lines) to skip before the header.
+            ``None`` exactly when ``has_header`` is ``False``; a header-less
+            file with preamble lines is not described (known limitation).
         footer_lines: Raw trailing lines (totals, summary rows, "end of
             report" markers, generation timestamps, blank separator lines)
             that follow the last data row, in file order.
@@ -136,9 +142,17 @@ class CSVInspectionResult(BaseModel):
     quotechar: str = '"'
     escapechar: str | None = None
     doublequote: bool = True
-    header_row_index: int = Field(
+    has_header: bool = Field(
+        default=True,
+        description="Whether the file has a row of column names; false if its first row is data.",
+    )
+    header_row_index: int | None = Field(
+        default=None,
         ge=0,
-        description="Zero-based index of the row containing the real column names.",
+        description=(
+            "Zero-based index of the row containing the real column names; "
+            "null exactly when has_header is false."
+        ),
     )
     footer_lines: list[str] = Field(default_factory=list)
     columns: list[ColumnSchema]
@@ -191,6 +205,34 @@ class CSVInspectionResult(BaseModel):
         if escapechar is not None and escapechar == data.get("quotechar", '"'):
             return {**data, "escapechar": None, "doublequote": True}
         return data
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_has_header(cls, data: object) -> object:
+        """Read a null (or ``-1``) header row index as "no header row".
+
+        Models answer ``null`` or ``-1`` for a header-less file, often
+        without ``has_header``. ``-1`` is taken as ``null``, and a missing
+        ``has_header`` follows the header row index. An explicit
+        ``has_header`` is kept, so a contradiction still fails validation.
+        """
+        if not isinstance(data, dict) or "header_row_index" not in data:
+            return data
+        index = data["header_row_index"]
+        if index == -1 and not isinstance(index, bool):
+            data = {**data, "header_row_index": None}
+        if "has_header" not in data:
+            data = {**data, "has_header": data["header_row_index"] is not None}
+        return data
+
+    @model_validator(mode="after")
+    def _check_header(self) -> CSVInspectionResult:
+        """Require a header row index exactly when the file has a header."""
+        if self.has_header and self.header_row_index is None:
+            raise ValueError("header_row_index is required when has_header is true")
+        if not self.has_header and self.header_row_index is not None:
+            raise ValueError("header_row_index must be null when has_header is false")
+        return self
 
     @model_validator(mode="after")
     def _check_dialect(self) -> CSVInspectionResult:

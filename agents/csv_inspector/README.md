@@ -6,8 +6,9 @@ LLM-assisted inspection of large, messy CSV/TSV sources. From small,
 
 - the character encoding;
 - the field delimiter, quote character and escape rules;
-- where the real header row is (`header_row_index`, the number of preamble
-  lines such as export banners or comments to skip) and the footer lines
+- whether the file has a header row at all (`has_header`), where it is
+  (`header_row_index`, the number of preamble lines such as export banners
+  or comments to skip; `None` for a header-less file) and the footer lines
   after the data (`footer_lines`: totals rows, "end of report" markers,
   generation timestamps, blank separators; `footer_rows_to_skip` is derived
   from them);
@@ -191,7 +192,12 @@ deterministically from the sampled text:
   failing that, the first line with as many fields as inferred columns,
   followed by a line of the same shape, that shares at least one name with
   the model's answer. Its index becomes `header_row_index`, and its fields
-  replace any paraphrased column names.
+  replace any paraphrased column names. Skipped when the model reports
+  `has_header=false`: a header-less file keeps its positional names
+  (`column_1`, ...) and `header_row_index=None`. When no header line
+  anchors and the model's header at row 0 holds its own example values
+  (at least two, and half the fields), that row is data: the result is
+  corrected to `has_header=false` with positional names.
 - **Footer:** the earliest reported footer line (by last occurrence) that
   really appears at the end of the source, taken verbatim through to the
   end, and extended backwards over blank separators and totals-labelled rows

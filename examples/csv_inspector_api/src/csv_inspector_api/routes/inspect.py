@@ -52,6 +52,7 @@ _EXAMPLE_RESULT = {
     "quotechar": '"',
     "escapechar": None,
     "doublequote": True,
+    "has_header": True,
     "header_row_index": 2,
     "footer_lines": [],
     "columns": [

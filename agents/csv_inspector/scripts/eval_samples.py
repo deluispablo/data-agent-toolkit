@@ -77,6 +77,7 @@ _COMPARABLE_FIELDS: tuple[str, ...] = (
     "quotechar",
     "escapechar",
     "doublequote",
+    "has_header",
     "header_row_index",
     "footer_lines",
     "footer_rows_to_skip",

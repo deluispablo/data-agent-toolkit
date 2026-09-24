@@ -154,7 +154,7 @@ Abridged output of a live run with `qwen2.5-coder:7b`:
 
 ```json
 {"encoding": "utf-8", "delimiter": ";", "quotechar": "\"", "escapechar": "\\",
- "doublequote": true, "header_row_index": 2, "footer_lines": [],
+ "doublequote": true, "has_header": true, "header_row_index": 2, "footer_lines": [],
  "columns": [{"name": "Fecha", "inferred_type": "date", "nullable": false,
               "example_values": ["2024-01-15", "2024-01-16", "..."]},
              {"name": "Cliente", "inferred_type": "string", "nullable": false,

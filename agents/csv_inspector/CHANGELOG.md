@@ -54,6 +54,19 @@ listed under **Changed (breaking)**.
 
 ### Changed (breaking)
 
+- The result can describe a header-less file: new field
+  `has_header: bool` (default `true`), and `header_row_index` is now
+  `int | None`, `None` exactly when `has_header` is `false`. A model answer
+  of `null` or `-1` without `has_header` is read as "no header row"; a
+  contradiction fails validation. Grounding keeps the positional column
+  names (`column_1`, ...) of a header-less file instead of anchoring a
+  data row as the header, and corrects a header claimed at row 0 whose
+  fields are the model's own example values to "no header". Consumers must handle `header_row_index=None`
+  (for example `skiprows=result.header_row_index or 0`, `header=None`);
+  see `docs/using-the-result.md`. A header-less file with preamble lines
+  is not described (known limitation). The JSON contract gains
+  `has_header`; the version moves to 0.3.0
+  ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
 - The default cloud models are now `gemini-3.6-flash` (primary) and
   `gemini-flash-lite-latest` (fallback). The Gemini Developer API answers
   `404 NOT_FOUND` ("no longer available to new users") for the previous

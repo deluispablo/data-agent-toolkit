@@ -405,6 +405,117 @@ def test_contradictory_or_removed_model_fields_are_ignored() -> None:
     assert "metadata_lines" not in result.model_dump()
 
 
+# ---------------------------------------------------------------------
+# Header-less files (issue #94)
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected_index"),
+    [
+        pytest.param({"has_header": False, "header_row_index": None}, None, id="explicit"),
+        pytest.param({"header_row_index": None}, None, id="null-infers-no-header"),
+        pytest.param({"header_row_index": -1}, None, id="minus-one-means-null"),
+        pytest.param({"header_row_index": 0}, 0, id="index-infers-header"),
+        pytest.param({"has_header": True, "header_row_index": 3}, 3, id="explicit-header"),
+    ],
+)
+def test_header_less_answers_validate(
+    answer: dict[str, object], expected_index: int | None
+) -> None:
+    """Null (or -1) means "no header row"; has_header follows unless given."""
+    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+
+    assert result.header_row_index == expected_index
+    assert result.has_header is (expected_index is not None)
+
+
+@pytest.mark.parametrize(
+    ("answer", "message"),
+    [
+        pytest.param(
+            {"has_header": True, "header_row_index": None}, "required when has_header", id="null"
+        ),
+        pytest.param({"has_header": False, "header_row_index": 0}, "must be null when", id="index"),
+        pytest.param({"header_row_index": -2}, "greater than or equal to 0", id="negative"),
+    ],
+)
+def test_contradictory_header_answers_fail(answer: dict[str, object], message: str) -> None:
+    """has_header and header_row_index must agree, with a clear message."""
+    with pytest.raises(ValidationError, match=message):
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+
+
+def test_a_missing_header_row_index_still_fails() -> None:
+    """Omitting both fields is a malformed answer, not a header-less file."""
+    payload = {k: v for k, v in VALID_RESULT_PAYLOAD.items() if k != "header_row_index"}
+
+    with pytest.raises(ValidationError, match="required when has_header"):
+        CSVInspectionResult.model_validate(payload)
+
+
+def test_a_header_less_fixture_keeps_its_positional_columns() -> None:
+    """End to end: grounding never renames positional columns or invents a header."""
+    fixture = SAMPLE_CSV_PATH.parent / "samples" / "header_none_data_only.csv"
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "has_header": False,
+        "header_row_index": None,
+        "columns": [
+            {"name": f"column_{n}", "inferred_type": kind}
+            for n, kind in enumerate(["date", "string", "float"], start=1)
+        ],
+    }
+
+    result = inspect_csv(fixture, model_invoker=lambda prompt, model: json.dumps(answer))
+
+    assert result.has_header is False
+    assert result.header_row_index is None
+    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
+    assert '"has_header"' in build_prompt("a,b\n", "utf-8")
+
+
+def test_grounding_detects_a_first_row_of_example_values() -> None:
+    """A model that invents names for a data row is corrected to no header (#94)."""
+    fixture = SAMPLE_CSV_PATH.parent / "samples" / "header_none_data_only.csv"
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": "date", "inferred_type": "date", "example_values": ["2024-01-15"]},
+            {"name": "name", "inferred_type": "string", "example_values": ["Acme S.L."]},
+            {"name": "amount", "inferred_type": "float", "example_values": ["1250.50"]},
+        ],
+    }
+
+    result = inspect_csv(fixture, model_invoker=lambda prompt, model: json.dumps(answer))
+
+    assert (result.has_header, result.header_row_index) == (False, None)
+    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
+
+
+def test_grounding_keeps_a_header_whose_names_are_not_examples(tmp_path: Path) -> None:
+    """A real header row with paraphrased names is never taken for data."""
+    target = tmp_path / "plain.csv"
+    target.write_text("Fecha,Cliente,Importe\n2024-01-15,Acme,10\n", encoding="utf-8")
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": "date", "inferred_type": "date", "example_values": ["2024-01-15"]},
+            {"name": "client", "inferred_type": "string", "example_values": ["Acme"]},
+            {"name": "amount", "inferred_type": "float", "example_values": ["10"]},
+        ],
+    }
+
+    result = inspect_csv(target, model_invoker=lambda prompt, model: json.dumps(answer))
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
 def test_extract_json_payload_strips_markdown_fence() -> None:
     """A JSON payload wrapped in a markdown code fence should be unwrapped."""
     fenced = '```json\n{"a": 1}\n```'

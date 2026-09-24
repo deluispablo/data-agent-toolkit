@@ -99,7 +99,7 @@ Public API = `__all__` only (test enforce). `_`-modules internal.
 
 ## scripts/
 
-- `eval_samples.py`: manual LLM accuracy harness. Real Ollama vs every `samples/manifest.json` case, per-field score report. Not pytest, not CI.
+- `eval_samples.py`: manual LLM accuracy harness. Real Ollama vs every `samples/manifest.json` case, per-field score report. `--timeout` per fixture (default 300 s, 0 = none), timeout = errored fixture. Not pytest, not CI.
 - `smoke_test_installed.py`: CI run on installed wheel/sdist outside repo. Fake invoker, check public API end to end.
 
 ## tests/

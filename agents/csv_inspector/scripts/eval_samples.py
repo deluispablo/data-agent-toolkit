@@ -46,6 +46,7 @@ from typing import Any
 from csv_inspector import CSVInspectionResult, CSVInspectorError, LLMBackend, Settings, inspect_csv
 from csv_inspector._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES
 from csv_inspector.cli import (
+    DEFAULT_CLI_TIMEOUT_SECONDS,
     add_backend_argument,
     add_log_level_argument,
     add_settings_arguments,
@@ -54,6 +55,7 @@ from csv_inspector.cli import (
     non_negative_int,
     positive_int,
     resolve_backend,
+    timeout_budget,
 )
 
 logger = logging.getLogger(__name__)
@@ -212,6 +214,7 @@ def evaluate_file(
     fallback_model: str,
     n_bytes: int,
     tail_bytes: int,
+    timeout_seconds: float | None = None,
 ) -> FileEvaluation:
     """Run the real inspection pipeline against one fixture and score it.
 
@@ -224,6 +227,9 @@ def evaluate_file(
         fallback_model: Fallback model.
         n_bytes: Head sample size, in bytes.
         tail_bytes: Tail sample size, in bytes.
+        timeout_seconds: Time budget for this fixture's model calls, or
+            ``None`` for no limit. A fixture that runs out is reported as
+            errored, like any other pipeline error.
 
     Returns:
         The resulting :class:`FileEvaluation`.
@@ -242,6 +248,7 @@ def evaluate_file(
             fallback_model=fallback_model,
             n_bytes=n_bytes,
             tail_bytes=tail_bytes,
+            timeout_seconds=timeout_seconds,
         )
     except CSVInspectorError as exc:
         evaluation.error = f"{type(exc).__name__}: {exc}"
@@ -348,6 +355,15 @@ def _parse_args() -> argparse.Namespace:
         help="Tail sample size, in bytes (0 disables).",
     )
     parser.add_argument(
+        "--timeout",
+        type=timeout_budget,
+        default=DEFAULT_CLI_TIMEOUT_SECONDS,
+        help=(
+            "Time budget for each fixture's model calls, in seconds "
+            f"(default: {DEFAULT_CLI_TIMEOUT_SECONDS:g}; 0 disables the limit)."
+        ),
+    )
+    parser.add_argument(
         "--category", default=None, help="Restrict the run to one manifest category."
     )
     add_settings_arguments(parser)
@@ -387,6 +403,7 @@ def main() -> None:
                 fallback_model=fallback_model,
                 n_bytes=args.bytes,
                 tail_bytes=args.tail_bytes,
+                timeout_seconds=args.timeout,
             )
         )
 

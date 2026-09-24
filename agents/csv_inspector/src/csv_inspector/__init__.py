@@ -36,8 +36,9 @@ from ._exceptions import (
     SchemaValidationError,
 )
 from ._inspect import ainspect_csv, inspect_csv
+from ._invokers import AsyncModelInvoker, ModelInvoker
 from ._models import ColumnSchema, ColumnType, CSVInspectionResult
-from ._sampling import CSVSource
+from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, MAX_SAMPLE_BYTES, CSVSource
 
 try:
     __version__ = version("csv-inspector")
@@ -48,6 +49,10 @@ except PackageNotFoundError:  # pragma: no cover - running from a source tree, n
 logging.getLogger(__name__).addHandler(logging.NullHandler())
 
 __all__ = [
+    "DEFAULT_SAMPLE_BYTES",
+    "DEFAULT_TAIL_BYTES",
+    "MAX_SAMPLE_BYTES",
+    "AsyncModelInvoker",
     "BackendConfigurationError",
     "CSVInspectionResult",
     "CSVInspectorError",
@@ -61,6 +66,7 @@ __all__ = [
     "InspectionTimeoutError",
     "LLMBackend",
     "ModelInvocationError",
+    "ModelInvoker",
     "ModelTimeoutError",
     "ResponseParsingError",
     "SchemaValidationError",

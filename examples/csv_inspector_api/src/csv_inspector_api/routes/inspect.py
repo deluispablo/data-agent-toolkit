@@ -12,6 +12,9 @@ from dataclasses import dataclass
 from typing import Annotated, Any
 
 from csv_inspector import (
+    DEFAULT_SAMPLE_BYTES,
+    DEFAULT_TAIL_BYTES,
+    MAX_SAMPLE_BYTES,
     CSVInspectionResult,
     CSVSource,
     FileSampleReadError,
@@ -34,10 +37,8 @@ from ..streaming import AsyncIteratorReader
 
 logger = logging.getLogger("csv_inspector_api.inspect")
 
-# The library's sampling windows: 4 KiB by default, at most 16 KiB each.
-DEFAULT_WINDOW_BYTES = 4096
+# API policy, not a library limit: a head this small rarely holds a header.
 MIN_HEAD_BYTES = 512
-MAX_WINDOW_BYTES = 16384
 # Model names ("qwen2.5-coder:7b", "gemini-2.5-flash", "org/model:tag") are short
 # tokens: the bounds keep a client-chosen name from forging or flooding log lines.
 MAX_MODEL_NAME_LENGTH = 200
@@ -195,18 +196,18 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             int,
             Query(
                 ge=MIN_HEAD_BYTES,
-                le=MAX_WINDOW_BYTES,
+                le=MAX_SAMPLE_BYTES,
                 description="Bytes sampled from the start of the file.",
             ),
-        ] = DEFAULT_WINDOW_BYTES,
+        ] = DEFAULT_SAMPLE_BYTES,
         tail_bytes: Annotated[
             int,
             Query(
                 ge=0,
-                le=MAX_WINDOW_BYTES,
+                le=MAX_SAMPLE_BYTES,
                 description="Bytes sampled from the end of the file; 0 skips the tail.",
             ),
-        ] = DEFAULT_WINDOW_BYTES,
+        ] = DEFAULT_TAIL_BYTES,
         timeout_seconds: Annotated[
             float,
             Query(

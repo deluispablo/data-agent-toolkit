@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import threading
 import time
 from pathlib import Path
@@ -322,6 +323,63 @@ def test_non_positive_timeouts_are_rejected(timeout: float) -> None:
             model_invoker=lambda p, m: RESULT_JSON,
             timeout_seconds=timeout,
         )
+
+
+def test_the_primary_gets_a_weighted_share_and_the_fallback_the_rest(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With a fallback, the primary may use ~70 % of the budget (issue #95).
+
+    The fallback then gets everything that is left: a primary that fails
+    fast carries its unused time over.
+    """
+
+    def chat(**kwargs: Any) -> Any:
+        return ollama_reply("not json" if kwargs["model"] == "primary" else RESULT_JSON)
+
+    fake = install_fake_ollama(monkeypatch, chat)
+
+    inspect_csv(SAMPLE_CSV, model="primary", fallback_model="fallback", timeout_seconds=10)
+
+    primary, fallback = (kwargs["timeout"] for kwargs in fake.client_kwargs)
+    assert primary == pytest.approx(7.0, abs=0.1)
+    assert 9.0 < fallback <= 10.0
+
+
+def test_a_single_model_gets_the_whole_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Without a fallback there is nothing to reserve time for."""
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(RESULT_JSON))
+
+    inspect_csv(SAMPLE_CSV, model="only", fallback_model="only", timeout_seconds=10)
+
+    (kwargs,) = fake.client_kwargs
+    assert kwargs["timeout"] == pytest.approx(10.0, abs=0.1)
+
+
+def test_a_model_skipped_for_lack_of_budget_is_logged(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Operators see which model the budget left out, to tune timeout_seconds."""
+    # A primary allowed the whole budget leaves nothing for the fallback.
+    monkeypatch.setattr(inspect_module, "PRIMARY_SHARE", 1.0)
+
+    def invoker(prompt: str, model: str) -> str:
+        time.sleep(1)
+        return RESULT_JSON
+
+    with caplog.at_level(logging.INFO), pytest.raises(InspectionTimeoutError):
+        inspect_csv(
+            SAMPLE_CSV,
+            model="primary",
+            fallback_model="fallback",
+            model_invoker=invoker,
+            timeout_seconds=0.2,
+        )
+
+    skipped = [
+        r.getMessage() for r in caplog.records if "Skipping model 'fallback'" in r.getMessage()
+    ]
+    assert skipped
 
 
 def test_ollama_client_receives_the_remaining_budget(monkeypatch: pytest.MonkeyPatch) -> None:

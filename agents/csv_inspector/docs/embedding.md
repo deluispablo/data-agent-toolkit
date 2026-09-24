@@ -195,9 +195,10 @@ only known when it is called.
 
 `timeout_seconds` is **one budget for the whole model phase**, shared by
 the primary and fallback models, so a request never waits longer than it.
-Each model may use an equal share of what is left (half for the primary
-when there is a fallback), so a hung primary still leaves the fallback
-time; time a model does not use carries over. The library enforces it
+With a fallback, the primary may use about 70 % of the budget and the
+fallback everything left, so a hung primary still leaves the fallback
+about 30 %; time the primary does not use carries over. On a CPU-only
+local deployment, budget for a cold model load: 90 s or more. The library enforces it
 itself, so custom invokers are bounded too, and also passes each model's
 share to the HTTP client (in seconds for Ollama, in milliseconds for
 Gemini). When it runs out, `InspectionTimeoutError` is raised.

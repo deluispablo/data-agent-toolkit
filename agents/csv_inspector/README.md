@@ -123,10 +123,11 @@ becomes `string`, the safe type:
 
 `timeout_seconds` is **one overall budget for the model phase**, shared by
 the primary and fallback models, so the worst case really is
-`timeout_seconds`. Each model may use an equal share of what is left (half
-for the primary when there is a fallback), so a hung or slowly loading
-primary still leaves the fallback time; time a model does not use carries
-over. The library enforces it, so custom invokers are bounded too, and
+`timeout_seconds`. With a fallback, the primary may use about 70 % of the
+budget and the fallback gets everything left, so a slowly loading primary
+(a cold 7B model on CPU) usually still answers, while a hung one leaves the
+fallback about 30 %; time the primary does not use carries over. A model
+the budget leaves out is logged at INFO, to help tune `timeout_seconds`. The library enforces it, so custom invokers are bounded too, and
 also passes each model's share to the HTTP clients. When it runs out,
 `InspectionTimeoutError` is raised (for example, map it to HTTP 504).
 

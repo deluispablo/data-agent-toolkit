@@ -6,9 +6,10 @@ its asyncio counterpart. Both share the same steps and guarantees:
 * configuration is resolved and checked **before** the source is read, so a
   non-seekable stream is never consumed only to fail on a missing setting;
 * ``timeout_seconds`` is one overall budget for the model phase, shared by
-  the primary and fallback models (each gets an equal share of what is
-  left, so a hung primary still leaves the fallback time), and enforced by
-  the library itself, so custom invokers are bounded too;
+  the primary and fallback models (the primary may use about 70 % of it,
+  so a slowly loading primary rarely loses its answer while a hung one
+  still leaves the fallback time), and enforced by the library itself, so
+  custom invokers are bounded too;
 * no state is shared between calls: every call builds its own clients.
 """
 
@@ -53,6 +54,9 @@ from ._sampling import (
 
 logger = logging.getLogger(__name__)
 
+PRIMARY_SHARE = 0.7
+"""Fraction of the remaining budget a model may use when another one follows it."""
+
 _SyncCall = Callable[[str, str, float | None], str]
 _AsyncCall = Callable[[str, str, float | None], Awaitable[str]]
 
@@ -78,14 +82,20 @@ class _Deadline:
         return self._expires_at - time.monotonic()
 
     def share(self, models_left: int) -> float | None:
-        """This model's slice of the budget: an equal share of what is left.
+        """This model's slice of the budget: most of what is left, or all of it.
 
-        Giving the current model the whole remainder would let a hung or
-        slowly loading primary spend it all, so the fallback, needed exactly
-        then, would never run. Time a model does not use carries over.
+        Giving the current model the whole remainder would let a hung primary
+        spend it all, so the fallback, needed exactly then, would never run.
+        An equal split has the opposite flaw: a cold 7B load on CPU often
+        needs more than half, so the weaker fallback answered on every cold
+        start. A model followed by another one gets :data:`PRIMARY_SHARE` of
+        what is left; the last one gets everything. Time a model does not
+        use carries over.
         """
         remaining = self.remaining()
-        return None if remaining is None else remaining / models_left
+        if remaining is None:
+            return None
+        return remaining * PRIMARY_SHARE if models_left > 1 else remaining
 
     @property
     def expired(self) -> bool:
@@ -246,6 +256,7 @@ class _Run:
         """
         for index, model in enumerate(self._candidates):
             if self._deadline.expired:
+                self._log_skipped(self._candidates[index:])
                 raise self._timeout_error()
             logger.info("Inspecting '%s' with model '%s'.", self._samples.description, model)
             yield model, self._deadline.share(len(self._candidates) - index)
@@ -268,7 +279,20 @@ class _Run:
             and isinstance(exc, ModelTimeoutError)
         )
         if self._deadline.expired or last_timed_out:
+            self._log_skipped(self._candidates[self._candidates.index(model) + 1 :])
             raise self._timeout_error() from exc
+
+    def _log_skipped(self, models: tuple[str, ...]) -> None:
+        """Name the models the time budget left out, to help tune ``timeout_seconds``."""
+        for model in models:
+            share = 1.0 if model == self._candidates[-1] else PRIMARY_SHARE
+            logger.info(
+                "Skipping model '%s': the %.2fs time budget ran out (it would have had "
+                "%.0f%% of what the models before it left).",
+                model,
+                self._timeout_seconds,
+                share * 100,
+            )
 
     def succeeded(self, model: str, result: CSVInspectionResult) -> CSVInspectionResult:
         """Ground a validated answer in the samples and return it."""
@@ -345,9 +369,10 @@ def inspect_csv(
             overlaps the head. ``0`` disables tail sampling.
         timeout_seconds: Overall time budget for the model phase, shared by
             the primary and fallback models and enforced even for custom
-            invokers. Each model may use an equal share of what is left
-            (half for the primary when there is a fallback); time it does
-            not use carries over. ``None`` (default) means no limit.
+            invokers. With a fallback, the primary may use about 70 % of
+            it (:data:`PRIMARY_SHARE`) and the fallback everything left;
+            time the primary does not use carries over. ``None`` (default)
+            means no limit.
         model_invoker: A custom ``(prompt, model) -> text`` callable. When
             given, it takes precedence over ``backend`` (which then only
             selects default model names). Any exception it raises, other

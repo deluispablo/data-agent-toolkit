@@ -1,0 +1,40 @@
+name: Feature request
+description: Propose an improvement to an agent, or a new agent.
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Agent
+      options:
+        - csv_inspector
+        - New agent
+        - Repository tooling (CI, packaging, docs)
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The change you have in mind, including any public API it adds or changes.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: principles
+    attributes:
+      label: Design principles
+      description: See the [design principles](https://github.com/deluispablo/data-agent-toolkit/blob/main/README.md#design-principles).
+      options:
+        - label: It keeps local, free execution (Ollama) as the default, and any cloud backend opt-in.
+        - label: It keeps reads and model calls bounded (no full loads of large sources).

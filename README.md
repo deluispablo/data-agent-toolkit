@@ -29,6 +29,15 @@ from csv_inspector import inspect_csv
 result = inspect_csv(uploaded_bytes)
 ```
 
+## Examples
+
+Runnable hosts that show how to embed an agent. They are executable
+documentation to read and copy: never built, tagged or published.
+
+| Example | What it shows | How to run |
+|---|---|---|
+| `csv_inspector_api` | A FastAPI service that embeds `csv-inspector` behind HTTP endpoints (work in progress). | `uv run uvicorn csv_inspector_api.app:create_app --factory` · [README](examples/csv_inspector_api/README.md) |
+
 ## Design principles
 
 1. **Local-first, dual-LLM.** Every agent defaults to a free, local Ollama
@@ -53,7 +62,8 @@ result = inspect_csv(uploaded_bytes)
 ## Repository layout
 
 Each agent is self-contained under `agents/<name>/`: its code, tests,
-fixtures, docs, demo and tool configuration. The root holds only what the
+fixtures, docs, demo and tool configuration. Each example is self-contained
+under `examples/<name>/` in the same way. The root holds only what the
 agents share: the [uv](https://docs.astral.sh/uv/) workspace and lockfile,
 the shared ruff defaults, CI and the project's policies. See
 [ARCHITECTURE.md](ARCHITECTURE.md) for the full layout and the reasoning

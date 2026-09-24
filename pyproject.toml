@@ -5,8 +5,9 @@
 # See ARCHITECTURE.md.
 
 [tool.uv.workspace]
-# Every agent is a member just by existing: adding one needs no edit here.
-members = ["agents/*"]
+# Every agent and every example is a member just by existing: adding one
+# needs no edit here.
+members = ["agents/*", "examples/*"]
 
 [dependency-groups]
 # Development tooling, installed by `uv sync` and pinned in uv.lock.

@@ -101,6 +101,36 @@ jobs:
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
         run: uv run --directory "agents/${{ matrix.agent.name }}" coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
 
+  test-lowest:
+    # The jobs above test the versions pinned in uv.lock, so a dependency
+    # floor that is too low would never fail them. This job installs the
+    # lowest versions each agent's pyproject.toml allows for its direct
+    # dependencies, on the oldest supported Python, and runs the tests.
+    name: Tests, lowest dependencies (${{ matrix.agent.name }})
+    needs: agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJSON(needs.agents.outputs.agents) }}
+    env:
+      AGENT: ${{ matrix.agent.name }}
+      EXTRAS: ${{ matrix.agent.extras }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+      - name: Install the lowest direct dependency versions
+        run: |
+          uv venv --python 3.10 "$RUNNER_TEMP/lowest-venv"
+          export VIRTUAL_ENV="$RUNNER_TEMP/lowest-venv"
+          uv pip install --resolution lowest-direct "./agents/$AGENT${EXTRAS:+[$EXTRAS]}"
+          uv pip install pytest
+          uv pip list
+      - name: Run the tests
+        working-directory: agents/${{ matrix.agent.name }}
+        run: '"$RUNNER_TEMP/lowest-venv/bin/python" -m pytest'
+
   package:
     # Builds each agent exactly as a consumer receives it and installs it with
     # plain pip into fresh virtual environments, without the repository on the

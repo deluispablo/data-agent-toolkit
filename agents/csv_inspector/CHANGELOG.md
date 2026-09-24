@@ -56,6 +56,11 @@ listed under **Changed (breaking)**.
   equal to the quote character is read as doubled quotes
   (`escapechar=None`, `doublequote=True`)
   ([#48](https://github.com/deluispablo/data-agent-toolkit/issues/48)).
+- The `ollama` floor was `>=0.6`, but `ollama` 0.6.0 and 0.6.1 cannot be
+  used as a context manager, so with them every local model call failed.
+  The floor is now `ollama>=0.6.2`, and CI tests the lowest allowed version
+  of every direct dependency
+  ([#49](https://github.com/deluispablo/data-agent-toolkit/issues/49)).
 - Ollama requests did not cap the reply length, so a model stuck repeating
   itself (for example an endless `example_values` list) generated until the
   timeout, or forever with no timeout. The reply is now capped at the 1024

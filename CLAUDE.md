@@ -62,14 +62,14 @@ uv lock                                                   # after any pyproject.
 
 ## .github/
 
-- `workflows/ci.yml`: jobs `agents` (discover `agents/*`), `lint` (`uv sync --locked` + ruff check/format), `typecheck` (mypy per agent), `test` (pytest --cov, Python 3.10–3.14 Linux + 3.14 Windows, coverage summary), `package` (`python -m build`, `twine check --strict`, install wheel and sdist in clean venvs, run `smoke_test_installed.py` outside repo).
+- `workflows/ci.yml`: jobs `agents` (discover `agents/*`), `lint` (`uv sync --locked` + ruff check/format), `typecheck` (mypy per agent), `test` (pytest --cov, Python 3.10–3.14 Linux + 3.14 Windows, coverage summary), `test-lowest` (Python 3.10, `--resolution lowest-direct`, all extras, pytest: catch too-low floors), `package` (`python -m build`, `twine check --strict`, install wheel and sdist in clean venvs, run `smoke_test_installed.py` outside repo).
 - `dependabot.yml`: weekly updates, `github-actions` + `uv`.
 - `pull_request_template.md`: PR checklist.
 - `ISSUE_TEMPLATE/`: `bug_report.yml`, `feature_request.yml`, `config.yml` (blank issues on, private security-report link).
 
 ## agents/csv_inspector/ (package root)
 
-- `pyproject.toml`: hatchling build. Python `>=3.10`. Deps `chardet>=5.2,<8`, `ollama>=0.6,<1`, `pydantic>=2.6,<3`. Extra `[cloud]`: `google-genai>=2.0,<3`, `pydantic-settings>=2.0,<3`. Script `csv-inspector = csv_inspector.cli:main`. Sdist ship only `src`, `docs`, README, CHANGELOG, LICENSE. Mypy strict on src, scripts, samples, main_demo, tests. Coverage `fail_under = 93`. Ranges = host contract, change on purpose only.
+- `pyproject.toml`: hatchling build. Python `>=3.10`. Deps `chardet>=5.2,<8`, `ollama>=0.6.2,<1`, `pydantic>=2.6,<3`. Extra `[cloud]`: `google-genai>=2.0,<3`, `pydantic-settings>=2.0,<3`. Script `csv-inspector = csv_inspector.cli:main`. Sdist ship only `src`, `docs`, README, CHANGELOG, LICENSE. Mypy strict on src, scripts, samples, main_demo, tests. Coverage `fail_under = 93`. Ranges = host contract, change on purpose only.
 - `README.md`: install, quickstart, public API, sources, timeouts, how it work, backends, settings, CLI, errors.
 - `CHANGELOG.md`: Keep a Changelog. User-visible change go to `[Unreleased]`.
 - `.env.example`: env vars `LLM_BACKEND`, `OLLAMA_MODEL`, `OLLAMA_FALLBACK_MODEL`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `CLOUD_MODEL`, `CLOUD_FALLBACK_MODEL`.

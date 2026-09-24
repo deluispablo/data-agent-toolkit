@@ -26,6 +26,7 @@ import csv
 import io
 import json
 import logging
+import sys
 from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -34,6 +35,11 @@ from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+# matrix.py imports SampleCase from this module. When this file runs as a
+# script, register it under its import name so that import reuses this
+# module instead of executing the file a second time.
+sys.modules.setdefault("generate_samples", sys.modules[__name__])
 
 SAMPLES_DIR = Path(__file__).parent
 UTF8_BOM = b"\xef\xbb\xbf"
@@ -61,6 +67,8 @@ class SampleCase:
             derivation in :func:`derive_columns` cannot be trusted to parse.
             Every other fixture gets ``expected["columns"]`` derived from
             its bytes by :func:`build_manifest`.
+        generated: True for fixtures rendered from a ``matrix.py`` spec
+            rather than written by hand.
     """
 
     filename: str
@@ -71,6 +79,7 @@ class SampleCase:
     known_limitation: bool = False
     notes: str | None = None
     columns: list[str] | None = None
+    generated: bool = False
 
 
 def _encode(text: str, encoding: str, *, bom: bytes = b"") -> bytes:
@@ -1087,6 +1096,11 @@ CASES: list[SampleCase] = [
     ),
 ]
 
+# Parametric fixtures (samples/matrix.py) follow the hand-written ones.
+from matrix import MATRIX, render  # noqa: E402
+
+CASES.extend(render(spec) for spec in MATRIX)
+
 
 def derive_columns(case: SampleCase) -> list[str] | None:
     """Read the expected column names from a fixture's bytes.
@@ -1146,7 +1160,8 @@ def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
 
     Returns:
         A mapping of fixture filename to its category, description,
-        expected ground truth, known-limitation flag and notes.
+        expected ground truth, known-limitation and generated flags and
+        notes.
     """
     return {
         case.filename: {
@@ -1157,6 +1172,7 @@ def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
                 "columns": case.columns if case.columns is not None else derive_columns(case),
             },
             "known_limitation": case.known_limitation,
+            "generated": case.generated,
             "notes": case.notes,
         }
         for case in cases

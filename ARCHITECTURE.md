@@ -153,6 +153,8 @@ Around the package:
   and sdist, from outside the repository.
 - `samples/`: generated, byte-exact fixtures plus `manifest.json`, written
   by `samples/generate_samples.py`. Edit the generator, never the fixtures.
+  Hand-written cases live in `generate_samples.py`; combinations of quirks
+  are specs in `samples/matrix.py`, rendered into `gen_*.csv` files.
 - `tests/`: `conftest.py` clears the settings variables and runs each test
   in an empty directory; `fakes.py` fakes every backend. The files are
   split by concern: pipeline, prompt, parsing and grounding

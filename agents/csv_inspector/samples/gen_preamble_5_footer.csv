@@ -1,0 +1,158 @@
+# Exportado desde SistemaXYZ v3.2
+# Empresa: Distribuciones Ejemplo S.A.
+# Periodo: 2023-07-19 a 2023-12-22
+# Moneda: EUR
+# Filas de datos: 150
+Fecha	Cliente	Importe	Concepto	Cantidad	Región
+2023-07-19	"Taller ""El Rápido"""	594.02	Servicio de mantenimiento	191	Madrid
+2023-07-20	"Taller ""El Rápido"""	2403.91	Servicio de mantenimiento	400	Cataluña
+2023-07-21	Peña & Hijos	3929.61	Consultoría técnica	298	Galicia
+2023-07-22	Ibáñez Logística	922.97	Consultoría técnica	271	Cataluña
+2023-07-23	García S.L.	1053.25	Transporte de mercancía	425	Galicia
+2023-07-24	García S.L.	1387.54	Consultoría técnica	155	Cataluña
+2023-07-25	Muñoz Hermanos	4540.98	Transporte de mercancía	350	Cataluña
+2023-07-26	Fernández, Asociados	311.18	Revisión anual de equipos	29	Andalucía
+2023-07-27	Muñoz Hermanos	1287.62	Servicio de mantenimiento	39	Andalucía
+2023-07-28	Peña & Hijos	4122.65	Transporte de mercancía	99	Madrid
+2023-07-29	Acme Distribuciones S.L.	474.93	Servicio de mantenimiento	173	Aragón
+2023-07-30	Acme Distribuciones S.L.	651.49	Consultoría técnica	252	Madrid
+2023-07-31	Acme Distribuciones S.L.	4593.26	Servicio de mantenimiento	311	Aragón
+2023-08-01	Fernández, Asociados	2206.73	Revisión anual de equipos	474	Galicia
+2023-08-02	Núñez Ortega y Cía.	3872.04	Transporte de mercancía	152	Cataluña
+2023-08-03	Acme Distribuciones S.L.	444.24	Formación interna	361	Aragón
+2023-08-04	Fernández, Asociados	3412.03	Formación interna	131	Madrid
+2023-08-05	Ibáñez Logística	620.88	Formación interna	67	País Vasco
+2023-08-06	"Taller ""El Rápido"""	2321.21	Transporte de mercancía	164	Galicia
+2023-08-07	Acme Distribuciones S.L.	1970.43	Transporte de mercancía	13	Galicia
+2023-08-08	Fernández, Asociados	52.24	Transporte de mercancía	384	Aragón
+2023-08-09	Muñoz Hermanos	1612.86	Compra de material informático	144	Galicia
+2023-08-10	García S.L.	4131.27	Servicio de mantenimiento	494	Andalucía
+2023-08-11	Fernández, Asociados	147.13	Consultoría técnica	388	País Vasco
+2023-08-12	Fernández, Asociados	832.86	Compra de material informático	381	Cataluña
+2023-08-13	Núñez Ortega y Cía.	2944.93	Consultoría técnica	208	Andalucía
+2023-08-14	Núñez Ortega y Cía.	3621.46	Servicio de mantenimiento	408	Aragón
+2023-08-15	García S.L.	2238.44	Revisión anual de equipos	60	Cataluña
+2023-08-16	Peña & Hijos	4908.38	Formación interna	407	Cataluña
+2023-08-17	García S.L.	3733.88	Consultoría técnica	403	Aragón
+2023-08-18	"Taller ""El Rápido"""	2783.71	Servicio de mantenimiento	213	Madrid
+2023-08-19	Ibáñez Logística	2578.94	Compra de material informático	103	Andalucía
+2023-08-20	García S.L.	4710.86	Consultoría técnica	10	Galicia
+2023-08-21	"Taller ""El Rápido"""	959.16	Formación interna	121	Andalucía
+2023-08-22	Acme Distribuciones S.L.	1432.82	Consultoría técnica	497	Aragón
+2023-08-23	García S.L.	2498.89	Servicio de mantenimiento	422	País Vasco
+2023-08-24	Núñez Ortega y Cía.	515.05	Transporte de mercancía	429	Andalucía
+2023-08-25	Muñoz Hermanos	4739.70	Transporte de mercancía	62	Galicia
+2023-08-26	Ibáñez Logística	3133.58	Formación interna	198	Cataluña
+2023-08-27	"Taller ""El Rápido"""	1298.59	Consultoría técnica	49	Andalucía
+2023-08-28	Acme Distribuciones S.L.	1879.77	Formación interna	320	País Vasco
+2023-08-29	Muñoz Hermanos	2428.59	Consultoría técnica	72	Andalucía
+2023-08-30	Fernández, Asociados	573.81	Revisión anual de equipos	98	Galicia
+2023-08-31	Acme Distribuciones S.L.	536.07	Servicio de mantenimiento	206	Cataluña
+2023-09-01	Peña & Hijos	37.30	Revisión anual de equipos	47	Cataluña
+2023-09-02	Peña & Hijos	3689.89	Servicio de mantenimiento	460	País Vasco
+2023-09-03	Ibáñez Logística	1645.57	Consultoría técnica	373	País Vasco
+2023-09-04	"Taller ""El Rápido"""	3956.09	Formación interna	447	Cataluña
+2023-09-05	Muñoz Hermanos	4953.88	Transporte de mercancía	323	Cataluña
+2023-09-06	Fernández, Asociados	3565.80	Consultoría técnica	9	Cataluña
+2023-09-07	"Taller ""El Rápido"""	69.66	Consultoría técnica	48	Madrid
+2023-09-08	Peña & Hijos	317.22	Consultoría técnica	117	Andalucía
+2023-09-09	Peña & Hijos	1203.97	Consultoría técnica	442	Cataluña
+2023-09-10	Núñez Ortega y Cía.	2921.35	Compra de material informático	14	Galicia
+2023-09-11	"Taller ""El Rápido"""	1526.67	Compra de material informático	154	Andalucía
+2023-09-12	Núñez Ortega y Cía.	555.71	Formación interna	151	Andalucía
+2023-09-13	Ibáñez Logística	4379.09	Compra de material informático	220	Cataluña
+2023-09-14	Acme Distribuciones S.L.	1327.32	Consultoría técnica	160	Galicia
+2023-09-15	"Taller ""El Rápido"""	4361.14	Revisión anual de equipos	118	Madrid
+2023-09-16	García S.L.	3687.41	Transporte de mercancía	232	País Vasco
+2023-09-17	Muñoz Hermanos	427.57	Revisión anual de equipos	451	Aragón
+2023-09-18	Muñoz Hermanos	2843.46	Compra de material informático	305	Madrid
+2023-09-19	Acme Distribuciones S.L.	767.19	Revisión anual de equipos	54	Madrid
+2023-09-20	Ibáñez Logística	2082.74	Revisión anual de equipos	422	País Vasco
+2023-09-21	"Taller ""El Rápido"""	4494.23	Compra de material informático	165	Andalucía
+2023-09-22	García S.L.	1854.86	Revisión anual de equipos	483	País Vasco
+2023-09-23	"Taller ""El Rápido"""	2013.36	Compra de material informático	119	Madrid
+2023-09-24	Núñez Ortega y Cía.	2410.07	Transporte de mercancía	305	Andalucía
+2023-09-25	Acme Distribuciones S.L.	3113.28	Servicio de mantenimiento	165	Madrid
+2023-09-26	Muñoz Hermanos	288.28	Compra de material informático	146	Madrid
+2023-09-27	Peña & Hijos	3522.79	Transporte de mercancía	39	País Vasco
+2023-09-28	Muñoz Hermanos	3799.80	Formación interna	469	Madrid
+2023-09-29	Ibáñez Logística	3382.60	Compra de material informático	246	Andalucía
+2023-09-30	Acme Distribuciones S.L.	4421.27	Compra de material informático	217	Aragón
+2023-10-01	"Taller ""El Rápido"""	1952.96	Compra de material informático	98	País Vasco
+2023-10-02	Núñez Ortega y Cía.	3836.13	Servicio de mantenimiento	476	Cataluña
+2023-10-03	Fernández, Asociados	17.31	Consultoría técnica	50	Galicia
+2023-10-04	García S.L.	4507.56	Consultoría técnica	120	Madrid
+2023-10-05	Núñez Ortega y Cía.	2851.47	Formación interna	442	Galicia
+2023-10-06	García S.L.	3325.41	Servicio de mantenimiento	372	Galicia
+2023-10-07	Peña & Hijos	3957.39	Formación interna	167	Cataluña
+2023-10-08	Acme Distribuciones S.L.	1924.57	Formación interna	454	Andalucía
+2023-10-09	Peña & Hijos	2923.57	Compra de material informático	229	Cataluña
+2023-10-10	García S.L.	4058.35	Compra de material informático	270	Andalucía
+2023-10-11	Peña & Hijos	3578.64	Consultoría técnica	237	Cataluña
+2023-10-12	Núñez Ortega y Cía.	3266.91	Compra de material informático	94	Andalucía
+2023-10-13	Muñoz Hermanos	2526.15	Transporte de mercancía	258	Cataluña
+2023-10-14	Ibáñez Logística	1012.99	Revisión anual de equipos	490	Cataluña
+2023-10-15	Acme Distribuciones S.L.	4456.13	Revisión anual de equipos	412	Andalucía
+2023-10-16	Muñoz Hermanos	1006.58	Servicio de mantenimiento	288	Cataluña
+2023-10-17	Fernández, Asociados	803.28	Compra de material informático	207	Madrid
+2023-10-18	Acme Distribuciones S.L.	4306.18	Consultoría técnica	224	País Vasco
+2023-10-19	Fernández, Asociados	2068.40	Consultoría técnica	355	Galicia
+2023-10-20	Peña & Hijos	4717.64	Compra de material informático	439	Aragón
+2023-10-21	Fernández, Asociados	2006.69	Servicio de mantenimiento	29	País Vasco
+2023-10-22	García S.L.	3335.00	Transporte de mercancía	244	Madrid
+2023-10-23	Ibáñez Logística	574.26	Formación interna	255	Andalucía
+2023-10-24	Muñoz Hermanos	4312.11	Compra de material informático	444	Madrid
+2023-10-25	Muñoz Hermanos	4082.85	Consultoría técnica	434	País Vasco
+2023-10-26	Fernández, Asociados	1845.65	Consultoría técnica	116	País Vasco
+2023-10-27	Núñez Ortega y Cía.	2656.77	Transporte de mercancía	277	Cataluña
+2023-10-28	García S.L.	4082.07	Servicio de mantenimiento	456	Cataluña
+2023-10-29	Muñoz Hermanos	3870.41	Servicio de mantenimiento	196	Galicia
+2023-10-30	Ibáñez Logística	2609.51	Revisión anual de equipos	103	Galicia
+2023-10-31	Ibáñez Logística	1645.20	Servicio de mantenimiento	293	Galicia
+2023-11-01	"Taller ""El Rápido"""	3499.50	Compra de material informático	419	Aragón
+2023-11-02	Fernández, Asociados	3841.83	Formación interna	324	Madrid
+2023-11-03	Peña & Hijos	1108.23	Formación interna	447	Andalucía
+2023-11-04	Fernández, Asociados	4939.72	Revisión anual de equipos	411	Andalucía
+2023-11-05	"Taller ""El Rápido"""	2777.17	Transporte de mercancía	386	Andalucía
+2023-11-06	García S.L.	2431.49	Revisión anual de equipos	458	Cataluña
+2023-11-07	Núñez Ortega y Cía.	522.73	Transporte de mercancía	254	Aragón
+2023-11-08	Fernández, Asociados	3785.91	Revisión anual de equipos	16	Madrid
+2023-11-09	Acme Distribuciones S.L.	857.70	Revisión anual de equipos	156	Andalucía
+2023-11-10	Fernández, Asociados	1006.21	Servicio de mantenimiento	46	Andalucía
+2023-11-11	García S.L.	4602.02	Consultoría técnica	429	Cataluña
+2023-11-12	Peña & Hijos	2924.60	Servicio de mantenimiento	458	Andalucía
+2023-11-13	Núñez Ortega y Cía.	3980.43	Compra de material informático	466	Madrid
+2023-11-14	Fernández, Asociados	977.97	Servicio de mantenimiento	376	País Vasco
+2023-11-15	"Taller ""El Rápido"""	753.04	Compra de material informático	354	Andalucía
+2023-11-16	García S.L.	2830.09	Revisión anual de equipos	334	Aragón
+2023-11-17	Acme Distribuciones S.L.	2299.48	Servicio de mantenimiento	422	País Vasco
+2023-11-18	Fernández, Asociados	4512.53	Servicio de mantenimiento	400	Aragón
+2023-11-19	Peña & Hijos	1269.76	Revisión anual de equipos	168	País Vasco
+2023-11-20	Acme Distribuciones S.L.	1579.03	Compra de material informático	32	Galicia
+2023-11-21	García S.L.	3320.17	Compra de material informático	481	Aragón
+2023-11-22	Ibáñez Logística	2072.75	Consultoría técnica	349	Aragón
+2023-11-23	Muñoz Hermanos	1032.48	Revisión anual de equipos	356	País Vasco
+2023-11-24	"Taller ""El Rápido"""	1802.02	Transporte de mercancía	246	País Vasco
+2023-11-25	Núñez Ortega y Cía.	649.73	Consultoría técnica	108	Andalucía
+2023-11-26	Ibáñez Logística	4258.93	Compra de material informático	423	País Vasco
+2023-11-27	Núñez Ortega y Cía.	3507.87	Transporte de mercancía	148	País Vasco
+2023-11-28	"Taller ""El Rápido"""	4991.63	Compra de material informático	191	Aragón
+2023-11-29	Acme Distribuciones S.L.	4169.35	Transporte de mercancía	457	Aragón
+2023-11-30	Fernández, Asociados	4894.40	Formación interna	45	Cataluña
+2023-12-01	"Taller ""El Rápido"""	2388.06	Revisión anual de equipos	31	Cataluña
+2023-12-02	Ibáñez Logística	575.52	Compra de material informático	318	Andalucía
+2023-12-03	Fernández, Asociados	4397.82	Revisión anual de equipos	463	País Vasco
+2023-12-04	"Taller ""El Rápido"""	2682.25	Formación interna	76	Cataluña
+2023-12-05	"Taller ""El Rápido"""	3828.31	Compra de material informático	318	Madrid
+2023-12-06	Acme Distribuciones S.L.	899.22	Transporte de mercancía	16	Andalucía
+2023-12-07	Muñoz Hermanos	4242.92	Servicio de mantenimiento	211	País Vasco
+2023-12-08	Fernández, Asociados	930.85	Transporte de mercancía	361	País Vasco
+2023-12-09	Núñez Ortega y Cía.	2179.24	Revisión anual de equipos	45	Aragón
+2023-12-10	García S.L.	849.38	Formación interna	294	País Vasco
+2023-12-11	García S.L.	2788.67	Revisión anual de equipos	278	Aragón
+2023-12-12	Acme Distribuciones S.L.	419.32	Consultoría técnica	117	Aragón
+2023-12-13	"Taller ""El Rápido"""	1096.69	Compra de material informático	119	Andalucía
+2023-12-14	Núñez Ortega y Cía.	3556.65	Consultoría técnica	20	País Vasco
+2023-12-15	"Taller ""El Rápido"""	4217.39	Compra de material informático	73	Cataluña
+
+TOTAL		373402.73			

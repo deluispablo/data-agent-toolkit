@@ -1,0 +1,41 @@
+﻿"Fecha"|"Cliente"|"Importe"|"Concepto"|"Cantidad"|"Región"|"Código"|"Estado"|"Fecha_2"|"Cliente_2"|"Importe_2"|"Concepto_2"
+2023-03-24|Fernández, Asociados|4.177,00|Formación interna|385|País Vasco|A-0267|Pagado|2023-04-01|Núñez Ortega y Cía.|2.441,99|Revisión anual de equipos
+2023-03-25|Ibáñez Logística|4.310,03|Transporte de mercancía|38|Andalucía|H-9886|Anulado|2023-04-02|Muñoz Hermanos|2.823,75|Servicio de mantenimiento
+2023-03-26|Fernández, Asociados|2.612,47|Servicio de mantenimiento|73|Andalucía|C-3537|Pendiente|2023-04-03|Peña & Hijos|4.429,18|Consultoría técnica
+2023-03-27|García S.L.|3.816,61|Revisión anual de equipos|366|Madrid|B-4647|En revisión|2023-04-04|Ibáñez Logística
+2023-03-28|Muñoz Hermanos|3.879,82|Transporte de mercancía|14|Aragón|H-1154|Pagado|2023-04-05|Acme Distribuciones S.L.|1.324,68|Formación interna
+2023-03-29|Ibáñez Logística|4.977,38|Servicio de mantenimiento|352|Cataluña|C-7266|En revisión|2023-04-06|Peña & Hijos|1.846,38|Consultoría técnica
+2023-03-30|Acme Distribuciones S.L.|3.791,71|Formación interna|213|País Vasco|D-3875|En revisión|2023-04-07|García S.L.|3.413,68|Revisión anual de equipos
+2023-03-31|Peña & Hijos|1.622,91|Transporte de mercancía|14|Galicia|B-4105|Pagado|2023-04-08|Acme Distribuciones S.L.|3.092,92|Consultoría técnica
+2023-04-01|"Taller ""El Rápido"""|2.381,44|Transporte de mercancía|6|País Vasco|A-2809|En revisión|2023-04-09|Muñoz Hermanos|2.450,38|Transporte de mercancía
+2023-04-02|Núñez Ortega y Cía.|1.458,50|Servicio de mantenimiento|177|Madrid|E-7320|En revisión|2023-04-10|Acme Distribuciones S.L.|1.710,94|Compra de material informático
+2023-04-03|Fernández, Asociados|225,61|Servicio de mantenimiento|248|Aragón|F-7372|Anulado|2023-04-11|"Taller ""El Rápido"""|2.827,02
+2023-04-04|Acme Distribuciones S.L.|57,95|Compra de material informático|375|Aragón|H-8189|Pagado|2023-04-12|Acme Distribuciones S.L.|2.024,35|Consultoría técnica
+2023-04-05|Acme Distribuciones S.L.|4.422,77|Transporte de mercancía|281|Madrid|H-3095|Pendiente|2023-04-13|Muñoz Hermanos|3.993,67|Formación interna
+2023-04-06|Núñez Ortega y Cía.|543,78|Transporte de mercancía|295|Galicia|F-4283|Pagado|2023-04-14|Acme Distribuciones S.L.|4.085,32|Transporte de mercancía
+2023-04-07|Muñoz Hermanos|2.057,41|Consultoría técnica|444|Cataluña|B-2831|En revisión|2023-04-15|Peña & Hijos|3.291,66|Revisión anual de equipos
+2023-04-08|Fernández, Asociados|2.626,56|Revisión anual de equipos|246|Cataluña|G-0240|Pagado|2023-04-16|Acme Distribuciones S.L.|1.653,28|Formación interna
+2023-04-09|Fernández, Asociados|4.295,57|Servicio de mantenimiento|59|Galicia|H-6687|En revisión|2023-04-17|"Taller ""El Rápido"""|2.032,38|Compra de material informático
+2023-04-10|Fernández, Asociados|3.109,76|Compra de material informático|282|Andalucía|C-1781|Anulado|2023-04-18|Fernández, Asociados
+2023-04-11|Fernández, Asociados|4.805,97|Transporte de mercancía|44|Cataluña|F-8565|Pendiente|2023-04-19|García S.L.|1.227,28|Compra de material informático
+2023-04-12|"Taller ""El Rápido"""|3.205,83|Revisión anual de equipos|404|Madrid|D-9277|En revisión|2023-04-20|Ibáñez Logística|3.454,77|Formación interna
+2023-04-13|Ibáñez Logística|4.039,63|Compra de material informático|372|Madrid|G-9710|Anulado|2023-04-21|Muñoz Hermanos|635,25|Compra de material informático
+2023-04-14|Ibáñez Logística|3.286,45|Revisión anual de equipos|174|Madrid|C-2544|En revisión|2023-04-22|García S.L.|4.876,24|Servicio de mantenimiento
+2023-04-15|García S.L.|2.446,83|Transporte de mercancía|301|Andalucía|E-5581|Pagado|2023-04-23|Fernández, Asociados|773,90|Consultoría técnica
+2023-04-16|Ibáñez Logística|4.525,36|Transporte de mercancía|480|Madrid|B-5627|Pagado|2023-04-24|Peña & Hijos|142,56|Servicio de mantenimiento
+2023-04-17|Ibáñez Logística|2.450,25|Revisión anual de equipos|335|Madrid|C-0991|Pendiente|2023-04-25|Peña & Hijos|2.466,16
+2023-04-18|"Taller ""El Rápido"""|219,46|Revisión anual de equipos|347|País Vasco|H-0883|Pendiente|2023-04-26|Núñez Ortega y Cía.|2.626,73|Servicio de mantenimiento
+2023-04-19|Muñoz Hermanos|4.169,99|Revisión anual de equipos|388|Andalucía|E-2176|Pagado|2023-04-27|"Taller ""El Rápido"""|2.941,51|Revisión anual de equipos
+2023-04-20|Muñoz Hermanos|107,68|Formación interna|82|Andalucía|D-2221|Pendiente|2023-04-28|"Taller ""El Rápido"""|1.628,17|Transporte de mercancía
+2023-04-21|"Taller ""El Rápido"""|3.066,68|Transporte de mercancía|426|Aragón|B-9565|En revisión|2023-04-29|Fernández, Asociados|2.891,55|Compra de material informático
+2023-04-22|"Taller ""El Rápido"""|1.641,23|Servicio de mantenimiento|227|Aragón|D-6471|Pagado|2023-04-30|Muñoz Hermanos|1.459,88|Revisión anual de equipos
+2023-04-23|Acme Distribuciones S.L.|2.208,51|Consultoría técnica|366|Aragón|B-3790|Anulado|2023-05-01|Acme Distribuciones S.L.|359,99|Formación interna
+2023-04-24|Ibáñez Logística|3.400,36|Compra de material informático|128|Andalucía|F-9424|En revisión|2023-05-02|"Taller ""El Rápido"""
+2023-04-25|García S.L.|3.782,83|Formación interna|221|Aragón|F-0800|Pendiente|2023-05-03|Peña & Hijos|4.996,83|Formación interna
+2023-04-26|Muñoz Hermanos|2.874,28|Compra de material informático|151|País Vasco|G-1099|Anulado|2023-05-04|Acme Distribuciones S.L.|3,51|Compra de material informático
+2023-04-27|Acme Distribuciones S.L.|680,39|Servicio de mantenimiento|168|Aragón|H-7770|Pendiente|2023-05-05|Muñoz Hermanos|3.281,71|Transporte de mercancía
+2023-04-28|Núñez Ortega y Cía.|1.548,23|Servicio de mantenimiento|123|Madrid|B-0346|En revisión|2023-05-06|Muñoz Hermanos|1.016,95|Transporte de mercancía
+2023-04-29|Fernández, Asociados|3.393,98|Formación interna|29|Andalucía|D-4082|Anulado|2023-05-07|Ibáñez Logística|4.412,74|Compra de material informático
+2023-04-30|Ibáñez Logística|3.617,24|Compra de material informático|447|Aragón|H-8144|Anulado|2023-05-08|Núñez Ortega y Cía.|4.184,98|Formación interna
+2023-05-01|Ibáñez Logística|348,61|Revisión anual de equipos|212|Cataluña|C-9239|En revisión|2023-05-09|Núñez Ortega y Cía.|1.543,88
+2023-05-02|Ibáñez Logística|617,13|Compra de material informático|402|Madrid|A-5807|Pagado|2023-05-10|Peña & Hijos|3.730,25|Transporte de mercancía

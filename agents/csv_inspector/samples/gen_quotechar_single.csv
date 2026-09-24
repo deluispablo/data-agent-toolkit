@@ -1,0 +1,41 @@
+'Fecha','Cliente','Importe','Concepto','Cantidad','Región'
+2023-02-06,Acme Distribuciones S.L.,3764.19,Transporte de mercancía,322,Galicia
+2023-02-07,'Fernández, Asociados',1880.63,Transporte de mercancía,65,Galicia
+2023-02-08,Núñez Ortega y Cía.,1732.36,Revisión anual de equipos,60,Madrid
+2023-02-09,'Fernández, Asociados',3209.23,Revisión anual de equipos,439,Andalucía
+2023-02-10,Acme Distribuciones S.L.,869.81,Formación interna,313,País Vasco
+2023-02-11,'Fernández, Asociados',1059.46,Servicio de mantenimiento,421,Andalucía
+2023-02-12,García S.L.,1288.38,Compra de material informático,80,Madrid
+2023-02-13,Acme Distribuciones S.L.,1361.82,Compra de material informático,360,Cataluña
+2023-02-14,Núñez Ortega y Cía.,3916.50,Consultoría técnica,353,Galicia
+2023-02-15,Núñez Ortega y Cía.,3954.14,Compra de material informático,322,Cataluña
+2023-02-16,'Fernández, Asociados',2652.63,Servicio de mantenimiento,387,Madrid
+2023-02-17,Taller "El Rápido",1731.27,Compra de material informático,291,Cataluña
+2023-02-18,Peña & Hijos,3200.22,Servicio de mantenimiento,363,Andalucía
+2023-02-19,Taller "El Rápido",4751.20,Formación interna,241,Andalucía
+2023-02-20,Muñoz Hermanos,3550.03,Servicio de mantenimiento,450,Cataluña
+2023-02-21,Taller "El Rápido",2405.35,Consultoría técnica,30,Madrid
+2023-02-22,García S.L.,1474.11,Compra de material informático,51,Cataluña
+2023-02-23,Muñoz Hermanos,3913.80,Compra de material informático,216,Madrid
+2023-02-24,Peña & Hijos,4551.62,Consultoría técnica,279,Aragón
+2023-02-25,Acme Distribuciones S.L.,1397.72,Consultoría técnica,185,Andalucía
+2023-02-26,Muñoz Hermanos,654.42,Revisión anual de equipos,148,Aragón
+2023-02-27,'Fernández, Asociados',4974.94,Transporte de mercancía,218,Madrid
+2023-02-28,Núñez Ortega y Cía.,2285.29,Consultoría técnica,170,Galicia
+2023-03-01,'Fernández, Asociados',507.20,Consultoría técnica,271,Aragón
+2023-03-02,Muñoz Hermanos,3265.12,Transporte de mercancía,405,Aragón
+2023-03-03,Núñez Ortega y Cía.,3441.25,Transporte de mercancía,500,Andalucía
+2023-03-04,García S.L.,1364.50,Servicio de mantenimiento,31,Galicia
+2023-03-05,García S.L.,3547.86,Transporte de mercancía,283,Galicia
+2023-03-06,Ibáñez Logística,4064.39,Compra de material informático,132,Madrid
+2023-03-07,Núñez Ortega y Cía.,2628.58,Revisión anual de equipos,451,Andalucía
+2023-03-08,Ibáñez Logística,1872.54,Servicio de mantenimiento,190,Aragón
+2023-03-09,Acme Distribuciones S.L.,2881.67,Transporte de mercancía,465,País Vasco
+2023-03-10,Peña & Hijos,1588.96,Formación interna,463,Madrid
+2023-03-11,Núñez Ortega y Cía.,2574.05,Transporte de mercancía,237,Galicia
+2023-03-12,García S.L.,2748.08,Transporte de mercancía,253,Aragón
+2023-03-13,Ibáñez Logística,4899.97,Formación interna,90,Galicia
+2023-03-14,Núñez Ortega y Cía.,4784.79,Servicio de mantenimiento,335,Cataluña
+2023-03-15,Núñez Ortega y Cía.,604.79,Transporte de mercancía,84,Cataluña
+2023-03-16,Acme Distribuciones S.L.,2432.27,Revisión anual de equipos,464,Galicia
+2023-03-17,García S.L.,535.52,Transporte de mercancía,11,Madrid

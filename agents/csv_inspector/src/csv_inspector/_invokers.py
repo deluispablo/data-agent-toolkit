@@ -261,6 +261,9 @@ class _CloudCall:
             temperature=0.0,
             response_mime_type="application/json",
             response_json_schema=CSVInspectionResult.model_json_schema(),
+            # No tools are passed; disabling AFC stops the SDK from logging an
+            # "AFC is enabled" INFO line and a WARNING on every call.
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
         )
         self._client_kwargs: dict[str, Any] = (
             {"api_key": self.credentials.api_key.get_secret_value()}
@@ -294,11 +297,26 @@ class _CloudCall:
         return ModelInvocationError(f"Cloud model '{model}' failed to respond: {message}")
 
 
+def _empty_response_reason(response: _GenaiResponse) -> str:
+    """Say why a Gemini response has no text: a blocked prompt or the finish reason."""
+    feedback = getattr(response, "prompt_feedback", None)
+    block_reason = getattr(feedback, "block_reason", None)
+    if block_reason:
+        return f" (prompt blocked: {getattr(block_reason, 'value', block_reason)})"
+    candidates = getattr(response, "candidates", None) or []
+    finish_reason = getattr(candidates[0], "finish_reason", None) if candidates else None
+    if finish_reason:
+        return f" (finish reason: {getattr(finish_reason, 'value', finish_reason)})"
+    return ""
+
+
 def _cloud_text(response: _GenaiResponse, model: str) -> str:
     """Extract the non-empty text of a Gemini response."""
     text = response.text
     if not text:
-        raise ModelInvocationError(f"Cloud model '{model}' returned an empty response.")
+        raise ModelInvocationError(
+            f"Cloud model '{model}' returned an empty response{_empty_response_reason(response)}."
+        )
     return text
 
 
@@ -318,13 +336,9 @@ def invoke_cloud_model(
     Schema, at ``temperature=0.0``. Credentials are checked before any client
     is created, and the API key never appears in logs or raised errors.
 
-    Note:
-        Unit-tested against a mocked client only; not yet verified against
-        the real service (see issue #5).
-
     Args:
         prompt: The fully-built prompt to send.
-        model: Name of the Gemini model to invoke (e.g. ``"gemini-2.5-flash"``).
+        model: Name of the Gemini model to invoke (e.g. ``"gemini-3.6-flash"``).
         settings: Injected settings; when ``None``, read from the environment.
         timeout_seconds: Client-side timeout for the request, or ``None``.
 

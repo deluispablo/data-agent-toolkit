@@ -205,11 +205,12 @@ never promotes an unlabelled data row to a footer.
 | `local` | Ollama | `pip install csv-inspector` + a running Ollama | ✅ |
 | `api` | Google Gemini: Gemini Developer API (API key) or Vertex AI (Application Default Credentials), via `google-genai` | `pip install "csv-inspector[cloud]"` + credentials | opt-in |
 
-> [!WARNING]
-> **The `api` backend is implemented and unit-tested against a mocked
-> client, but has not yet been verified against the real service**: no
-> credentials were available when it was built. Tracked in
-> [#5](https://github.com/deluispablo/data-agent-toolkit/issues/5).
+Verified against the real Gemini Developer API on 2026-09-24 with
+`google-genai` 2.25.0. Vertex AI has not been verified against the real
+service yet ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
+Gemini answers `503 UNAVAILABLE` (high demand) or `429 RESOURCE_EXHAUSTED`
+(free-tier quota) often; the library does not retry, so the fallback model
+is the only second attempt.
 
 Both backends send the same prompt: JSON output (constrained by
 `CSVInspectionResult`'s JSON Schema on Gemini) at `temperature=0.0`, then
@@ -235,7 +236,7 @@ There are two ways to configure the library:
 | `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:3b` |
 | `gemini_api_key` | `GEMINI_API_KEY` (takes precedence when set) | unset |
 | `google_cloud_project` / `google_cloud_location` | `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` (Vertex AI with ADC) | unset |
-| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-2.5-flash` / `gemini-2.5-flash-lite` |
+| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-3.6-flash` / `gemini-3.5-flash-lite` |
 
 Each fallback is a different model from its primary, so a failing primary
 is retried with another model out of the box. Setting the fallback equal to
@@ -254,7 +255,7 @@ never appears in logs or exceptions.
 csv-inspector data.csv                                   # or: python -m csv_inspector data.csv
 csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
 csv-inspector data.csv --bytes 8192 --tail-bytes 8192 --timeout 60
-csv-inspector data.csv --backend api --model gemini-2.5-flash --env-file secrets.env
+csv-inspector data.csv --backend api --model gemini-3.6-flash --env-file secrets.env
 ```
 
 As an application, the CLI reads `./.env` when it exists (`--env-file PATH`

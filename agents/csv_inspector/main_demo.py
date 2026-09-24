@@ -12,7 +12,7 @@ Prerequisites:
 Usage:
     python main_demo.py
     python main_demo.py --model qwen2.5-coder:7b --bytes 8192 --tail-bytes 8192 --log-level DEBUG
-    python main_demo.py --backend api --model gemini-2.5-flash
+    python main_demo.py --backend api --model gemini-3.6-flash
 """
 
 from __future__ import annotations

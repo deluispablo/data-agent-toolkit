@@ -357,6 +357,40 @@ def test_a_non_seekable_source_of_exactly_n_bytes_is_still_assumed_truncated() -
     assert samples.covers_whole_file is False
 
 
+_ROWS = b"id,name\n" + b"".join(b"%d,name %d\n" % (i, i) for i in range(200))
+
+
+def test_a_truncated_head_ends_on_the_last_complete_row() -> None:
+    """The partial row cut by the head window never reaches the model (issue #102)."""
+    cut = _ROWS.index(b"\n", 100) - 3  # three bytes short of a row's end
+
+    samples = sample_source(_ROWS, cut, 512)
+
+    assert samples.head_text == _ROWS[: _ROWS.rindex(b"\n", 0, cut) + 1].decode()
+
+
+@pytest.mark.parametrize(
+    ("data", "n_bytes"),
+    [
+        pytest.param(b"id,name\n1,a\n2,b", 4096, id="whole-file-without-final-newline"),
+        pytest.param(b"x" * 100, 10, id="one-giant-line"),
+    ],
+)
+def test_a_head_is_kept_whole_when_there_is_nothing_to_trim(data: bytes, n_bytes: int) -> None:
+    """A head covering the source, or holding no line break, is unchanged."""
+    samples = sample_source(data, n_bytes, 64)
+
+    assert samples.head_text == data[:n_bytes].decode()
+
+
+def test_a_utf16_head_cut_mid_character_has_no_replacement_character() -> None:
+    """An odd head size in UTF-16 cuts a code unit; the trim drops it with its row."""
+    samples = sample_source(SAMPLES_DIR / "encoding_utf16le_bom.csv", 301, 0)
+
+    assert "\ufffd" not in samples.head_text
+    assert samples.head_text.endswith("\n")
+
+
 def test_non_utf8_bytes_past_an_ascii_head_set_the_encoding() -> None:
     """A cp1252 name in the tail is not decoded as UTF-8 just because the head is ASCII."""
     data = b"id;name\n" + b"1;abc\n" * 1000 + "2;Muñoz\n".encode("cp1252")

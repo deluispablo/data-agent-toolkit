@@ -10,6 +10,12 @@ listed under **Changed (breaking)**.
 
 ### Added
 
+- A truncated head sample now ends on its last line break before it
+  reaches the model and grounding: the partial last row, and a character
+  cut in half with it (a trailing `U+FFFD` in UTF-16), are dropped. A head
+  that covers the whole file, or has no line break, is unchanged. The
+  prompt is at most one partial line shorter
+  ([#102](https://github.com/deluispablo/data-agent-toolkit/issues/102)).
 - `Settings.ollama_host` (environment variable `OLLAMA_HOST`, the name the
   Ollama SDK already uses) sets the Ollama server's base URL, so hosts
   configure the local backend through `Settings` instead of the process

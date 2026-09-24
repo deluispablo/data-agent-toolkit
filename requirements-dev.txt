@@ -1,9 +1,0 @@
-# Development environment: the csv_inspector package in editable mode, with
-# its cloud extra so that code is type-checked and unit-tested too (with a
-# mocked client; tests never reach the real service), plus the tooling.
--e ./agents/csv_inspector[cloud]
-pytest>=8.0
-ruff>=0.16
-mypy>=2.0
-build>=1.2
-twine>=6.0

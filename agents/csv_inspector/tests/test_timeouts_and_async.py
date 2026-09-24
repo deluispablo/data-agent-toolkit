@@ -17,7 +17,6 @@ from typing import Any, ClassVar
 
 import httpx
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -37,8 +36,9 @@ from csv_inspector._invokers import (
     invoke_ollama_model,
 )
 from csv_inspector._sampling import MAX_SAMPLE_BYTES, sample_source
+from fakes import install_fake_ollama, ollama_reply
 
-SAMPLE_CSV = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
+SAMPLE_CSV = Path(__file__).resolve().parent.parent / "sample.csv"
 FAKE_KEY = "AIza-fake-test-key-000"
 RESULT_JSON = json.dumps(
     {

@@ -61,3 +61,47 @@ include = [
     "CHANGELOG.md",
     "LICENSE",
 ]
+
+# Development tooling for this agent. Run from this directory (or with
+# `uv run --directory agents/csv_inspector ...`); see the repository's
+# CONTRIBUTING.md.
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+# First-party roots: the package, the unpackaged tooling and the test helpers.
+src = ["src", "scripts", "samples", "tests"]
+
+[tool.ruff.lint]
+ignore = [
+    "PLR0913",  # many keyword-only knobs are the public API of inspect_csv
+]
+
+[tool.ruff.lint.extend-per-file-ignores]
+# Fixture catalog: long prose `description`/`notes` strings are data, not code.
+"samples/generate_samples.py" = ["E501"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+mypy_path = "src,scripts,samples,tests"
+explicit_package_bases = true
+files = ["src", "scripts", "samples", "main_demo.py", "tests"]
+
+[[tool.mypy.overrides]]
+module = ["chardet", "chardet.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+
+[tool.coverage.run]
+# The tests import the installed package, so coverage is measured by name.
+source = ["csv_inspector"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 93
+show_missing = true
+skip_covered = true

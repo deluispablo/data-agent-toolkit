@@ -20,7 +20,8 @@ parse) are reported separately and excluded from the aggregate score: they
 are not expected to pass today.
 
 Prerequisites:
-    - The package installed: ``pip install -e ./agents/csv_inspector``.
+    - The package installed: ``uv sync`` at the repository root (or
+      ``pip install -e ./agents/csv_inspector``).
     - Ollama running locally (``ollama serve``).
     - The target model pulled locally, e.g. ``ollama pull qwen2.5-coder:7b``.
 

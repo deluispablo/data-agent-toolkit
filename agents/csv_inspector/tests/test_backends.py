@@ -19,7 +19,6 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
-from fakes import install_fake_ollama, ollama_reply
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -36,8 +35,9 @@ from csv_inspector._config import (
     resolve_settings,
 )
 from csv_inspector._invokers import invoke_cloud_model
+from fakes import install_fake_ollama, ollama_reply
 
-AGENT_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector"
+AGENT_DIR = Path(__file__).resolve().parent.parent
 SAMPLE_CSV_PATH = AGENT_DIR / "sample.csv"
 FAKE_KEY = "AIza-fake-test-key-000"
 

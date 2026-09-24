@@ -5,7 +5,8 @@ defaults the file argument to ``sample.csv`` next to this script. All other
 options are the CLI's; see ``csv-inspector --help``.
 
 Prerequisites:
-    - The package installed: ``pip install -e ./agents/csv_inspector``.
+    - The package installed: ``uv sync`` at the repository root (or
+      ``pip install -e ./agents/csv_inspector``).
     - Ollama running locally with the model pulled (local backend).
 
 Usage:

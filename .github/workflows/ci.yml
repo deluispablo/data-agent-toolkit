@@ -13,57 +13,110 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  lint:
-    name: Lint & type-check
+  agents:
+    # Every agents/<name>/pyproject.toml is an agent: the jobs below run once
+    # per agent, so adding one needs no change to this workflow.
+    name: Discover agents
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      agents: ${{ steps.discover.outputs.agents }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - id: discover
+        # The runner's system Python (3.11+) has tomllib.
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, pathlib, tomllib
+
+          agents = []
+          for pyproject in sorted(pathlib.Path("agents").glob("*/pyproject.toml")):
+              project = tomllib.loads(pyproject.read_text(encoding="utf-8"))["project"]
+              extras = ",".join(project.get("optional-dependencies", {}))
+              agents.append({"name": pyproject.parent.name, "extras": extras})
+          print(f"agents={json.dumps(agents)}")
+          EOF
+
+  lint:
+    name: Lint & lockfile
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: "3.14"
-          cache: pip
-          cache-dependency-path: |
-            requirements-dev.txt
-            agents/*/pyproject.toml
-      - run: pip install -r requirements-dev.txt
-      - run: ruff check --output-format=github .
-      - run: ruff format --check .
-      - run: mypy
+          enable-cache: true
+      # --locked fails if uv.lock is out of date with any pyproject.toml.
+      - run: uv sync --locked --all-packages --all-extras
+      - run: uv run ruff check --output-format=github .
+      - run: uv run ruff format --check .
 
-  test:
-    name: Tests (Python ${{ matrix.python-version }}, ${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
+  typecheck:
+    name: Type-check (${{ matrix.agent.name }})
+    needs: agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest]
-        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
-        include:
-          # Windows guards the byte-exact fixtures against CRLF conversion.
-          - os: windows-latest
-            python-version: "3.14"
+        agent: ${{ fromJSON(needs.agents.outputs.agents) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: ${{ matrix.python-version }}
-          cache: pip
-          cache-dependency-path: |
-            requirements-dev.txt
-            agents/*/pyproject.toml
-      - run: pip install -r requirements-dev.txt
-      - run: pytest
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --all-packages --all-extras
+      - run: uv run --directory "agents/${{ matrix.agent.name }}" mypy
 
-  package:
-    # Builds csv-inspector exactly as a consumer receives it and installs the
-    # wheel into a fresh virtual environment, without the repository on the
-    # path and without the [cloud] extra, then smoke-tests it from outside.
-    name: Package (build, check, clean install - Python ${{ matrix.python-version }})
-    runs-on: ubuntu-latest
+  test:
+    name: Tests (${{ matrix.agent.name }}, Python ${{ matrix.python-version }}, ${{ matrix.os }})
+    needs: agents
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
+        agent: ${{ fromJSON(needs.agents.outputs.agents) }}
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
+        # Windows runs on the newest Python only: it guards the byte-exact
+        # fixtures against CRLF conversion and Windows-specific paths.
+        exclude:
+          - { os: windows-latest, python-version: "3.10" }
+          - { os: windows-latest, python-version: "3.11" }
+          - { os: windows-latest, python-version: "3.12" }
+          - { os: windows-latest, python-version: "3.13" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          enable-cache: true
+      - run: uv sync --locked --all-packages --all-extras
+      # Coverage floor: [tool.coverage.report] fail_under in the agent's pyproject.toml.
+      - run: uv run --directory "agents/${{ matrix.agent.name }}" pytest --cov
+      - name: Coverage summary
+        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.14'
+        run: uv run --directory "agents/${{ matrix.agent.name }}" coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
+  package:
+    # Builds each agent exactly as a consumer receives it and installs it with
+    # plain pip into fresh virtual environments, without the repository on the
+    # path, then runs the agent's scripts/smoke_test_installed.py from outside.
+    name: Package (${{ matrix.agent.name }}, Python ${{ matrix.python-version }})
+    needs: agents
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        agent: ${{ fromJSON(needs.agents.outputs.agents) }}
         python-version: ["3.10", "3.14"]
+    env:
+      AGENT: ${{ matrix.agent.name }}
+      EXTRAS: ${{ matrix.agent.extras }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -72,21 +125,22 @@ jobs:
       - name: Build sdist and wheel
         run: |
           python -m pip install --upgrade build twine
-          python -m build --outdir dist agents/csv_inspector
+          python -m build --outdir dist "agents/$AGENT"
       - name: Check distribution metadata
         run: python -m twine check --strict dist/*
-      - name: Install the wheel into a clean virtual environment
+      - name: Install the wheel (no extras) into a clean virtual environment
         run: |
-          python -m venv "$RUNNER_TEMP/clean-venv"
-          "$RUNNER_TEMP/clean-venv/bin/python" -m pip install dist/*.whl
-      - name: Smoke-test from outside the repository
-        working-directory: ${{ runner.temp }}
-        run: |
-          cp "$GITHUB_WORKSPACE/agents/csv_inspector/scripts/smoke_test_installed.py" .
-          "$RUNNER_TEMP/clean-venv/bin/python" smoke_test_installed.py
-          "$RUNNER_TEMP/clean-venv/bin/csv-inspector" --help > /dev/null
-      - name: Install the sdist with the cloud extra
+          python -m venv "$RUNNER_TEMP/wheel-venv"
+          "$RUNNER_TEMP/wheel-venv/bin/python" -m pip install dist/*.whl
+      - name: Install the sdist with every extra into a clean virtual environment
         run: |
           python -m venv "$RUNNER_TEMP/sdist-venv"
-          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip install "csv-inspector[cloud] @ file://$PWD/$(ls dist/*.tar.gz)"
-          cd "$RUNNER_TEMP" && "$RUNNER_TEMP/sdist-venv/bin/python" -c "import csv_inspector, pydantic_settings, google.genai; print(csv_inspector.__version__)"
+          sdist="$(ls "$PWD"/dist/*.tar.gz)"
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip install "$sdist${EXTRAS:+[$EXTRAS]}"
+          "$RUNNER_TEMP/sdist-venv/bin/python" -m pip check
+      - name: Smoke-test both installations from outside the repository
+        working-directory: ${{ runner.temp }}
+        run: |
+          cp "$GITHUB_WORKSPACE/agents/$AGENT/scripts/smoke_test_installed.py" .
+          "$RUNNER_TEMP/wheel-venv/bin/python" smoke_test_installed.py
+          "$RUNNER_TEMP/sdist-venv/bin/python" smoke_test_installed.py

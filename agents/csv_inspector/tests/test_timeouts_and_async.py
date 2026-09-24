@@ -359,21 +359,23 @@ def test_a_single_model_gets_the_whole_budget(monkeypatch: pytest.MonkeyPatch) -
 def test_a_model_skipped_for_lack_of_budget_is_logged(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Operators see which model the budget left out, to tune timeout_seconds."""
-    # A primary allowed the whole budget leaves nothing for the fallback.
-    monkeypatch.setattr(inspect_module, "PRIMARY_SHARE", 1.0)
+    """Operators see which model the budget left out, to tune timeout_seconds.
 
-    def invoker(prompt: str, model: str) -> str:
-        time.sleep(1)
-        return RESULT_JSON
+    The clock is scripted, not slept: a real timed wait may return a hair
+    before the deadline (seen on Windows), which would start the fallback
+    with a sliver of budget instead of skipping it.
+    """
+    # The budget has time left while the primary starts, then is spent.
+    remaining = iter([10.0, 10.0])
+    monkeypatch.setattr(inspect_module._Deadline, "remaining", lambda self: next(remaining, -1.0))
 
     with caplog.at_level(logging.INFO), pytest.raises(InspectionTimeoutError):
         inspect_csv(
             SAMPLE_CSV,
             model="primary",
             fallback_model="fallback",
-            model_invoker=invoker,
-            timeout_seconds=0.2,
+            model_invoker=lambda prompt, model: "not json",
+            timeout_seconds=10,
         )
 
     skipped = [

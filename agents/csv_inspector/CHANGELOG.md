@@ -19,6 +19,18 @@ listed under **Changed (breaking)**.
   diagnostics next to each file, so a paraphrased name (`Monto` for
   `Importe`) no longer scores 100 %
   ([#123](https://github.com/deluispablo/data-agent-toolkit/issues/123)).
+- Sixteen hard-case fixtures in `samples/`, each with a one-line note
+  naming the grounding or sampling rule it guards: a header-less file
+  after preamble lines, quoted line breaks in the head and in the tail
+  window, a footer longer than the tail window, totals-shaped data rows
+  (`2024,,4241.25`, `Total Energies SA`), decimal-comma, tab-with-commas
+  and quoted-pipe dialects, a cp1252 name only in the tail, one-column,
+  one-row and exactly-4096-byte files, duplicate and blank column names,
+  a data value equal to a prompt marker, and a header of years. Four are
+  flagged `known_limitation`. A header-less fixture's positional column
+  names are now sized by its most common row width, so preamble lines do
+  not set the count
+  ([#125](https://github.com/deluispablo/data-agent-toolkit/issues/125)).
 
 ## [0.3.0] - 2026-09-24
 

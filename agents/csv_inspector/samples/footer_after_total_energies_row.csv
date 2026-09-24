@@ -1,0 +1,223 @@
+Cliente,Fecha,Concepto,Importe
+Acme Distribuciones S.L.,2024-01-01,Compra de material informático,10.00
+Delta Servicios Técnicos,2024-01-02,Transporte de mercancía,89.19
+Eta Farmacia Central,2024-01-03,Revisión anual de equipos,168.38
+Beta Consultores S.A.,2024-01-04,Formación interna,247.57
+Epsilon Hostelería,2024-01-05,Consultoría técnica,326.76
+Theta Mobiliario,2024-01-06,Servicio de mantenimiento,405.95
+Gamma Logística,2024-01-07,Compra de material informático,485.14
+Zeta Construcciones S.L.,2024-01-08,Transporte de mercancía,564.33
+Acme Distribuciones S.L.,2024-01-09,Revisión anual de equipos,643.52
+Delta Servicios Técnicos,2024-01-10,Formación interna,722.71
+Eta Farmacia Central,2024-01-11,Consultoría técnica,801.90
+Beta Consultores S.A.,2024-01-12,Servicio de mantenimiento,881.09
+Epsilon Hostelería,2024-01-13,Compra de material informático,960.28
+Theta Mobiliario,2024-01-14,Transporte de mercancía,1039.47
+Gamma Logística,2024-01-15,Revisión anual de equipos,1118.66
+Zeta Construcciones S.L.,2024-01-16,Formación interna,1197.85
+Acme Distribuciones S.L.,2024-01-17,Consultoría técnica,1277.04
+Delta Servicios Técnicos,2024-01-18,Servicio de mantenimiento,1356.23
+Eta Farmacia Central,2024-01-19,Compra de material informático,1435.42
+Beta Consultores S.A.,2024-01-20,Transporte de mercancía,1514.61
+Epsilon Hostelería,2024-01-21,Revisión anual de equipos,1593.80
+Theta Mobiliario,2024-01-22,Formación interna,1672.99
+Gamma Logística,2024-01-23,Consultoría técnica,1752.18
+Zeta Construcciones S.L.,2024-01-24,Servicio de mantenimiento,1831.37
+Acme Distribuciones S.L.,2024-01-25,Compra de material informático,1910.56
+Delta Servicios Técnicos,2024-01-26,Transporte de mercancía,1989.75
+Eta Farmacia Central,2024-01-27,Revisión anual de equipos,2068.94
+Beta Consultores S.A.,2024-01-28,Formación interna,2148.13
+Epsilon Hostelería,2024-01-29,Consultoría técnica,2227.32
+Theta Mobiliario,2024-01-30,Servicio de mantenimiento,2306.51
+Gamma Logística,2024-01-31,Compra de material informático,2385.70
+Zeta Construcciones S.L.,2024-02-01,Transporte de mercancía,2464.89
+Acme Distribuciones S.L.,2024-02-02,Revisión anual de equipos,44.08
+Delta Servicios Técnicos,2024-02-03,Formación interna,123.27
+Eta Farmacia Central,2024-02-04,Consultoría técnica,202.46
+Beta Consultores S.A.,2024-02-05,Servicio de mantenimiento,281.65
+Epsilon Hostelería,2024-02-06,Compra de material informático,360.84
+Theta Mobiliario,2024-02-07,Transporte de mercancía,440.03
+Gamma Logística,2024-02-08,Revisión anual de equipos,519.22
+Zeta Construcciones S.L.,2024-02-09,Formación interna,598.41
+Acme Distribuciones S.L.,2024-02-10,Consultoría técnica,677.60
+Delta Servicios Técnicos,2024-02-11,Servicio de mantenimiento,756.79
+Eta Farmacia Central,2024-02-12,Compra de material informático,835.98
+Beta Consultores S.A.,2024-02-13,Transporte de mercancía,915.17
+Epsilon Hostelería,2024-02-14,Revisión anual de equipos,994.36
+Theta Mobiliario,2024-02-15,Formación interna,1073.55
+Gamma Logística,2024-02-16,Consultoría técnica,1152.74
+Zeta Construcciones S.L.,2024-02-17,Servicio de mantenimiento,1231.93
+Acme Distribuciones S.L.,2024-02-18,Compra de material informático,1311.12
+Delta Servicios Técnicos,2024-02-19,Transporte de mercancía,1390.31
+Eta Farmacia Central,2024-02-20,Revisión anual de equipos,1469.50
+Beta Consultores S.A.,2024-02-21,Formación interna,1548.69
+Epsilon Hostelería,2024-02-22,Consultoría técnica,1627.88
+Theta Mobiliario,2024-02-23,Servicio de mantenimiento,1707.07
+Gamma Logística,2024-02-24,Compra de material informático,1786.26
+Zeta Construcciones S.L.,2024-02-25,Transporte de mercancía,1865.45
+Acme Distribuciones S.L.,2024-02-26,Revisión anual de equipos,1944.64
+Delta Servicios Técnicos,2024-02-27,Formación interna,2023.83
+Eta Farmacia Central,2024-02-28,Consultoría técnica,2103.02
+Beta Consultores S.A.,2024-02-29,Servicio de mantenimiento,2182.21
+Epsilon Hostelería,2024-03-01,Compra de material informático,2261.40
+Theta Mobiliario,2024-03-02,Transporte de mercancía,2340.59
+Gamma Logística,2024-03-03,Revisión anual de equipos,2419.78
+Zeta Construcciones S.L.,2024-03-04,Formación interna,2498.97
+Acme Distribuciones S.L.,2024-03-05,Consultoría técnica,78.16
+Delta Servicios Técnicos,2024-03-06,Servicio de mantenimiento,157.35
+Eta Farmacia Central,2024-03-07,Compra de material informático,236.54
+Beta Consultores S.A.,2024-03-08,Transporte de mercancía,315.73
+Epsilon Hostelería,2024-03-09,Revisión anual de equipos,394.92
+Theta Mobiliario,2024-03-10,Formación interna,474.11
+Gamma Logística,2024-03-11,Consultoría técnica,553.30
+Zeta Construcciones S.L.,2024-03-12,Servicio de mantenimiento,632.49
+Acme Distribuciones S.L.,2024-03-13,Compra de material informático,711.68
+Delta Servicios Técnicos,2024-03-14,Transporte de mercancía,790.87
+Eta Farmacia Central,2024-03-15,Revisión anual de equipos,870.06
+Beta Consultores S.A.,2024-03-16,Formación interna,949.25
+Epsilon Hostelería,2024-03-17,Consultoría técnica,1028.44
+Theta Mobiliario,2024-03-18,Servicio de mantenimiento,1107.63
+Gamma Logística,2024-03-19,Compra de material informático,1186.82
+Zeta Construcciones S.L.,2024-03-20,Transporte de mercancía,1266.01
+Acme Distribuciones S.L.,2024-03-21,Revisión anual de equipos,1345.20
+Delta Servicios Técnicos,2024-03-22,Formación interna,1424.39
+Eta Farmacia Central,2024-03-23,Consultoría técnica,1503.58
+Beta Consultores S.A.,2024-03-24,Servicio de mantenimiento,1582.77
+Epsilon Hostelería,2024-03-25,Compra de material informático,1661.96
+Theta Mobiliario,2024-03-26,Transporte de mercancía,1741.15
+Gamma Logística,2024-03-27,Revisión anual de equipos,1820.34
+Zeta Construcciones S.L.,2024-03-28,Formación interna,1899.53
+Acme Distribuciones S.L.,2024-03-29,Consultoría técnica,1978.72
+Delta Servicios Técnicos,2024-03-30,Servicio de mantenimiento,2057.91
+Eta Farmacia Central,2024-03-31,Compra de material informático,2137.10
+Beta Consultores S.A.,2024-04-01,Transporte de mercancía,2216.29
+Epsilon Hostelería,2024-04-02,Revisión anual de equipos,2295.48
+Theta Mobiliario,2024-04-03,Formación interna,2374.67
+Gamma Logística,2024-04-04,Consultoría técnica,2453.86
+Zeta Construcciones S.L.,2024-04-05,Servicio de mantenimiento,33.05
+Acme Distribuciones S.L.,2024-04-06,Compra de material informático,112.24
+Delta Servicios Técnicos,2024-04-07,Transporte de mercancía,191.43
+Eta Farmacia Central,2024-04-08,Revisión anual de equipos,270.62
+Beta Consultores S.A.,2024-04-09,Formación interna,349.81
+Epsilon Hostelería,2024-04-10,Consultoría técnica,429.00
+Theta Mobiliario,2024-04-11,Servicio de mantenimiento,508.19
+Gamma Logística,2024-04-12,Compra de material informático,587.38
+Zeta Construcciones S.L.,2024-04-13,Transporte de mercancía,666.57
+Acme Distribuciones S.L.,2024-04-14,Revisión anual de equipos,745.76
+Delta Servicios Técnicos,2024-04-15,Formación interna,824.95
+Eta Farmacia Central,2024-04-16,Consultoría técnica,904.14
+Beta Consultores S.A.,2024-04-17,Servicio de mantenimiento,983.33
+Epsilon Hostelería,2024-04-18,Compra de material informático,1062.52
+Theta Mobiliario,2024-04-19,Transporte de mercancía,1141.71
+Gamma Logística,2024-04-20,Revisión anual de equipos,1220.90
+Zeta Construcciones S.L.,2024-04-21,Formación interna,1300.09
+Acme Distribuciones S.L.,2024-04-22,Consultoría técnica,1379.28
+Delta Servicios Técnicos,2024-04-23,Servicio de mantenimiento,1458.47
+Eta Farmacia Central,2024-04-24,Compra de material informático,1537.66
+Beta Consultores S.A.,2024-04-25,Transporte de mercancía,1616.85
+Epsilon Hostelería,2024-04-26,Revisión anual de equipos,1696.04
+Theta Mobiliario,2024-04-27,Formación interna,1775.23
+Gamma Logística,2024-04-28,Consultoría técnica,1854.42
+Zeta Construcciones S.L.,2024-04-29,Servicio de mantenimiento,1933.61
+Acme Distribuciones S.L.,2024-04-30,Compra de material informático,2012.80
+Delta Servicios Técnicos,2024-05-01,Transporte de mercancía,2091.99
+Eta Farmacia Central,2024-05-02,Revisión anual de equipos,2171.18
+Beta Consultores S.A.,2024-05-03,Formación interna,2250.37
+Epsilon Hostelería,2024-05-04,Consultoría técnica,2329.56
+Theta Mobiliario,2024-05-05,Servicio de mantenimiento,2408.75
+Gamma Logística,2024-05-06,Compra de material informático,2487.94
+Zeta Construcciones S.L.,2024-05-07,Transporte de mercancía,67.13
+Acme Distribuciones S.L.,2024-05-08,Revisión anual de equipos,146.32
+Delta Servicios Técnicos,2024-05-09,Formación interna,225.51
+Eta Farmacia Central,2024-05-10,Consultoría técnica,304.70
+Beta Consultores S.A.,2024-05-11,Servicio de mantenimiento,383.89
+Epsilon Hostelería,2024-05-12,Compra de material informático,463.08
+Theta Mobiliario,2024-05-13,Transporte de mercancía,542.27
+Gamma Logística,2024-05-14,Revisión anual de equipos,621.46
+Zeta Construcciones S.L.,2024-05-15,Formación interna,700.65
+Acme Distribuciones S.L.,2024-05-16,Consultoría técnica,779.84
+Delta Servicios Técnicos,2024-05-17,Servicio de mantenimiento,859.03
+Eta Farmacia Central,2024-05-18,Compra de material informático,938.22
+Beta Consultores S.A.,2024-05-19,Transporte de mercancía,1017.41
+Epsilon Hostelería,2024-05-20,Revisión anual de equipos,1096.60
+Theta Mobiliario,2024-05-21,Formación interna,1175.79
+Gamma Logística,2024-05-22,Consultoría técnica,1254.98
+Zeta Construcciones S.L.,2024-05-23,Servicio de mantenimiento,1334.17
+Acme Distribuciones S.L.,2024-05-24,Compra de material informático,1413.36
+Delta Servicios Técnicos,2024-05-25,Transporte de mercancía,1492.55
+Eta Farmacia Central,2024-05-26,Revisión anual de equipos,1571.74
+Beta Consultores S.A.,2024-05-27,Formación interna,1650.93
+Epsilon Hostelería,2024-05-28,Consultoría técnica,1730.12
+Theta Mobiliario,2024-05-29,Servicio de mantenimiento,1809.31
+Gamma Logística,2024-05-30,Compra de material informático,1888.50
+Zeta Construcciones S.L.,2024-05-31,Transporte de mercancía,1967.69
+Acme Distribuciones S.L.,2024-06-01,Revisión anual de equipos,2046.88
+Delta Servicios Técnicos,2024-06-02,Formación interna,2126.07
+Eta Farmacia Central,2024-06-03,Consultoría técnica,2205.26
+Beta Consultores S.A.,2024-06-04,Servicio de mantenimiento,2284.45
+Epsilon Hostelería,2024-06-05,Compra de material informático,2363.64
+Theta Mobiliario,2024-06-06,Transporte de mercancía,2442.83
+Gamma Logística,2024-06-07,Revisión anual de equipos,22.02
+Zeta Construcciones S.L.,2024-06-08,Formación interna,101.21
+Acme Distribuciones S.L.,2024-06-09,Consultoría técnica,180.40
+Delta Servicios Técnicos,2024-06-10,Servicio de mantenimiento,259.59
+Eta Farmacia Central,2024-06-11,Compra de material informático,338.78
+Beta Consultores S.A.,2024-06-12,Transporte de mercancía,417.97
+Epsilon Hostelería,2024-06-13,Revisión anual de equipos,497.16
+Theta Mobiliario,2024-06-14,Formación interna,576.35
+Gamma Logística,2024-06-15,Consultoría técnica,655.54
+Zeta Construcciones S.L.,2024-06-16,Servicio de mantenimiento,734.73
+Acme Distribuciones S.L.,2024-06-17,Compra de material informático,813.92
+Delta Servicios Técnicos,2024-06-18,Transporte de mercancía,893.11
+Eta Farmacia Central,2024-06-19,Revisión anual de equipos,972.30
+Beta Consultores S.A.,2024-06-20,Formación interna,1051.49
+Epsilon Hostelería,2024-06-21,Consultoría técnica,1130.68
+Theta Mobiliario,2024-06-22,Servicio de mantenimiento,1209.87
+Gamma Logística,2024-06-23,Compra de material informático,1289.06
+Zeta Construcciones S.L.,2024-06-24,Transporte de mercancía,1368.25
+Acme Distribuciones S.L.,2024-06-25,Revisión anual de equipos,1447.44
+Delta Servicios Técnicos,2024-06-26,Formación interna,1526.63
+Eta Farmacia Central,2024-06-27,Consultoría técnica,1605.82
+Beta Consultores S.A.,2024-06-28,Servicio de mantenimiento,1685.01
+Epsilon Hostelería,2024-06-29,Compra de material informático,1764.20
+Theta Mobiliario,2024-06-30,Transporte de mercancía,1843.39
+Gamma Logística,2024-07-01,Revisión anual de equipos,1922.58
+Zeta Construcciones S.L.,2024-07-02,Formación interna,2001.77
+Acme Distribuciones S.L.,2024-07-03,Consultoría técnica,2080.96
+Delta Servicios Técnicos,2024-07-04,Servicio de mantenimiento,2160.15
+Eta Farmacia Central,2024-07-05,Compra de material informático,2239.34
+Beta Consultores S.A.,2024-07-06,Transporte de mercancía,2318.53
+Epsilon Hostelería,2024-07-07,Revisión anual de equipos,2397.72
+Theta Mobiliario,2024-07-08,Formación interna,2476.91
+Gamma Logística,2024-07-09,Consultoría técnica,56.10
+Zeta Construcciones S.L.,2024-07-10,Servicio de mantenimiento,135.29
+Acme Distribuciones S.L.,2024-07-11,Compra de material informático,214.48
+Delta Servicios Técnicos,2024-07-12,Transporte de mercancía,293.67
+Eta Farmacia Central,2024-07-13,Revisión anual de equipos,372.86
+Beta Consultores S.A.,2024-07-14,Formación interna,452.05
+Epsilon Hostelería,2024-07-15,Consultoría técnica,531.24
+Theta Mobiliario,2024-07-16,Servicio de mantenimiento,610.43
+Gamma Logística,2024-07-17,Compra de material informático,689.62
+Zeta Construcciones S.L.,2024-07-18,Transporte de mercancía,768.81
+Acme Distribuciones S.L.,2024-07-19,Revisión anual de equipos,848.00
+Delta Servicios Técnicos,2024-07-20,Formación interna,927.19
+Eta Farmacia Central,2024-07-21,Consultoría técnica,1006.38
+Beta Consultores S.A.,2024-07-22,Servicio de mantenimiento,1085.57
+Epsilon Hostelería,2024-07-23,Compra de material informático,1164.76
+Theta Mobiliario,2024-07-24,Transporte de mercancía,1243.95
+Gamma Logística,2024-07-25,Revisión anual de equipos,1323.14
+Zeta Construcciones S.L.,2024-07-26,Formación interna,1402.33
+Acme Distribuciones S.L.,2024-07-27,Consultoría técnica,1481.52
+Delta Servicios Técnicos,2024-07-28,Servicio de mantenimiento,1560.71
+Eta Farmacia Central,2024-07-29,Compra de material informático,1639.90
+Beta Consultores S.A.,2024-07-30,Transporte de mercancía,1719.09
+Epsilon Hostelería,2024-07-31,Revisión anual de equipos,1798.28
+Theta Mobiliario,2024-08-01,Formación interna,1877.47
+Gamma Logística,2024-08-02,Consultoría técnica,1956.66
+Zeta Construcciones S.L.,2024-08-03,Servicio de mantenimiento,2035.85
+Acme Distribuciones S.L.,2024-08-04,Compra de material informático,2115.04
+Delta Servicios Técnicos,2024-08-05,Transporte de mercancía,2194.23
+Eta Farmacia Central,2024-08-06,Revisión anual de equipos,2273.42
+Beta Consultores S.A.,2024-08-07,Formación interna,2352.61
+Total Energies SA,2024-08-08,Suministro de combustible,1234.56
+--- Fin del informe ---

@@ -145,6 +145,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-a`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is

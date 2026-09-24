@@ -77,6 +77,8 @@ ignore = [
 [tool.ruff.lint.extend-per-file-ignores]
 # Fixture catalog: long prose `description`/`notes` strings are data, not code.
 "samples/generate_samples.py" = ["E501"]
+# Golden prompts: one literal per prompt line, as long as the line.
+"tests/test_prompt_budget.py" = ["E501"]
 
 [tool.mypy]
 strict = true

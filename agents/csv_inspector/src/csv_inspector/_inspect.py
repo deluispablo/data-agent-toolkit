@@ -45,7 +45,7 @@ from ._invokers import (
     builtin_invoker,
 )
 from ._models import CSVInspectionResult, Usage
-from ._prompt import build_prompt, parse_and_validate
+from ._prompt import PROMPT_VERSION, build_prompt, parse_and_validate
 from ._sampling import (
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
@@ -339,6 +339,7 @@ class _Run:
             attempts=self._attempts,
             retries=self._retries,
             load_seconds=self._load_seconds,
+            prompt_version=PROMPT_VERSION,
         )
         samples = self._samples
         logger.info(
@@ -349,13 +350,14 @@ class _Run:
         )
         logger.info(
             "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
-            "attempts=%d retries=%d",
+            "attempts=%d retries=%d prompt_version=%s",
             usage.model,
             usage.prompt_tokens,
             usage.completion_tokens,
             usage.latency_seconds,
             usage.attempts,
             usage.retries,
+            usage.prompt_version,
         )
         grounded = ground_in_samples(
             result,

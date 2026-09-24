@@ -53,6 +53,12 @@ listed under **Changed (breaking)**.
   whose lines are longer than the head window. Manifest entries gain a
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
+- The prompt is versioned: `result.usage.prompt_version` records the
+  version of the prompt the models were sent (`2026.09-a` today), and the
+  usage log line includes it, so measurements of different prompts are
+  never mixed. Unit tests fail when the prompt template grows more than
+  10 % past its measured size, and pin each prompt branch to a golden
+  string ([#127](https://github.com/deluispablo/data-agent-toolkit/issues/127)).
 
 ## [0.3.0] - 2026-09-24
 

@@ -125,6 +125,9 @@ class Usage(BaseModel):
         load_seconds: Time Ollama spent loading the model, summed over the
             attempts, or ``None`` when no attempt reported it (cloud backend,
             custom invoker).
+        prompt_version: The version of the prompt the models were sent
+            (``PROMPT_VERSION``), so measurements of different prompts are
+            never mixed.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -136,6 +139,7 @@ class Usage(BaseModel):
     attempts: int
     retries: int = 0
     load_seconds: float | None = None
+    prompt_version: str
 
 
 class CSVInspectionResult(BaseModel):

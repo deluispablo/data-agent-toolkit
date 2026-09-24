@@ -55,6 +55,7 @@ uv lock                                                   # after any pyproject.
 - `.pre-commit-config.yaml`: local hooks `uv-lock`, `ruff-check`, `ruff-format`, `mypy-csv-inspector`.
 - `.gitattributes`: all text LF. `*.csv`, `*.tsv` = `-text` (byte-exact, git never rewrite).
 - `.gitignore`: `.venv`, caches, coverage, `dist/`, `.env`.
+- `.dockerignore`: build context = repo root (examples Dockerfiles). Drop `.git`, venvs, caches, `.env`, `**/samples/`.
 - `README.md`: repo intro, agents list, design principles, layout, dev setup.
 - `ARCHITECTURE.md`: layout rationale, what live where, why per-agent tooling, CI design, policies, new-agent checklist.
 - `CONTRIBUTING.md`: setup, checks, code standards, PR rules, release process.
@@ -63,7 +64,7 @@ uv lock                                                   # after any pyproject.
 
 ## .github/
 
-- `workflows/ci.yml`: jobs `agents` (discover `agents/*`), `lint` (`uv sync --locked` + ruff check/format), `typecheck` (mypy per agent), `test` (pytest --cov, Python 3.10–3.14 Linux + 3.14 Windows, coverage summary), `test-lowest` (Python 3.10, `--resolution lowest-direct`, all extras, pytest: catch too-low floors), `package` (`python -m build`, `twine check --strict`, install wheel and sdist in clean venvs, run `smoke_test_installed.py` outside repo).
+- `workflows/ci.yml`: jobs `agents` (discover `agents/*`), `lint` (`uv sync --locked` + ruff check/format), `typecheck` (mypy per agent), `test` (pytest --cov, Python 3.10–3.14 Linux + 3.14 Windows, coverage summary), `test-lowest` (Python 3.10, `--resolution lowest-direct`, all extras, pytest: catch too-low floors), `package` (`python -m build`, `twine check --strict`, install wheel and sdist in clean venvs, run `smoke_test_installed.py` outside repo), `examples-typecheck`, `examples-test`, `examples-docker` (build `examples/csv_inspector_api/Dockerfile`, size < 300 MB, `/health` from container, no push).
 - `dependabot.yml`: weekly updates, `github-actions` + `uv`.
 - `pull_request_template.md`: PR checklist.
 - `ISSUE_TEMPLATE/`: `bug_report.yml`, `feature_request.yml`, `config.yml` (blank issues on, private security-report link).
@@ -138,6 +139,7 @@ Public API = `__all__` only (test enforce). `_`-modules internal.
   - `streaming.py`: `AsyncIteratorReader(io.RawIOBase)`: sync `read()` in library worker thread, `run_coroutine_threadsafe` next chunk on loop. Read max 8 KiB (`MAX_READ_BYTES`, keep library buffers small). Errors = `OSError` (library `FileSampleReadError`): `ReaderClosedError`, `BodyTooLargeError` (+ `limit_exceeded` flag), `TimeoutError` per-chunk wait (`timeout_seconds`).
   - `routes/health.py`: `GET /health`, `HealthResponse`, no model call, no secrets. `?probe=true` run public `ensure_backend_ready` (config only, no network; skipped with custom invoker), fail = 503.
   - `request_id.py`: pure ASGI `RequestIdMiddleware`: `X-Request-ID` (valid token or `uuid4`) echoed, `request_id_var` ContextVar, one access line `csv_inspector_api.access` (method path status ms, 499 on cancel). `RequestIdFilter` set `record.request_id`: put on handler, not logger.
+  - `Dockerfile`: cloud backend only (no Ollama, no compose). Build from repo root: `docker build -f examples/csv_inspector_api/Dockerfile -t csv-inspector-api .`. `python:3.14-slim`, uv build stage: `uv sync --frozen --no-dev --no-editable --package csv-inspector-api` + agent `[cloud]` extra (`--inexact`), venv `/opt/venv`, `PYTHONPATH=/app/src`, uid 10001, port 8000. No Docker on dev machine: CI job is the build proof.
   - `errors.py`: one handler `CSVInspectorError` to `application/problem+json` (`ProblemDetails`, `error` = class name). Ordered `_RULES`: 422 input, 504 timeout (before 502 parent), 503 backend config, 502 model, 500 rest. `UploadTooLargeError` 413, `BackendOverrideDisabledError` 403. `ValueError`/`TypeError` not caught. `problem_responses()` for OpenAPI.
   - Tests: `fakes.py` `FakeInvoker` (answer/error/delay, records calls). conftest block network (`socketpair` allowed, event loop need it), `anyio` asyncio, `httpx.ASGITransport`. `test_errors.py` iterate library `__all__`. `test_embedding_rules.py` AST rules. `test_inspect_raw.py`: 20 MiB `tracemalloc` bound, disconnect releases worker thread. `test_overrides.py`, `test_request_id.py` (filter on `caplog.handler`). Coverage floor 90%.
 

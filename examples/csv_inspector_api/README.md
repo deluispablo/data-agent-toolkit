@@ -69,6 +69,48 @@ variables (all optional). To use a file, copy
 The `api` backend needs the agent's `[cloud]` extra, which
 `uv sync --all-extras` installs.
 
+### Docker
+
+The [`Dockerfile`](Dockerfile) packages the API for the **cloud backend**.
+There is no Ollama in the image and no docker-compose file on purpose: for a
+local, free run keep using `uv run examples/csv_inspector_api/main_demo.py`.
+Build from the repository root, the uv workspace that holds the example and
+the agent:
+
+```bash
+docker build -f examples/csv_inspector_api/Dockerfile -t csv-inspector-api .
+```
+
+```bash
+docker run -p 8000:8000 -e CSV_INSPECTOR_API_LLM_BACKEND=api -e CSV_INSPECTOR_API_GEMINI_API_KEY=... csv-inspector-api
+```
+
+- `python:3.14-slim`, dependencies installed with `uv sync --frozen --no-dev
+  --package csv-inspector-api` from `uv.lock`, plus the agent's locked
+  `[cloud]` extra (`google-genai`); uv itself stays in the build stage.
+- Runs as a non-root user (uid 10001), serves on port 8000.
+- The root [`.dockerignore`](../../.dockerignore) keeps `.git`, virtual
+  environments, caches and the agent's sample fixtures out of the context.
+- CI builds the image on every pull request, checks it is under 300 MB and
+  that `GET /health` answers from a running container. It is never pushed.
+- Inside the container uvicorn's own access log is on and the API's
+  loggers have no handler, so request ids are not printed. To get them,
+  configure logging as in [Logging and request ids](#logging-and-request-ids),
+  e.g. with uvicorn's `--log-config` and a `dictConfig` file whose handler
+  has a `RequestIdFilter`.
+
+**Cloud Run** (*untested in CI*). `gcloud run deploy --source .` builds the
+`Dockerfile` at the root of the uploaded source and has no flag for another
+path, so copy it there for the deploy. From the repository root, with the
+key stored in Secret Manager as `gemini-api-key`:
+
+```bash
+cp examples/csv_inspector_api/Dockerfile Dockerfile && gcloud run deploy csv-inspector-api --source . --port 8000 --set-env-vars CSV_INSPECTOR_API_LLM_BACKEND=api --set-secrets CSV_INSPECTOR_API_GEMINI_API_KEY=gemini-api-key:latest --no-allow-unauthenticated; rm Dockerfile
+```
+
+The API has no authentication of its own: `--no-allow-unauthenticated` keeps
+it behind Cloud Run IAM.
+
 ## Endpoints
 
 ### `GET /health`
@@ -362,5 +404,4 @@ embeds the agent:
 
 ## Roadmap
 
-- A Dockerfile.
 - `POST /inspect/gcs`: inspect a `gs://` object with ranged reads only.

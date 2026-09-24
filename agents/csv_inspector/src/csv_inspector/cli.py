@@ -127,7 +127,8 @@ def load_cli_settings(env_file: Path | None, *, no_env_file: bool) -> Settings:
 
     Returns:
         The loaded settings; built-in defaults when ``pydantic-settings`` is
-        not installed and no ``.env`` file was requested.
+        not installed and no ``.env`` file was requested. An implicit
+        ``./.env`` is then ignored with a warning.
 
     Raises:
         BackendConfigurationError: If an explicitly requested ``.env`` file is
@@ -136,7 +137,14 @@ def load_cli_settings(env_file: Path | None, *, no_env_file: bool) -> Settings:
     if env_file is not None and not env_file.is_file():
         raise BackendConfigurationError(f"Settings file '{env_file}' does not exist.")
     if env_file is None and not no_env_file and _DEFAULT_ENV_FILE.is_file():
-        env_file = _DEFAULT_ENV_FILE
+        if importlib.util.find_spec("pydantic_settings") is None:
+            logger.warning(
+                "Ignoring %s: reading it needs the [cloud] extra "
+                "(pip install 'csv-inspector[cloud]').",
+                _DEFAULT_ENV_FILE,
+            )
+        else:
+            env_file = _DEFAULT_ENV_FILE
     if env_file is None and importlib.util.find_spec("pydantic_settings") is None:
         return Settings()
     return load_settings(env_file=env_file)

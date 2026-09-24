@@ -140,6 +140,26 @@ def detect_encoding(raw_bytes: bytes) -> str:
     return encoding
 
 
+# The top two bits of a UTF-8 continuation byte (10xxxxxx).
+_UTF8_CONTINUATION = 0x80
+
+
+def _is_utf8_suffix(raw_bytes: bytes) -> bool:
+    """Whether ``raw_bytes`` is valid UTF-8, ignoring a character cut at its start.
+
+    A tail window may start in the middle of a multi-byte character, so up
+    to three leading continuation bytes are skipped before decoding.
+    """
+    start = 0
+    while start < min(3, len(raw_bytes)) and raw_bytes[start] & 0xC0 == _UTF8_CONTINUATION:
+        start += 1
+    try:
+        raw_bytes[start:].decode("utf-8")
+    except UnicodeDecodeError:
+        return False
+    return True
+
+
 def _canonical_codec_name(encoding: str) -> str | None:
     """Return Python's canonical codec name for ``encoding``, or ``None`` if unknown."""
     try:
@@ -261,7 +281,9 @@ class Samples:
         head_text: The decoded head sample.
         tail_text: The decoded tail sample, or ``None`` when the head
             already covers the whole source (or tail sampling is disabled).
-        encoding: The encoding detected for the head sample.
+        encoding: The encoding detected for the head sample, or for the
+            head and tail together when the tail is not valid in the
+            encoding detected from the head alone.
         description: A log-safe description of the source.
         covers_whole_file: Whether the samples reach the real end of the
             source: the head covers it all, or a tail was sampled. ``False``
@@ -279,6 +301,11 @@ class Samples:
 
 class _Reader(Protocol):
     """Bounded access to the start and end of a source."""
+
+    @property
+    def size(self) -> int | None:
+        """Bytes from the start position to the end, or ``None`` if unknown."""
+        ...
 
     def head(self, n_bytes: int) -> bytes:
         """Return up to ``n_bytes`` from the start of the source."""
@@ -307,6 +334,10 @@ class _PathReader:
     def __init__(self, path: str | os.PathLike[str]) -> None:
         self._path = path
 
+    @property
+    def size(self) -> int:
+        return _file_size(self._path)
+
     def head(self, n_bytes: int) -> bytes:
         return read_sample_bytes(self._path, n_bytes)
 
@@ -320,6 +351,10 @@ class _BufferReader:
 
     def __init__(self, data: bytes | bytearray | memoryview) -> None:
         self._view = memoryview(data).cast("B")
+
+    @property
+    def size(self) -> int:
+        return len(self._view)
 
     def head(self, n_bytes: int) -> bytes:
         return bytes(self._view[:n_bytes])
@@ -376,6 +411,10 @@ class _SeekableStreamReader:
         stream.seek(0, os.SEEK_END)
         self._end = stream.tell()
 
+    @property
+    def size(self) -> int:
+        return self._end - self.start
+
     def head(self, n_bytes: int) -> bytes:
         self._stream.seek(self.start)
         return _read_up_to(self._stream, n_bytes)
@@ -404,6 +443,10 @@ class _ForwardStreamReader:
 
     def __init__(self, stream: SupportsBinaryRead) -> None:
         self._stream = stream
+
+    @property
+    def size(self) -> None:
+        return None
 
     def head(self, n_bytes: int) -> bytes:
         return _read_up_to(self._stream, n_bytes)
@@ -524,11 +567,18 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         if len(head_raw) == n_bytes:
             tail_raw = reader.tail(len(head_raw), tail_bytes, _code_unit_size(encoding))
             if tail_raw:
+                if _canonical_codec_name(encoding) == "utf-8" and not _is_utf8_suffix(tail_raw):
+                    # An ASCII head says nothing about bytes further down, e.g.
+                    # a cp1252 name in the last rows: detect from both samples.
+                    encoding = detect_encoding(head_raw + tail_raw)
+                    head_text = decode_sample(head_raw, encoding)
                 tail_text = decode_sample(tail_raw, _tail_encoding(head_raw, encoding))
-            elif tail_raw is None or tail_bytes == 0:
-                # The end was out of reach, or nothing tells whether the source
-                # ends here: assume it does not.
+            elif tail_raw is None:
                 covers_whole_file = False
+            elif tail_bytes == 0:
+                # Without a known size, nothing tells whether the source ends
+                # here: assume it does not.
+                covers_whole_file = reader.size == len(head_raw)
     except OSError as exc:
         raise FileSampleReadError(f"Unable to read sample from '{description}': {exc}") from exc
     finally:

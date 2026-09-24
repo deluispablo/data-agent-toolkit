@@ -22,6 +22,24 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- On a base install (no `[cloud]` extra), the CLI failed on every run when
+  the working directory held a `.env` file. The implicit `./.env` is now
+  ignored with a warning; an explicit `--env-file` still fails
+  ([#33](https://github.com/deluispablo/data-agent-toolkit/issues/33)).
+- The encoding was detected from the head sample only, so a file with a
+  pure-ASCII head and cp1252/latin-1 bytes further down was reported as
+  `utf-8` and its tail decoded with replacement characters. When the tail is
+  not valid UTF-8, the encoding is now detected from the head and tail
+  together ([#34](https://github.com/deluispablo/data-agent-toolkit/issues/34)).
+- Grounded column names were stripped of surrounding spaces, so they did not
+  match the names `csv` and pandas read. They now keep the header fields
+  exactly as written; matching still ignores the padding
+  ([#37](https://github.com/deluispablo/data-agent-toolkit/issues/37)).
+- With `tail_bytes=0`, a path, buffer or seekable stream of exactly
+  `n_bytes` was reported as truncated and lost its footer. Its known size now
+  tells a complete head from a truncated one; non-seekable streams keep the
+  old assumption
+  ([#38](https://github.com/deluispablo/data-agent-toolkit/issues/38)).
 - With `tail_bytes=0` on a source larger than the head, the head was
   presented to the model as the entire file, so its last (possibly truncated)
   rows could be reported and grounded as footer, and consumers skipped real

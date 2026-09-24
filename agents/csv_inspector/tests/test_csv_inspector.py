@@ -836,6 +836,19 @@ def test_grounding_recovers_header_row_and_literal_column_names(tmp_path: Path) 
     assert [column.inferred_type for column in result.columns] == ["date", "string", "float"]
 
 
+def test_grounded_column_names_keep_padding_like_csv_reader(tmp_path: Path) -> None:
+    """Names match what csv/pandas read: surrounding spaces are kept, not stripped."""
+    target = tmp_path / "padded.csv"
+    target.write_text("Fecha; Cliente ;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
+    columns = [
+        {"name": name, "inferred_type": "string"} for name in ("Fecha", "Cliente", "Importe")
+    ]
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(columns=columns, footer_lines=[]))
+
+    assert [column.name for column in result.columns] == ["Fecha", " Cliente ", "Importe"]
+
+
 def test_grounding_recovers_skipped_footer_lines_verbatim(tmp_path: Path) -> None:
     """Lines after the reported footer and blank separators before it are recovered."""
     target = tmp_path / "ledger.csv"

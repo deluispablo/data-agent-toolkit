@@ -10,6 +10,7 @@ instance and not part of this suite).
 from __future__ import annotations
 
 import csv
+import io
 import json
 from pathlib import Path
 from typing import Any
@@ -25,12 +26,13 @@ from csv_inspector._sampling import (
     read_tail_bytes,
 )
 from generate_samples import CASES, SampleCase, build_manifest, derive_columns
+from matrix import MATRIX, FixtureSpec, render
 
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
 
 # Non-fixture files living alongside the generated CSVs.
-_NON_FIXTURE_FILENAMES = {"generate_samples.py", "manifest.json"}
+_NON_FIXTURE_FILENAMES = {"generate_samples.py", "matrix.py", "manifest.json"}
 
 
 def _load_manifest() -> dict[str, dict[str, Any]]:
@@ -305,3 +307,99 @@ def test_column_overrides_agree_with_the_derivation_when_it_can_parse(case: Samp
 
     if derived is not None:
         assert case.columns == derived
+
+
+# ---------------------------------------------------------------------
+# Parametric fixtures rendered from samples/matrix.py (issue #124)
+# ---------------------------------------------------------------------
+
+_GENERATED_CASES = [case for case in CASES if case.generated]
+
+
+def test_catalog_has_at_least_sixty_fixtures() -> None:
+    """The matrix grows the catalog to 60 fixtures or more."""
+    assert len(MANIFEST) >= 60
+
+
+def test_generated_cases_are_the_rendered_matrix_in_order() -> None:
+    """Every spec renders exactly one fixture, named after its unique slug."""
+    assert [case.filename for case in _GENERATED_CASES] == [spec.filename for spec in MATRIX]
+    assert len({spec.slug for spec in MATRIX}) == len(MATRIX)
+    assert [render(spec) for spec in MATRIX] == _GENERATED_CASES
+
+
+@pytest.mark.parametrize("filename", sorted(MANIFEST))
+def test_manifest_flags_exactly_the_matrix_fixtures_as_generated(filename: str) -> None:
+    """``generated`` is true for the ``gen_`` files and false for hand-written ones."""
+    assert MANIFEST[filename]["generated"] is filename.startswith("gen_")
+
+
+def test_matrix_covers_the_planned_dimensions() -> None:
+    """Footer kinds x widths, encodings x line endings, preambles, sizes and combos."""
+    footer_widths = {(spec.footer_kind, spec.n_columns) for spec in MATRIX}
+    encodings = {(spec.encoding, spec.bom, spec.newline) for spec in MATRIX}
+    sizes = [len(case.raw_bytes) for case in _GENERATED_CASES]
+
+    for kind in ("none", "totals", "marker", "timestamp", "blank_totals"):
+        assert {(kind, 3), (kind, 40)} <= footer_widths
+    for encoding, bom in (
+        ("utf-8", False),
+        ("utf-8", True),
+        ("cp1252", False),
+        ("utf-16-le", True),
+    ):
+        assert {(encoding, bom, "\n"), (encoding, bom, "\r\n")} <= encodings
+    assert {0, 1, 5} <= {spec.preamble_lines for spec in MATRIX}
+    assert sum(size > 64 * 1024 for size in sizes) >= 2
+    assert max(sizes) < 1024 * 1024
+    assert sum(spec.category == "combo" for spec in MATRIX) >= 3
+
+
+@pytest.mark.parametrize("case", _GENERATED_CASES, ids=lambda case: case.filename)
+def test_generated_fixture_header_and_footer_match_the_manifest(case: SampleCase) -> None:
+    """``csv`` with the manifest dialect reads the header; the last lines are the footer."""
+    expected = MANIFEST[case.filename]["expected"]
+    codec = expected["encoding"].split(" or ")[0].strip()
+    text = (SAMPLES_DIR / case.filename).read_bytes().decode(codec).lstrip("﻿")
+    rows = list(
+        csv.reader(
+            io.StringIO(text, newline=""),
+            delimiter=expected["delimiter"],
+            quotechar=expected["quotechar"],
+        )
+    )
+
+    if expected.get("has_header", True):
+        assert rows[expected["header_row_index"]] == expected["columns"]
+    else:
+        assert expected["header_row_index"] is None
+        assert len(rows[0]) == len(expected["columns"])
+    lines = text.splitlines()
+    footer_start = len(lines) - expected["footer_rows_to_skip"]
+    assert lines[footer_start:] == expected["footer_lines"]
+
+
+def test_long_line_fixture_has_no_complete_line_in_the_default_head() -> None:
+    """Issue #125 case 13: the default head window ends inside the header line."""
+    filename = "gen_very_wide_long_lines.csv"
+
+    assert b"\n" not in read_sample_bytes(SAMPLES_DIR / filename, DEFAULT_SAMPLE_BYTES)
+    assert MANIFEST[filename]["known_limitation"] is True
+    assert len(MANIFEST[filename]["expected"]["columns"]) == 200
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"encoding": "utf-16-le"},
+        {"encoding": "cp1252", "bom": True},
+        {"newline": "\r"},
+        {"preamble_lines": 6},
+        {"has_header": False, "preamble_lines": 1},
+        {"ragged": True, "footer_kind": "totals"},
+    ],
+)
+def test_inconsistent_fixture_specs_are_rejected(overrides: dict[str, Any]) -> None:
+    """The renderer only accepts specs whose ground truth it can state exactly."""
+    with pytest.raises(ValueError, match="bad"):
+        FixtureSpec(slug="bad", category="structural", **overrides)

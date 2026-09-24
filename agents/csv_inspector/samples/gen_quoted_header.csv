@@ -1,0 +1,41 @@
+"Fecha","Cliente","Importe","Concepto","Cantidad","Región","Código","Estado"
+2023-04-12,Muñoz Hermanos,2458.77,Compra de material informático,68,Galicia,C-6613,En revisión
+2023-04-13,Ibáñez Logística,1432.37,Revisión anual de equipos,157,Andalucía,E-4905,Anulado
+2023-04-14,Peña & Hijos,4175.47,Compra de material informático,385,Cataluña,B-6481,Anulado
+2023-04-15,Muñoz Hermanos,4713.59,Consultoría técnica,425,Galicia,G-4102,Anulado
+2023-04-16,Peña & Hijos,340.76,Consultoría técnica,217,Galicia,A-0077,En revisión
+2023-04-17,Peña & Hijos,3858.29,Servicio de mantenimiento,269,Aragón,C-4562,En revisión
+2023-04-18,Peña & Hijos,653.49,Consultoría técnica,417,Andalucía,G-4860,Pagado
+2023-04-19,Peña & Hijos,2115.37,Consultoría técnica,148,País Vasco,H-8466,En revisión
+2023-04-20,García S.L.,2647.29,Consultoría técnica,424,País Vasco,H-9048,En revisión
+2023-04-21,"Taller ""El Rápido""",1243.97,Consultoría técnica,45,País Vasco,H-2534,Pendiente
+2023-04-22,Muñoz Hermanos,3578.13,Compra de material informático,333,Cataluña,F-0134,Anulado
+2023-04-23,García S.L.,2165.76,Revisión anual de equipos,376,Cataluña,H-0114,Pendiente
+2023-04-24,García S.L.,3882.15,Consultoría técnica,45,Cataluña,G-1322,Pagado
+2023-04-25,"Taller ""El Rápido""",2605.75,Transporte de mercancía,252,Andalucía,F-4676,Anulado
+2023-04-26,"Taller ""El Rápido""",2209.12,Formación interna,302,Andalucía,C-0612,Pagado
+2023-04-27,"Taller ""El Rápido""",598.56,Transporte de mercancía,107,Madrid,H-5228,En revisión
+2023-04-28,"Fernández, Asociados",185.04,Compra de material informático,204,Galicia,D-0466,Pendiente
+2023-04-29,Peña & Hijos,2791.47,Formación interna,250,País Vasco,G-4674,Pendiente
+2023-04-30,"Taller ""El Rápido""",2366.31,Compra de material informático,8,Aragón,E-8232,Anulado
+2023-05-01,Acme Distribuciones S.L.,774.14,Formación interna,292,Madrid,E-3036,En revisión
+2023-05-02,Acme Distribuciones S.L.,793.73,Revisión anual de equipos,202,País Vasco,H-0928,Pagado
+2023-05-03,Acme Distribuciones S.L.,4342.99,Revisión anual de equipos,263,País Vasco,H-3620,Pendiente
+2023-05-04,Muñoz Hermanos,1596.18,Compra de material informático,395,Galicia,B-7768,Pendiente
+2023-05-05,"Taller ""El Rápido""",2330.35,Consultoría técnica,136,Madrid,C-2696,En revisión
+2023-05-06,Muñoz Hermanos,3873.87,Formación interna,161,Aragón,B-0825,En revisión
+2023-05-07,Peña & Hijos,1974.16,Revisión anual de equipos,417,Aragón,G-0461,En revisión
+2023-05-08,Peña & Hijos,4805.10,Compra de material informático,321,Galicia,F-3016,Pendiente
+2023-05-09,Peña & Hijos,1710.34,Formación interna,491,Madrid,G-5840,Pendiente
+2023-05-10,Acme Distribuciones S.L.,2914.64,Revisión anual de equipos,492,Andalucía,E-3299,En revisión
+2023-05-11,García S.L.,894.43,Formación interna,165,Galicia,E-1747,Pendiente
+2023-05-12,Acme Distribuciones S.L.,733.75,Revisión anual de equipos,225,País Vasco,F-0831,Anulado
+2023-05-13,"Taller ""El Rápido""",3248.83,Consultoría técnica,385,Cataluña,G-3806,Pendiente
+2023-05-14,Acme Distribuciones S.L.,2958.50,Transporte de mercancía,177,Madrid,G-7579,Anulado
+2023-05-15,Acme Distribuciones S.L.,4871.83,Formación interna,37,Madrid,F-4160,Pendiente
+2023-05-16,Acme Distribuciones S.L.,830.36,Servicio de mantenimiento,99,Andalucía,F-1849,Anulado
+2023-05-17,Núñez Ortega y Cía.,4854.05,Transporte de mercancía,491,Aragón,B-0592,Anulado
+2023-05-18,Peña & Hijos,209.29,Compra de material informático,175,Galicia,C-5820,En revisión
+2023-05-19,Ibáñez Logística,3699.84,Revisión anual de equipos,337,Cataluña,C-3680,Pendiente
+2023-05-20,Acme Distribuciones S.L.,2229.93,Formación interna,196,Galicia,B-1309,Anulado
+2023-05-21,"Taller ""El Rápido""",1081.01,Transporte de mercancía,231,Galicia,D-9109,Anulado

@@ -19,6 +19,16 @@ listed under **Changed (breaking)**.
   diagnostics next to each file, so a paraphrased name (`Monto` for
   `Importe`) no longer scores 100 %
   ([#123](https://github.com/deluispablo/data-agent-toolkit/issues/123)).
+- The fixture catalog grows from 28 to 64 files. `samples/matrix.py`
+  renders a table of `FixtureSpec`s (delimiter, quote character,
+  encoding and BOM, line ending, preamble, header, footer kind, width,
+  length, decimal comma, quoted header, ragged rows) into `gen_*.csv`
+  fixtures with their full ground truth: every footer kind on a wide and a
+  narrow file, every encoding with LF and CRLF, two files over 64 KiB,
+  quirk combinations, a 40-column UTF-16 file and a known-limitation file
+  whose lines are longer than the head window. Manifest entries gain a
+  `generated` flag
+  ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 
 ## [0.3.0] - 2026-09-24
 

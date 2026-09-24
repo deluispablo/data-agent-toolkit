@@ -65,10 +65,12 @@ def test_fixture_selection_covers_preamble_and_footer() -> None:
 def test_read_rows_skips_preamble_and_footer_of_fixture(case: SampleCase, tmp_path: Path) -> None:
     """On a fixture's ground truth, the recipe yields exactly header + data rows."""
     expected = case.expected
+    # The first alternative of an "A or B" encoding label is a codec name.
+    codec = expected["encoding"].split(" or ")[0].strip()
     path = tmp_path / case.filename
     path.write_bytes(case.raw_bytes)
     result = _result(
-        expected["encoding"],
+        codec,
         expected["delimiter"],
         expected["header_row_index"],
         expected["footer_lines"],
@@ -76,7 +78,7 @@ def test_read_rows_skips_preamble_and_footer_of_fixture(case: SampleCase, tmp_pa
 
     rows = list(read_rows(path, result))
 
-    lines = case.raw_bytes.decode(expected["encoding"]).splitlines()
+    lines = case.raw_bytes.decode(codec).splitlines()
     body = lines[result.header_row_index or 0 : len(lines) - result.footer_rows_to_skip]
     oracle = [row for row in csv.reader(body, delimiter=result.delimiter) if row]
     assert rows == oracle

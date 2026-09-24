@@ -1,0 +1,152 @@
+Fecha;Cliente;Importe;Concepto;Cantidad;Región
+2023-10-24;Acme Distribuciones S.L.;3596.21;Consultoría técnica;131;Galicia
+2023-10-25;Ibáñez Logística;4060.52;Transporte de mercancía;490;País Vasco
+2023-10-26;Fernández, Asociados;27.89;Revisión anual de equipos;342;Aragón
+2023-10-27;García S.L.;545.91;Formación interna;3;Aragón
+2023-10-28;Núñez Ortega y Cía.;2531.95;Servicio de mantenimiento;146;Aragón
+2023-10-29;"Taller ""El Rápido""";3820.59;Transporte de mercancía;248;Galicia
+2023-10-30;García S.L.;3140.74;Compra de material informático;280;Madrid
+2023-10-31;Ibáñez Logística;3626.12;Consultoría técnica;87;Cataluña
+2023-11-01;Acme Distribuciones S.L.;964.15;Formación interna;392;Galicia
+2023-11-02;Peña & Hijos;2802.98;Revisión anual de equipos;186;Andalucía
+2023-11-03;"Taller ""El Rápido""";1442.00;Transporte de mercancía;112;Andalucía
+2023-11-04;Núñez Ortega y Cía.;2510.54;Consultoría técnica;139;Galicia
+2023-11-05;Acme Distribuciones S.L.;1196.24;Servicio de mantenimiento;248;Galicia
+2023-11-06;Muñoz Hermanos;1472.11;Transporte de mercancía;465;Cataluña
+2023-11-07;Muñoz Hermanos;3181.25;Transporte de mercancía;61;Galicia
+2023-11-08;Fernández, Asociados;3726.35;Consultoría técnica;350;Andalucía
+2023-11-09;Fernández, Asociados;2946.16;Servicio de mantenimiento;306;País Vasco
+2023-11-10;García S.L.;4652.16;Servicio de mantenimiento;448;Andalucía
+2023-11-11;Acme Distribuciones S.L.;2783.55;Consultoría técnica;219;Galicia
+2023-11-12;Muñoz Hermanos;1695.87;Servicio de mantenimiento;500;Madrid
+2023-11-13;Acme Distribuciones S.L.;4275.25;Revisión anual de equipos;322;Andalucía
+2023-11-14;Peña & Hijos;3880.17;Revisión anual de equipos;306;País Vasco
+2023-11-15;Peña & Hijos;1300.62;Consultoría técnica;32;Cataluña
+2023-11-16;Ibáñez Logística;4207.81;Consultoría técnica;398;País Vasco
+2023-11-17;Muñoz Hermanos;505.29;Consultoría técnica;18;Galicia
+2023-11-18;Ibáñez Logística;4574.21;Servicio de mantenimiento;311;País Vasco
+2023-11-19;Acme Distribuciones S.L.;4381.30;Revisión anual de equipos;163;Andalucía
+2023-11-20;"Taller ""El Rápido""";2467.39;Formación interna;332;País Vasco
+2023-11-21;Fernández, Asociados;1414.93;Servicio de mantenimiento;489;Madrid
+2023-11-22;Acme Distribuciones S.L.;3670.38;Servicio de mantenimiento;78;Aragón
+2023-11-23;Muñoz Hermanos;1934.12;Compra de material informático;211;Madrid
+2023-11-24;Núñez Ortega y Cía.;3126.40;Consultoría técnica;290;País Vasco
+2023-11-25;García S.L.;1393.15;Compra de material informático;305;Madrid
+2023-11-26;Acme Distribuciones S.L.;1775.71;Servicio de mantenimiento;366;Andalucía
+2023-11-27;Núñez Ortega y Cía.;4675.54;Formación interna;480;País Vasco
+2023-11-28;García S.L.;976.94;Servicio de mantenimiento;462;Cataluña
+2023-11-29;Núñez Ortega y Cía.;85.97;Formación interna;17;Andalucía
+2023-11-30;Peña & Hijos;320.76;Transporte de mercancía;421;Cataluña
+2023-12-01;"Taller ""El Rápido""";1070.80;Transporte de mercancía;467;Galicia
+2023-12-02;García S.L.;4127.56;Consultoría técnica;209;Madrid
+2023-12-03;Núñez Ortega y Cía.;4627.11;Compra de material informático;294;Andalucía
+2023-12-04;Peña & Hijos;76.76;Formación interna;62;Madrid
+2023-12-05;Núñez Ortega y Cía.;4810.29;Servicio de mantenimiento;430;Madrid
+2023-12-06;Fernández, Asociados;756.16;Compra de material informático;436;Cataluña
+2023-12-07;Núñez Ortega y Cía.;4310.34;Formación interna;63;Andalucía
+2023-12-08;Ibáñez Logística;3280.25;Transporte de mercancía;220;Aragón
+2023-12-09;Peña & Hijos;963.44;Consultoría técnica;412;Madrid
+2023-12-10;Acme Distribuciones S.L.;2521.54;Formación interna;91;País Vasco
+2023-12-11;Peña & Hijos;1992.64;Formación interna;310;Andalucía
+2023-12-12;Núñez Ortega y Cía.;651.21;Consultoría técnica;67;Cataluña
+2023-12-13;Fernández, Asociados;4790.94;Formación interna;229;País Vasco
+2023-12-14;Núñez Ortega y Cía.;4397.09;Transporte de mercancía;269;País Vasco
+2023-12-15;"Taller ""El Rápido""";1030.66;Formación interna;29;Galicia
+2023-12-16;Núñez Ortega y Cía.;2196.03;Consultoría técnica;398;Andalucía
+2023-12-17;Acme Distribuciones S.L.;2546.05;Transporte de mercancía;376;Madrid
+2023-12-18;Fernández, Asociados;2136.25;Compra de material informático;163;Andalucía
+2023-12-19;"Taller ""El Rápido""";65.49;Compra de material informático;440;Cataluña
+2023-12-20;Fernández, Asociados;3290.30;Formación interna;374;País Vasco
+2023-12-21;Núñez Ortega y Cía.;2116.12;Compra de material informático;322;Galicia
+2023-12-22;Fernández, Asociados;2081.87;Servicio de mantenimiento;40;Galicia
+2023-12-23;Muñoz Hermanos;1305.27;Transporte de mercancía;350;Cataluña
+2023-12-24;Ibáñez Logística;587.16;Formación interna;155;Galicia
+2023-12-25;Peña & Hijos;1178.30;Formación interna;253;Madrid
+2023-12-26;Peña & Hijos;554.12;Compra de material informático;238;Aragón
+2023-12-27;Núñez Ortega y Cía.;2972.61;Consultoría técnica;265;Cataluña
+2023-12-28;Ibáñez Logística;668.57;Transporte de mercancía;398;Andalucía
+2023-12-29;Núñez Ortega y Cía.;3894.39;Transporte de mercancía;165;Cataluña
+2023-12-30;Acme Distribuciones S.L.;1318.94;Formación interna;10;País Vasco
+2023-12-31;Acme Distribuciones S.L.;531.34;Compra de material informático;244;Cataluña
+2024-01-01;Peña & Hijos;4500.76;Revisión anual de equipos;150;País Vasco
+2024-01-02;"Taller ""El Rápido""";4663.85;Formación interna;470;País Vasco
+2024-01-03;García S.L.;1765.51;Transporte de mercancía;330;Aragón
+2024-01-04;Acme Distribuciones S.L.;4730.00;Servicio de mantenimiento;136;País Vasco
+2024-01-05;"Taller ""El Rápido""";1107.41;Consultoría técnica;14;Galicia
+2024-01-06;García S.L.;599.52;Compra de material informático;2;Cataluña
+2024-01-07;"Taller ""El Rápido""";3809.10;Servicio de mantenimiento;192;Galicia
+2024-01-08;Acme Distribuciones S.L.;4824.35;Compra de material informático;473;Cataluña
+2024-01-09;Acme Distribuciones S.L.;4805.39;Consultoría técnica;322;Andalucía
+2024-01-10;Núñez Ortega y Cía.;2384.87;Transporte de mercancía;158;Galicia
+2024-01-11;Peña & Hijos;2753.86;Revisión anual de equipos;250;Andalucía
+2024-01-12;Peña & Hijos;1774.54;Transporte de mercancía;24;Aragón
+2024-01-13;Fernández, Asociados;1907.76;Transporte de mercancía;29;País Vasco
+2024-01-14;García S.L.;1192.63;Compra de material informático;320;Madrid
+2024-01-15;Fernández, Asociados;2727.68;Formación interna;146;Cataluña
+2024-01-16;"Taller ""El Rápido""";1771.31;Compra de material informático;42;Aragón
+2024-01-17;Fernández, Asociados;1681.59;Servicio de mantenimiento;220;Cataluña
+2024-01-18;García S.L.;3545.65;Servicio de mantenimiento;212;Madrid
+2024-01-19;"Taller ""El Rápido""";4318.18;Transporte de mercancía;116;Cataluña
+2024-01-20;García S.L.;2086.30;Formación interna;338;Andalucía
+2024-01-21;García S.L.;491.66;Formación interna;500;Galicia
+2024-01-22;Muñoz Hermanos;4670.61;Formación interna;325;Galicia
+2024-01-23;Ibáñez Logística;4059.48;Servicio de mantenimiento;217;Aragón
+2024-01-24;García S.L.;3962.95;Formación interna;133;Cataluña
+2024-01-25;Ibáñez Logística;800.44;Servicio de mantenimiento;160;Andalucía
+2024-01-26;García S.L.;2236.88;Formación interna;450;Galicia
+2024-01-27;Núñez Ortega y Cía.;3920.86;Servicio de mantenimiento;60;Madrid
+2024-01-28;"Taller ""El Rápido""";4108.91;Compra de material informático;242;Cataluña
+2024-01-29;Ibáñez Logística;4776.75;Transporte de mercancía;166;Cataluña
+2024-01-30;Muñoz Hermanos;3758.78;Consultoría técnica;232;Cataluña
+2024-01-31;Núñez Ortega y Cía.;2385.51;Transporte de mercancía;103;País Vasco
+2024-02-01;"Taller ""El Rápido""";3455.20;Revisión anual de equipos;121;Aragón
+2024-02-02;Peña & Hijos;2246.99;Consultoría técnica;442;Aragón
+2024-02-03;García S.L.;1539.29;Transporte de mercancía;276;País Vasco
+2024-02-04;Fernández, Asociados;1078.33;Revisión anual de equipos;4;Galicia
+2024-02-05;"Taller ""El Rápido""";1356.50;Servicio de mantenimiento;35;Galicia
+2024-02-06;Peña & Hijos;4673.93;Transporte de mercancía;104;Madrid
+2024-02-07;"Taller ""El Rápido""";2058.81;Consultoría técnica;262;Aragón
+2024-02-08;García S.L.;2300.79;Compra de material informático;7;Galicia
+2024-02-09;Acme Distribuciones S.L.;3244.79;Compra de material informático;143;Madrid
+2024-02-10;Núñez Ortega y Cía.;2676.76;Consultoría técnica;156;Cataluña
+2024-02-11;Fernández, Asociados;985.62;Consultoría técnica;316;Andalucía
+2024-02-12;Peña & Hijos;1294.77;Consultoría técnica;251;Madrid
+2024-02-13;Ibáñez Logística;1321.08;Formación interna;94;Aragón
+2024-02-14;Fernández, Asociados;1921.39;Consultoría técnica;467;Cataluña
+2024-02-15;Acme Distribuciones S.L.;3031.33;Servicio de mantenimiento;442;Andalucía
+2024-02-16;Núñez Ortega y Cía.;4753.65;Revisión anual de equipos;227;Cataluña
+2024-02-17;"Taller ""El Rápido""";1079.95;Revisión anual de equipos;353;Galicia
+2024-02-18;García S.L.;409.20;Compra de material informático;275;Galicia
+2024-02-19;Peña & Hijos;402.27;Transporte de mercancía;330;Madrid
+2024-02-20;García S.L.;3724.87;Compra de material informático;376;Cataluña
+2024-02-21;Peña & Hijos;2796.67;Transporte de mercancía;97;Galicia
+2024-02-22;Peña & Hijos;2459.83;Formación interna;173;Cataluña
+2024-02-23;Ibáñez Logística;3948.42;Consultoría técnica;452;Madrid
+2024-02-24;"Taller ""El Rápido""";2354.09;Consultoría técnica;49;Cataluña
+2024-02-25;Acme Distribuciones S.L.;3104.38;Formación interna;378;Aragón
+2024-02-26;Fernández, Asociados;1584.35;Formación interna;36;Galicia
+2024-02-27;Acme Distribuciones S.L.;4676.78;Consultoría técnica;343;Aragón
+2024-02-28;"Taller ""El Rápido""";4605.08;Formación interna;56;Cataluña
+2024-02-29;Núñez Ortega y Cía.;1164.81;Transporte de mercancía;321;Galicia
+2024-03-01;Muñoz Hermanos;3197.38;Compra de material informático;88;Madrid
+2024-03-02;Muñoz Hermanos;1278.23;Revisión anual de equipos;15;País Vasco
+2024-03-03;Muñoz Hermanos;2133.62;Compra de material informático;476;Madrid
+2024-03-04;Núñez Ortega y Cía.;1248.21;Revisión anual de equipos;472;Andalucía
+2024-03-05;Muñoz Hermanos;3188.26;Revisión anual de equipos;237;Madrid
+2024-03-06;Peña & Hijos;3276.21;Revisión anual de equipos;261;País Vasco
+2024-03-07;Peña & Hijos;2490.76;Revisión anual de equipos;269;Madrid
+2024-03-08;Fernández, Asociados;130.47;Revisión anual de equipos;122;País Vasco
+2024-03-09;"Taller ""El Rápido""";39.77;Formación interna;379;Madrid
+2024-03-10;Peña & Hijos;4655.42;Formación interna;191;Cataluña
+2024-03-11;Peña & Hijos;4891.09;Transporte de mercancía;22;Cataluña
+2024-03-12;Acme Distribuciones S.L.;316.99;Consultoría técnica;84;Aragón
+2024-03-13;Acme Distribuciones S.L.;2371.85;Transporte de mercancía;440;País Vasco
+2024-03-14;Ibáñez Logística;4991.49;Servicio de mantenimiento;270;Cataluña
+2024-03-15;Peña & Hijos;4873.11;Revisión anual de equipos;296;Galicia
+2024-03-16;Acme Distribuciones S.L.;2619.05;Compra de material informático;23;Galicia
+2024-03-17;Acme Distribuciones S.L.;1703.08;Transporte de mercancía;407;Madrid
+2024-03-18;Fernández, Asociados;1046.52;Compra de material informático;7;Madrid
+2024-03-19;García S.L.;2834.53;Formación interna;93;Aragón
+2024-03-20;Acme Distribuciones S.L.;89.64;Servicio de mantenimiento;329;Madrid
+2024-03-21;Núñez Ortega y Cía.;4478.29;Servicio de mantenimiento;53;Madrid
+--- Fin del informe: 150 líneas ---

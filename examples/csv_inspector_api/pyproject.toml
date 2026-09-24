@@ -1,0 +1,57 @@
+# An example host, not a distribution: there is deliberately no
+# [build-system] and no [project.scripts]. The [project] table only declares
+# the dependencies of this uv workspace member, which is never built, tagged
+# or published. See the "Examples" section of the repository's ARCHITECTURE.md.
+
+[project]
+name = "csv-inspector-api"
+version = "0.0.0"
+description = "Example FastAPI host that embeds csv-inspector."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "csv-inspector",
+    "fastapi>=0.115,<1",
+    "uvicorn[standard]>=0.30,<1",
+    "python-multipart>=0.0.9",
+    "pydantic-settings>=2.0,<3",
+]
+
+[tool.uv.sources]
+# Always the agent's current source in this repository, never a release tag.
+csv-inspector = { workspace = true }
+
+[dependency-groups]
+# ASGI test client. Local to the example so the root tooling stays agent-agnostic.
+dev = ["httpx>=0.27,<1"]
+
+# Development tooling for this example. Run from this directory (or with
+# `uv run --directory examples/csv_inspector_api ...`); see the repository's
+# CONTRIBUTING.md. The package is not installed (it is never built), so the
+# tools find it through `src` on their paths.
+
+[tool.ruff]
+extend = "../../pyproject.toml"
+src = ["src", "tests"]
+
+[tool.mypy]
+strict = true
+plugins = ["pydantic.mypy"]
+warn_unreachable = true
+mypy_path = "src,tests"
+explicit_package_bases = true
+files = ["src", "tests", "main_demo.py"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+
+[tool.coverage.run]
+source = ["csv_inspector_api"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true

@@ -131,6 +131,7 @@ Public API = `__all__` only (test enforce). `_`-modules internal.
 - Own mypy/pytest/coverage config, ruff `extend` root. Test-only deps in local `dev` group. Tests hermetic.
 - Checks: `uv run --directory examples/<name> mypy`, `uv run --directory examples/<name> pytest --cov`.
 - New example: follow `ARCHITECTURE.md` checklist. Out of `SECURITY.md` scope.
+- `examples/csv_inspector_api`: FastAPI host over `csv-inspector`. Not installed (no build), `src` on pytest/mypy path. `create_app(settings=None, *, model_invoker=None)` factory, `model_invoker` = test seam. `ApiSettings` (env prefix `CSV_INSPECTOR_API_`) `.to_library_settings()` = only place building `csv_inspector.Settings`, never `load_settings()`. Serve: `uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory`. Tests: conftest block network (`socketpair` allowed, event loop need it), `anyio` asyncio, `httpx.ASGITransport`. Coverage floor 90%.
 
 ## Rules
 

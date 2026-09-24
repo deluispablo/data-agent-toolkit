@@ -48,6 +48,14 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- A model answer whose dialect characters conflict (the delimiter equal to
+  the quote or escape character, or a line break as a dialect character)
+  made grounding raise a raw `ValueError` from the `csv` module, so the
+  fallback model never ran. Such an answer now fails validation with
+  `SchemaValidationError` and the fallback model runs. An escape character
+  equal to the quote character is read as doubled quotes
+  (`escapechar=None`, `doublequote=True`)
+  ([#48](https://github.com/deluispablo/data-agent-toolkit/issues/48)).
 - Ollama requests did not cap the reply length, so a model stuck repeating
   itself (for example an endless `example_values` list) generated until the
   timeout, or forever with no timeout. The reply is now capped at the 1024

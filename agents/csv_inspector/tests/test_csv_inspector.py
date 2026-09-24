@@ -15,6 +15,7 @@ against multi-gigabyte production files.
 from __future__ import annotations
 
 import codecs
+import csv
 import json
 import sys
 from pathlib import Path
@@ -1188,6 +1189,52 @@ def test_dialect_characters_must_be_one_character(field: str, value: str) -> Non
     """Anything else that is not one character fails validation (issue #11)."""
     with pytest.raises(ValidationError, match="exactly one character"):
         CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, field: value})
+
+
+@pytest.mark.parametrize(
+    "dialect",
+    [
+        {"delimiter": ",", "quotechar": ","},
+        {"delimiter": ",", "escapechar": ","},
+        {"delimiter": "\n"},
+        {"quotechar": "\r"},
+    ],
+)
+def test_a_dialect_csv_cannot_read_fails_validation(dialect: dict[str, str]) -> None:
+    """Characters that are valid alone but conflict fail validation (issue #48)."""
+    with pytest.raises(ValidationError, match=r"line break|must differ"):
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **dialect})
+
+
+def test_an_escapechar_equal_to_the_quotechar_means_doubled_quotes() -> None:
+    """``escapechar='"'`` describes RFC 4180 doubled quotes (issue #48)."""
+    payload = {**VALID_RESULT_PAYLOAD, "escapechar": '"', "doublequote": False}
+
+    result = CSVInspectionResult.model_validate(payload)
+
+    assert result.escapechar is None
+    assert result.doublequote is True
+
+
+def test_a_conflicting_dialect_moves_on_to_the_fallback_model(tmp_path: Path) -> None:
+    """A dialect csv rejects is a schema error, not a crash in grounding (issue #48)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER, encoding="utf-8")
+
+    def invoker(prompt: str, model: str) -> str:
+        quotechar = ";" if model == "primary" else '"'
+        return _sloppy_answer(quotechar=quotechar)(prompt, model)
+
+    result = inspect_csv(target, model="primary", fallback_model="fallback", model_invoker=invoker)
+
+    assert (result.delimiter, result.quotechar) == (";", '"')
+    csv.reader(
+        [],
+        delimiter=result.delimiter,
+        quotechar=result.quotechar,
+        escapechar=result.escapechar,
+        doublequote=result.doublequote,
+    )
 
 
 def test_a_malformed_delimiter_moves_on_to_the_fallback_model(tmp_path: Path) -> None:

@@ -922,14 +922,69 @@ def test_grounding_anchors_the_footer_on_its_last_occurrence(tmp_path: Path) -> 
     assert result.footer_lines == ["Revisado"]
 
 
-def test_grounding_keeps_an_unanchored_footer_as_reported(tmp_path: Path) -> None:
-    """If none of the reported footer lines occur in the file, the answer is left untouched."""
+def test_grounding_drops_a_footer_that_is_not_at_the_end_of_the_file(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A reported footer absent from the sampled end would drop real data rows (issue #52)."""
     target = tmp_path / "plain.csv"
     target.write_text("Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
 
     result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["*** END ***"]))
 
-    assert result.footer_lines == ["*** END ***"]
+    assert result.footer_lines == []
+    assert result.footer_rows_to_skip == 0
+    assert "do not occur at the end of the file" in caplog.text
+
+
+def test_grounding_drops_an_unanchored_footer_on_the_head_and_tail_path(tmp_path: Path) -> None:
+    """The same applies when the end of the file comes from the tail sample (issue #52)."""
+    target = tmp_path / "long.csv"
+    rows = "".join(f"2024-01-{day % 28 + 1:02d};Cliente {day};{day}.00\n" for day in range(400))
+    target.write_text("Fecha;Proveedor;Monto\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target, n_bytes=512, tail_bytes=512, model_invoker=_sloppy_answer(footer_lines=["TOTAL"])
+    )
+
+    assert result.footer_lines == []
+
+
+# ---------------------------------------------------------------------
+# Delimiter grounding
+# ---------------------------------------------------------------------
+
+
+def test_grounding_replaces_a_delimiter_that_never_occurs(tmp_path: Path) -> None:
+    """A ``,`` answer for a tab-separated file is sniffed from the head (issue #53)."""
+    target = tmp_path / "ledger.tsv"
+    target.write_text(_LEDGER.replace(";", "\t"), encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(delimiter=",", header_row_index=0))
+
+    assert result.delimiter == "\t"
+    # Header grounding ran with the grounded delimiter.
+    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+    assert result.header_row_index == 2
+
+
+def test_grounding_keeps_a_delimiter_that_occurs(tmp_path: Path) -> None:
+    """A delimiter found in the head is never second-guessed (issue #53)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER.replace(";", "\t", 1), encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer())
+
+    assert result.delimiter == ";"
+
+
+def test_grounding_keeps_the_delimiter_of_a_one_column_file(tmp_path: Path) -> None:
+    """With nothing to sniff, the model's delimiter is kept (issue #53)."""
+    target = tmp_path / "ids.csv"
+    target.write_text("id\n1\n2\n3\n", encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(delimiter=",", footer_lines=[]))
+
+    assert result.delimiter == ","
 
 
 def test_numeric_example_values_are_accepted_as_text() -> None:

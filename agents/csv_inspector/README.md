@@ -144,7 +144,7 @@ flowchart TD
     T2 --> E2
     E1 --> F{Invoke primary model<br/>local Ollama or Gemini API<br/>within the time budget}
     E2 --> F
-    F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>header row + literal column names,<br/>footer re-read verbatim]
+    F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>delimiter, header row + literal column names,<br/>footer re-read verbatim]
     F -->|failure| G{Invoke fallback model<br/>with the remaining budget}
     G -->|success: valid JSON + schema| GR
     G -->|failure| H[InspectionFailedError<br/>or InspectionTimeoutError]
@@ -178,6 +178,10 @@ column names ("Importe" as "Monto"), and drop blank lines or skip a footer
 line. The model's answer is therefore used as a key to recompute positions
 deterministically from the sampled text:
 
+- **Delimiter:** kept when it occurs in the head. A delimiter that never
+  occurs (e.g. `,` for a tab-separated file) is replaced by the usual
+  delimiter (`,`, `;`, tab, `|`) that splits the most head lines into the
+  same number of fields.
 - **Header:** the head line whose fields equal the inferred column names;
   failing that, the first line with as many fields as inferred columns,
   followed by a line of the same shape, that shares at least one name with
@@ -188,7 +192,9 @@ deterministically from the sampled text:
   end, and extended backwards over blank separators and totals-labelled rows
   (`TOTAL`, `Subtotal`, `Total registros: 250`, `Suma`...).
 
-Whatever cannot be anchored is returned as the model reported it. Grounding
+A header that cannot be anchored is returned as the model reported it. A
+reported footer that does not occur at the sampled end of the source is
+dropped, since keeping it would make readers skip real data rows. Grounding
 never promotes an unlabelled data row to a footer.
 
 ## Backends

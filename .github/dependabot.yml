@@ -1,6 +1,7 @@
 # Weekly, grouped dependency updates. For the uv ecosystem Dependabot only
-# refreshes uv.lock: the version ranges each agent declares in its
-# pyproject.toml are a published contract and are changed by hand.
+# refreshes uv.lock (versioning-strategy: lockfile-only): the version ranges
+# each agent declares in its pyproject.toml, including [build-system]
+# requires, are a published contract and are changed by hand.
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -15,6 +16,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    versioning-strategy: lockfile-only
     groups:
       python-dependencies:
         patterns: ["*"]

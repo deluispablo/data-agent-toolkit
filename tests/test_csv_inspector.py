@@ -303,6 +303,21 @@ def test_build_prompt_omits_tail_section_when_tail_sample_is_none() -> None:
     assert "contains the ENTIRE file" in prompt
 
 
+def test_build_prompt_forbids_a_footer_when_the_end_was_not_sampled() -> None:
+    """A truncated head with no tail must not be presented as the whole file (issue #10)."""
+    prompt = build_prompt(
+        head_sample="a,b,c\n1,2,3\n4,5",
+        detected_encoding="utf-8",
+        tail_sample=None,
+        covers_whole_file=False,
+    )
+
+    assert "TAIL SAMPLE START" not in prompt
+    assert "contains the ENTIRE file" not in prompt
+    assert "its end was not sampled" in prompt
+    assert '"footer_lines" must be []' in prompt
+
+
 def test_build_prompt_includes_tail_section_and_mid_line_caveat() -> None:
     """A provided tail sample must appear in its own labeled section with a caveat."""
     prompt = build_prompt(
@@ -878,6 +893,32 @@ def test_grounding_never_extends_the_footer_past_a_data_row(tmp_path: Path) -> N
     )
 
     assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+def test_grounding_drops_a_footer_when_the_end_of_the_file_was_not_sampled(
+    tmp_path: Path,
+) -> None:
+    """With tail sampling disabled, the truncated head's last rows are never a footer.
+
+    Regression test for issue #10: the prompt claimed the head was the entire
+    file, the model filed the last sampled rows as footer, and grounding
+    copied them into ``footer_lines``, so consumers skipped real data.
+    """
+    target = tmp_path / "ledger.csv"
+    target.write_text("Fecha;Cliente;Importe\n" + "2024-01-01;Acme;10.00\n" * 200, encoding="utf-8")
+    prompts: list[str] = []
+    answer = _sloppy_answer(footer_lines=["2024-01-01;Acme;10.00"])
+
+    def recording_invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        return answer(prompt, model)
+
+    result = inspect_csv(target, n_bytes=256, tail_bytes=0, model_invoker=recording_invoker)
+
+    assert "contains the ENTIRE file" not in prompts[0]
+    assert "its end was not sampled" in prompts[0]
+    assert result.footer_lines == []
+    assert result.footer_rows_to_skip == 0
 
 
 @pytest.mark.parametrize(

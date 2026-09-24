@@ -128,7 +128,12 @@ def _candidates(primary: str, fallback: str) -> tuple[str, ...]:
 
 
 def _prompt_for(samples: Samples) -> str:
-    return build_prompt(samples.head_text, samples.encoding, tail_sample=samples.tail_text)
+    return build_prompt(
+        samples.head_text,
+        samples.encoding,
+        tail_sample=samples.tail_text,
+        covers_whole_file=samples.covers_whole_file,
+    )
 
 
 def _timed_out(model: str, remaining: float) -> ModelTimeoutError:
@@ -194,7 +199,12 @@ def _succeeded(model: str, result: CSVInspectionResult, samples: Samples) -> CSV
         model,
         result.confidence,
     )
-    return ground_in_samples(result, samples.head_text, samples.tail_text)
+    return ground_in_samples(
+        result,
+        samples.head_text,
+        samples.tail_text,
+        covers_whole_file=samples.covers_whole_file,
+    )
 
 
 _RETRYABLE = (ModelInvocationError, ResponseParsingError, SchemaValidationError)

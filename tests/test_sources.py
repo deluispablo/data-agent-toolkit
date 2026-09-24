@@ -217,6 +217,23 @@ def test_tail_bytes_zero_does_not_consume_a_non_seekable_stream_past_the_head() 
     assert sum(size for size in stream.read_sizes if size > 0) <= 64
 
 
+@pytest.mark.parametrize(
+    ("data", "n_bytes", "tail_bytes", "expected"),
+    [
+        pytest.param(b"a;b\n1;2\n", 64, 0, True, id="head-holds-everything"),
+        pytest.param(b"a;b\n" + b"1;2\n" * 100, 64, 64, True, id="tail-reaches-the-end"),
+        pytest.param(b"a;b\n" + b"1;2\n" * 100, 64, 0, False, id="truncated-head-no-tail"),
+    ],
+)
+def test_samples_report_whether_they_reach_the_end_of_the_source(
+    data: bytes, n_bytes: int, tail_bytes: int, expected: bool
+) -> None:
+    """``covers_whole_file`` is false only when the end of the source was never sampled."""
+    samples = sample_source(data, n_bytes, tail_bytes)
+
+    assert samples.covers_whole_file is expected
+
+
 # ---------------------------------------------------------------------
 # Rejected and failing sources
 # ---------------------------------------------------------------------

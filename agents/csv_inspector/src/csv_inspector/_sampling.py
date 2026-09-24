@@ -243,12 +243,17 @@ class Samples:
             already covers the whole source (or tail sampling is disabled).
         encoding: The encoding detected for the head sample.
         description: A log-safe description of the source.
+        covers_whole_file: Whether the samples reach the real end of the
+            source: the head covers it all, or a tail was sampled. ``False``
+            when the head was truncated and tail sampling is disabled, in
+            which case the end of the source was never seen.
     """
 
     head_text: str
     tail_text: str | None
     encoding: str
     description: str
+    covers_whole_file: bool = True
 
 
 class _Reader(Protocol):
@@ -464,10 +469,14 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         head_text = decode_sample(head_raw, encoding)
 
         tail_text: str | None = None
+        covers_whole_file = True
         if len(head_raw) == n_bytes:
             tail_raw = reader.tail(len(head_raw), tail_bytes, _code_unit_size(encoding))
             if tail_raw:
                 tail_text = decode_sample(tail_raw, _tail_encoding(head_raw, encoding))
+            elif tail_bytes == 0:
+                # Nothing tells whether the source ends here: assume it does not.
+                covers_whole_file = False
     except OSError as exc:
         raise FileSampleReadError(f"Unable to read sample from '{description}': {exc}") from exc
     finally:
@@ -475,5 +484,9 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
             reader.restore()
 
     return Samples(
-        head_text=head_text, tail_text=tail_text, encoding=encoding, description=description
+        head_text=head_text,
+        tail_text=tail_text,
+        encoding=encoding,
+        description=description,
+        covers_whole_file=covers_whole_file,
     )

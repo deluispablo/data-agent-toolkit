@@ -8,6 +8,15 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Fixed
+
+- With `tail_bytes=0` on a source larger than the head, the head was
+  presented to the model as the entire file, so its last (possibly truncated)
+  rows could be reported and grounded as footer, and consumers skipped real
+  data. The end of the source is now known to be unsampled: the prompt says
+  so and `footer_lines` is left empty
+  ([#10](https://github.com/deluispablo/data-agent-toolkit/issues/10)).
+
 ## [0.1.0] - 2026-09-24
 
 First release as an installable, embeddable library

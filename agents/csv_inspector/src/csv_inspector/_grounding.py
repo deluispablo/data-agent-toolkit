@@ -131,7 +131,11 @@ def _extends_footer(line: str) -> bool:
 
 
 def ground_in_samples(
-    result: CSVInspectionResult, head_sample: str, tail_sample: str | None
+    result: CSVInspectionResult,
+    head_sample: str,
+    tail_sample: str | None,
+    *,
+    covers_whole_file: bool = True,
 ) -> CSVInspectionResult:
     """Correct what the model reported by matching it against the sampled text.
 
@@ -148,6 +152,10 @@ def ground_in_samples(
         head_sample: The decoded head sample.
         tail_sample: The decoded tail sample, or ``None`` when the head
             covers the whole file.
+        covers_whole_file: Whether the samples reach the real end of the
+            file. When ``False`` (no tail and a truncated head), any footer
+            the model reported cannot be real, since the end was never
+            seen, so ``footer_lines`` is cleared.
 
     Returns:
         The result with ``header_row_index``, column names and
@@ -167,10 +175,15 @@ def ground_in_samples(
                 for column, name in zip(result.columns, names, strict=True)
             ]
 
-    end_of_file = tail_sample if tail_sample is not None else head_sample
-    footer_lines = _locate_footer_lines(result.footer_lines, end_of_file)
-    if footer_lines is not None and footer_lines != result.footer_lines:
-        updates["footer_lines"] = footer_lines
+    if tail_sample is None and not covers_whole_file:
+        # The head's last lines are mid-file data, never a footer.
+        if result.footer_lines:
+            updates["footer_lines"] = []
+    else:
+        end_of_file = tail_sample if tail_sample is not None else head_sample
+        footer_lines = _locate_footer_lines(result.footer_lines, end_of_file)
+        if footer_lines is not None and footer_lines != result.footer_lines:
+            updates["footer_lines"] = footer_lines
 
     if not updates:
         return result

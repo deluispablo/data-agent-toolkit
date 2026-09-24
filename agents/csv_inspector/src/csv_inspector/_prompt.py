@@ -19,6 +19,7 @@ def build_prompt(
     head_sample: str,
     detected_encoding: str,
     tail_sample: str | None = None,
+    covers_whole_file: bool = True,
 ) -> str:
     """Build the prompt sent to the LLM to infer the CSV dialect and schema.
 
@@ -32,6 +33,10 @@ def build_prompt(
             file (in which case a separate tail section is omitted to save
             tokens). When present, this sample is a blind byte-suffix and
             may start mid-line or mid-character.
+        covers_whole_file: Whether the samples reach the real end of the
+            file. Only consulted without a tail sample: ``False`` means the
+            head was truncated and the end of the file was never sampled,
+            so the model is told not to report any footer.
 
     Returns:
         A complete prompt instructing the model to respond with a single
@@ -50,6 +55,12 @@ line is very likely a truncated fragment, not a real row: do not use it to \
 infer columns.
 """
         file_end = "the last lines of the TAIL sample"
+    elif not covers_whole_file:
+        tail_section = (
+            "\n(The sample above is only the START of the file; its end was not sampled. "
+            "Its last line may be truncated and is never a footer.)\n"
+        )
+        file_end = 'the end of the file (not sampled here, so "footer_lines" must be [])'
     else:
         tail_section = (
             "\n(The sample above contains the ENTIRE file; there is no separate tail. "

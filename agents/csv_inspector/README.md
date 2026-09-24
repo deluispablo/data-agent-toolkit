@@ -138,7 +138,7 @@ flowchart TD
     A[Source: path, bytes or stream] --> B[Bounded head read: first n_bytes]
     B -->|empty| X[EmptySampleError<br/>no LLM call]
     B --> C[chardet: heuristic encoding detection]
-    C --> D[Decode head sample]
+    C --> D[Decode head sample;<br/>a truncated head ends<br/>on its last line break]
     B --> COND{Bytes left past<br/>the head window?}
     COND -->|no: skip tail, save tokens| E1[Build prompt: head only]
     COND -->|yes| T[Bounded tail read of the<br/>uncovered bytes, max tail_bytes]

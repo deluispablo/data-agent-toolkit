@@ -13,6 +13,7 @@ import errno
 import io
 import logging
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Protocol, TypeAlias, cast
@@ -22,6 +23,11 @@ import chardet
 from ._exceptions import EmptySampleError, FileSampleReadError
 
 logger = logging.getLogger(__name__)
+
+# The line breaks csv and pandas split rows on. str.splitlines() also splits on
+# form feeds, vertical tabs, U+001C-U+001E, U+0085, U+2028 and U+2029, which can
+# occur inside fields of dirty or latin-1-decoded data.
+_LINE_BREAK = re.compile(r"\r\n|\r|\n")
 
 DEFAULT_SAMPLE_BYTES: int = 4096
 DEFAULT_TAIL_BYTES: int = 4096
@@ -278,7 +284,10 @@ class Samples:
     """The decoded head and tail samples of a source.
 
     Attributes:
-        head_text: The decoded head sample.
+        head_text: The decoded head sample. When the head is truncated
+            (it does not cover the whole source), it ends on a line
+            boundary: the partial last row, and any character cut in
+            half with it, are dropped.
         tail_text: The decoded tail sample, or ``None`` when the head
             already covers the whole source (or tail sampling is disabled).
         encoding: The encoding detected for the head sample, or for the
@@ -516,6 +525,17 @@ def _reader_for(source: object) -> _Reader:
     )
 
 
+def _trim_to_last_line_break(text: str) -> str:
+    """Drop the text after the last line break, the partial row of a truncated head.
+
+    The head window ends at an arbitrary byte, usually mid-row and, in a
+    multi-byte encoding, possibly mid-character (decoded as U+FFFD). Text
+    with no line break at all (one giant line) is kept unchanged.
+    """
+    end = max((match.end() for match in _LINE_BREAK.finditer(text)), default=0)
+    return text[:end] if end else text
+
+
 def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     """Read and decode the bounded head and tail samples of ``source``.
 
@@ -585,6 +605,8 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         if isinstance(reader, _SeekableStreamReader):
             reader.restore()
 
+    if len(head_raw) == n_bytes and (tail_text is not None or not covers_whole_file):
+        head_text = _trim_to_last_line_break(head_text)
     return Samples(
         head_text=head_text,
         tail_text=tail_text,

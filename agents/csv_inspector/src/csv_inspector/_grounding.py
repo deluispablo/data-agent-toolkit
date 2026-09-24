@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 from ._models import CSVInspectionResult
-from ._sampling import _canonical_codec_name
+from ._sampling import _LINE_BREAK, _canonical_codec_name
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +27,6 @@ _TOTALS_LABEL = re.compile(rf"""^["']?\s*{_LABEL}\b""", re.IGNORECASE)
 # A field that is nothing but a totals label, e.g. "TOTAL", "Grand total:" or
 # "Total general".
 _BARE_TOTALS_LABEL = re.compile(rf"{_LABEL}(?:\s+general)?\s*:?", re.IGNORECASE)
-
-# The line breaks csv and pandas split rows on. str.splitlines() also splits on
-# form feeds, vertical tabs, U+001C-U+001E, U+0085, U+2028 and U+2029, which can
-# occur inside fields of dirty or latin-1-decoded data.
-_LINE_BREAK = re.compile(r"\r\n|\r|\n")
 
 # Encodings whose name says the file starts with a byte order mark. chardet
 # reports these only when it sees one, and reading the file with any other

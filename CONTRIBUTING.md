@@ -114,6 +114,10 @@ prompt.
 - Dependencies: change an agent's version *ranges* in its `pyproject.toml`
   only on purpose, since they are a contract with its hosts. Then run
   `uv lock` and commit `uv.lock` in the same pull request.
+- Documentation: the module map and the design decisions live only in
+  `ARCHITECTURE.md`, and design notes live in module docstrings. Keep
+  `CLAUDE.md` (loaded into every AI-assistant session) under about 5 KB,
+  and an example's README under about 10 KB.
 
 ## Releases
 

@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Guide for Claude Code in this repo. File written caveman style on purpose.
+Guide for Claude Code in this repo. File written caveman style on purpose. Keep under ~5 KB: loaded every turn.
 
 ## Active Skills & Behavior
 
@@ -11,145 +11,51 @@ Guide for Claude Code in this repo. File written caveman style on purpose.
 
 ## Context optimization
 
-- Read only files task need.
+- Read only files task need. Module map + design decisions: `ARCHITECTURE.md` (single source; do not copy here).
 - Short terminal output: `-q`, `--tb=short`, `| head`, `rg -l`, `git diff --stat`.
 - Show only changed code blocks. Never rewrite whole file.
-- File over 300 lines: partial read (`offset`/`limit`, targeted grep).
-- `agents/csv_inspector/samples/`: never read, grep, list unless strictly needed. Exclude from search (`--glob '!**/samples/**'`). Need fixture fact: read one case in `generate_samples.py`.
+- File over 300 lines: partial read (`offset`/`limit`, targeted grep). `tests/test_csv_inspector.py` ~1300 lines.
+- `agents/csv_inspector/samples/`: never read, grep, list unless strictly needed. Exclude from search (`--glob '!**/samples/**'`). Need fixture fact: read one case in `generate_samples.py`. Edit generator, never fixtures (`*.csv`/`*.tsv` byte-exact, `-text` in `.gitattributes`).
 - `uv.lock` (~2000 lines): never read. Regenerate with `uv lock`.
 
 ## Overview
 
-- Monorepo, data-engineering AI agents. Each `agents/<name>/` = self-contained pip-installable library (not service), own version.
+- Monorepo, data-engineering AI agents. Each `agents/<name>/` = self-contained pip-installable library (not service), own version, own CHANGELOG.
 - Default LLM: free local Ollama. Cloud (Gemini) = opt-in `[cloud]` extra.
-- One agent now: `agents/csv_inspector` (package `csv-inspector`). Infer encoding, dialect, header row, footer, column schema of big messy CSV/TSV from small head/tail samples.
-- `examples/<name>/` = runnable host embedding agent. Executable docs, never built/tagged/published. See `## examples/`.
-- Not on PyPI. Install from git tag.
+- One agent: `agents/csv_inspector` (`csv-inspector`). Infer encoding, dialect, header, footer, column schema of big messy CSV/TSV from small head/tail samples.
+- `examples/csv_inspector_api` = FastAPI host embedding agent. Executable docs, never built/tagged/published, no CHANGELOG.
+- Not on PyPI. Install from git tag `<package>-vX.Y.Z`.
 
 ## Commands
 
-Root `pyproject.toml` = virtual uv workspace (members `agents/*`, `examples/*`, no `[project]`). `dev` group hold tools.
+Root `pyproject.toml` = virtual uv workspace (`agents/*`, `examples/*`). `dev` group hold tools.
 
 ```bash
-uv sync --all-packages --all-extras                       # install
-uv run ruff check . && uv run ruff format --check .      # lint, root, whole repo
-uv build --package csv-inspector                          # build wheel + sdist into dist/
-uv run pre-commit install                                 # git hooks
-cd agents/csv_inspector
-uv run mypy                                               # strict + pydantic plugin
-uv run pytest --cov                                       # branch coverage, floor 93%
-uv run pytest tests/test_csv_inspector.py::test_name      # single test
-uv lock                                                   # after any pyproject.toml change; commit uv.lock
+uv sync --all-packages --all-extras                        # install
+uv run ruff check . && uv run ruff format --check .       # lint, whole repo, from root
+uv run --directory agents/csv_inspector mypy               # strict
+uv run --directory agents/csv_inspector pytest --cov       # floor 93%
+uv run --directory examples/csv_inspector_api mypy
+uv run --directory examples/csv_inspector_api pytest --cov # floor 90%
+uv build --package csv-inspector                           # wheel + sdist
+uv lock                                                    # after any pyproject.toml change; commit uv.lock
 ```
 
-- Run mypy/pytest per agent, from agent folder (or `uv run --directory agents/<name> ...`). Never across agents: `conftest.py`/`fakes.py` names collide.
+- mypy/pytest per package, never across: `conftest.py`/`fakes.py` names collide.
 - Tests hermetic: no Ollama, network, credentials.
-- Live run need `ollama serve` + `qwen2.5-coder:7b`, `qwen2.5-coder:3b`: `uv run agents/csv_inspector/main_demo.py`, `uv run csv-inspector file.csv [--backend api]`.
-- Pytest not measure LLM accuracy. Prompt change: run `uv run agents/csv_inspector/scripts/eval_samples.py` before + after, both scores in PR.
-
-## Root files
-
-- `pyproject.toml`: uv workspace + `dev` group (build, mypy, pre-commit, pytest, pytest-cov, ruff, twine). Shared ruff config: `py310`, 100 cols, rules E W F I N D UP ANN B BLE C4 SIM RET PTH PT PL RUF, Google docstrings.
-- `uv.lock`: workspace lockfile. Commit with every dependency change.
-- `.python-version`: `3.14` (dev version).
-- `.pre-commit-config.yaml`: local hooks `uv-lock`, `ruff-check`, `ruff-format`, `mypy-csv-inspector`.
-- `.gitattributes`: all text LF. `*.csv`, `*.tsv` = `-text` (byte-exact, git never rewrite).
-- `.gitignore`: `.venv`, caches, coverage, `dist/`, `.env`.
-- `.dockerignore`: build context = repo root (examples Dockerfiles). Drop `.git`, venvs, caches, `.env`, `**/samples/`.
-- `README.md`: repo intro, agents list, design principles, layout, dev setup.
-- `ARCHITECTURE.md`: layout rationale, what live where, why per-agent tooling, CI design, policies, new-agent checklist.
-- `CONTRIBUTING.md`: setup, checks, code standards, PR rules, release process.
-- `SECURITY.md`: supported versions, private vuln report, scope.
-- `CODE_OF_CONDUCT.md`, `LICENSE` (MIT).
-
-## .github/
-
-- `workflows/ci.yml`: jobs `agents` (discover `agents/*`), `lint` (`uv sync --locked` + ruff check/format), `typecheck` (mypy per agent), `test` (pytest --cov, Python 3.10–3.14 Linux + 3.14 Windows, coverage summary), `test-lowest` (Python 3.10, `--resolution lowest-direct`, all extras, pytest: catch too-low floors), `package` (`python -m build`, `twine check --strict`, install wheel and sdist in clean venvs, run `smoke_test_installed.py` outside repo), `examples-typecheck`, `examples-test`, `examples-docker` (build `examples/csv_inspector_api/Dockerfile`, size < 300 MB, `/health` from container, no push).
-- `dependabot.yml`: weekly updates, `github-actions` + `uv`.
-- `pull_request_template.md`: PR checklist.
-- `ISSUE_TEMPLATE/`: `bug_report.yml`, `feature_request.yml`, `config.yml` (blank issues on, private security-report link).
-
-## agents/csv_inspector/ (package root)
-
-- `pyproject.toml`: hatchling build. Python `>=3.10`. Deps `chardet>=5.2,<8`, `ollama>=0.6.2,<1`, `pydantic>=2.6,<3`. Extra `[cloud]`: `google-genai>=2.0,<3`. Script `csv-inspector = csv_inspector.cli:main`. Sdist ship only `src`, `docs`, README, CHANGELOG, LICENSE. Mypy strict on src, scripts, samples, main_demo, tests. Coverage `fail_under = 93`. Ranges = host contract, change on purpose only.
-- `README.md`: install, quickstart, public API, sources, timeouts, how it work, backends, settings, CLI, errors.
-- `CHANGELOG.md`: Keep a Changelog. User-visible change go to `[Unreleased]`.
-- `.env.example`: env vars `LLM_BACKEND`, `OLLAMA_MODEL`, `OLLAMA_FALLBACK_MODEL`, `OLLAMA_HOST`, `GEMINI_API_KEY`, `GOOGLE_CLOUD_PROJECT`, `GOOGLE_CLOUD_LOCATION`, `CLOUD_MODEL`, `CLOUD_FALLBACK_MODEL`.
-- `main_demo.py`: thin wrapper over CLI, default file `sample.csv`.
-- `sample.csv`: 8-line demo CSV for `main_demo.py`.
-- `docs/embedding.md`: host-app guide. Dependency, pass existing data, sync hosts (Flask, Django), async hosts (FastAPI), config + secrets, timeouts + errors, thread-safety, logging, non-goals.
-- `docs/using-the-result.md`: result to reader options. stdlib `csv` recipe (test run it), pandas (`skiprows` not `header`, `skipfooter` python engine), PySpark (option map, drop preamble/footer lines), encoding names Spark/BigQuery.
-- `LICENSE`: MIT.
-
-## src/csv_inspector/ (library)
-
-Public API = `__all__` only (test enforce). `_`-modules internal.
-
-- `__init__.py`: export `inspect_csv`, `ainspect_csv`, `ensure_backend_ready`, `CSVSource`, `CSVInspectionResult`, `ColumnSchema`, `ColumnType`, `LLMBackend`, `Settings`, `load_settings`, `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES`, `ModelInvoker`, `AsyncModelInvoker`, all exceptions, `__version__`. Package logger `NullHandler`.
-- `__main__.py`: `python -m csv_inspector`, call `cli.main`.
-- `py.typed`: PEP 561 marker.
-- `_backends.py`: `LLMBackend` enum `LOCAL="local"`, `API="api"`. No third-party imports.
-- `_config.py`: frozen Pydantic `Settings` (`llm_backend`, `ollama_model`, `ollama_fallback_model`, `ollama_host`, `gemini_api_key` SecretStr, `google_cloud_project`, `google_cloud_location`, `cloud_model`, `cloud_fallback_model`). Defaults `qwen2.5-coder:7b`/`:3b`, `gemini-3.6-flash`/`gemini-flash-lite-latest`. `Settings()` never read env. `load_settings(env_file=)` read env + optional `.env` with stdlib (`_read_env_file`), base install ok. `CloudAuthMode` `gemini_api`/`vertex_ai`, `CloudCredentials`. `resolve_settings`, `ensure_backend_ready` (public) check backend **before** source read (non-seekable stream never wasted).
-- `_sampling.py`: bounded head read (4 KiB default) + tail of uncovered bytes only. Each window max 16 KiB. Readers: path, bytes/buffer, seekable stream, non-seekable forward stream (64 KiB chunks, max forward scan 64 MiB). Text stream rejected. Truncated head trimmed to last line break. Tail decoded BOM-less, code-unit aligned. Negative `read()` = read all, budgets validated. Empty source: `EmptySampleError`, no model call. `Samples` dataclass, `sample_source`, `describe_source`.
-- `_prompt.py`: `SYSTEM_PROMPT` (JSON only). `build_prompt` (head, or head + tail with mid-line caveat). `parse_and_validate`: lenient JSON extract (fenced or bare), validate into `CSVInspectionResult`.
-- `_models.py`: `ColumnType` Literal (string, integer, float, date, datetime, boolean; aliases mapped, unknown = string). `ColumnSchema` (`name`, `inferred_type`, `nullable`, `example_values`). `CSVInspectionResult` (`encoding`, `delimiter`, `quotechar`, `escapechar`, `doublequote`, `has_header`, `header_row_index` (None iff no header), `footer_lines`, `columns`, `confidence` 0–1, `notes`). Normalize `\t`/`tab`, null escape spellings.
-- `_invokers.py`: sync/async Ollama + Gemini invokers. New client per call, closed after (thread-safe). Lazy SDK import. Ollama `num_ctx` sized to prompt (4096–32768, 1024 response tokens). Secrets redacted in errors. `builtin_invoker`, `builtin_async_invoker` pick by backend.
-- `_inspect.py`: `inspect_csv(source, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)`, `ainspect_csv` mirror (sampling in worker thread). Primary then fallback model. `timeout_seconds` = one budget whole model phase; primary get `PRIMARY_SHARE` (0.7) of remainder when fallback follow, last model get rest; enforced for custom `model_invoker` too. `BackendConfigurationError` skip fallback.
-- `_encoding.py`: no I/O. `detect_encoding` (chardet), `decode_sample`, `canonical_codec_name`, `code_unit_size`, `tail_encoding`, `is_utf8_suffix`, `LINE_BREAK` (shared by `_sampling`, `_grounding`).
-- `_grounding.py`: `ground_in_samples`. Small models miscount/paraphrase. Model answer = key to recompute `header_row_index`, literal column names, verbatim footer from samples. Delimiter splitting < 2 head lines alike: replaced by single clear best of `,` `;` tab `|` by field-count agreement. Unanchored footer dropped when end sampled. Totals label regex (EN/ES: total, totales, suma, sum, subtotal, grand total). Never promote unlabelled data row to footer.
-- `_exceptions.py`: base `CSVInspectorError`. Children `FileSampleReadError`, `EmptySampleError`, `ModelInvocationError` (> `BackendConfigurationError` > `CredentialsNotConfiguredError`; > `ModelTimeoutError`), `ResponseParsingError`, `SchemaValidationError`, `InspectionFailedError` (> `InspectionTimeoutError`).
-- `cli.py`: only module with `print()`, `logging.basicConfig()`, `.env` read. Args: `file`, `--backend`, `--model`, `--fallback-model`, `--bytes`, `--tail-bytes`, `--timeout` (default 300 s, 0 = none), `--env-file`, `--no-env-file`, `--log-level`. Print result as indented JSON.
-
-## scripts/
-
-- `eval_samples.py`: manual LLM accuracy harness. Real Ollama vs every `samples/manifest.json` case, per-field score report. `--timeout` per fixture (default 300 s, 0 = none), timeout = errored fixture. Not pytest, not CI.
-- `smoke_test_installed.py`: CI run on installed wheel/sdist outside repo. Fake invoker, check public API end to end.
-
-## tests/
-
-- `conftest.py`: autouse fixture clear settings env vars, `chdir` to empty tmp dir.
-- `fakes.py`: fake backends/invokers, no network ever.
-- `test_csv_inspector.py` (69 tests, ~1200 lines, partial read): core pipeline, prompt, parsing, grounding, fallback.
-- `test_sources.py`: path, bytes, seekable + non-seekable streams.
-- `test_timeouts_and_async.py`: time budget sync/async, `ainspect_csv`.
-- `test_backends.py`: backend selection, Gemini invoker.
-- `test_config.py`: `Settings`, `load_settings`, env handling.
-- `test_cli_support.py`: CLI helpers, arg parsing.
-- `test_embedding.py`: `__all__` surface, no `print`/`basicConfig` outside `cli.py` (AST), `NullHandler`, isolation.
-- `test_samples_catalog.py`: LLM-free checks over fixtures; fixtures byte-match generator.
-- `test_eval_samples.py`: scoring logic of `eval_samples.py`.
-- `test_docs_recipes.py`: exec stdlib recipe from `docs/using-the-result.md` vs fixtures.
-- Package imported as installed. Only `samples/`, `scripts/` on `sys.path`.
-
-## samples/ (do not open)
-
-- Generated byte-exact CSV/TSV fixtures + `manifest.json`, by `uv run agents/csv_inspector/samples/generate_samples.py`. Edit generator, never fixtures.
-
-## examples/
-
-- Workspace member, not distribution. `[project]` + `version = "0.0.0"` only. Never `[build-system]`, `[project.scripts]`, tag, PyPI, CHANGELOG, `smoke_test_installed.py`.
-- Agent dep = workspace source: `[tool.uv.sources] csv-inspector = { workspace = true }`. Always current agent source, not tag.
-- Import agent public `__all__` only, never `_` modules.
-- Own mypy/pytest/coverage config, ruff `extend` root. Test-only deps in local `dev` group. Tests hermetic.
-- Checks: `uv run --directory examples/<name> mypy`, `uv run --directory examples/<name> pytest --cov`.
-- New example: follow `ARCHITECTURE.md` checklist. Out of `SECURITY.md` scope.
-- `examples/csv_inspector_api`: FastAPI host over `csv-inspector`. Not installed (no build), `src` on pytest/mypy path. `create_app(settings=None, *, model_invoker=None, gcs_client=None)` factory, `model_invoker`/`gcs_client` = test seams. Optional extra `[gcs]` = `google-cloud-storage>=2.16,<4`; app import, boot, non-GCS routes work without it. `ApiSettings` (env prefix `CSV_INSPECTOR_API_`) `.to_library_settings()` = only place building `csv_inspector.Settings`, never `load_settings()`. `allow_backend_override` default False (cost guard, never default True, test check shipped files). Serve: `uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory --no-access-log`. Demo: `uv run examples/csv_inspector_api/main_demo.py` (uvicorn in thread, POST agent `sample.csv`, `--keep-running`, `RequestIdFilter` on handler, uvicorn access log off), only file with `print()`/`basicConfig()`.
-  - `routes/inspect.py`: `build_inspect_router(settings)`. Shared `inspect_params` dependency (`InspectParams`) + `_inspect` helper (one `ainspect_csv` call, one log line). Query `n_bytes` 512–16384, `tail_bytes` 0–16384, `timeout_seconds` 1–`max_timeout_seconds`, `backend`, `model`/`fallback_model`. Without `allow_backend_override`: 403 `BackendOverrideDisabledError` for `backend=api` on local deployment, or model override on cloud call (anything that can add cost), model names token pattern, max 200. Content type not enforced. `response_model=CSVInspectionResult`.
-    - `POST /inspect` multipart `file`, pass `file.file` (seekable). 413 over `max_upload_bytes` (checked after body parse).
-    - `POST /inspect/raw` raw body, pass `AsyncIteratorReader(request.stream())` (non-seekable). 413 from `Content-Length` before read, or bytes counted while streaming. `finally: reader.close()` release worker thread on cancel.
-    - `POST /inspect/gcs` JSON `GcsInspectRequest` (`uri` regex `gs://bucket/object`, optional `generation`). Pass `BlobReader` (seekable, ranged reads, never download). Body = `/inspect` body; `X-Object-Size`, `X-Object-Generation` headers. `finally: reader.close()`.
-  - `sources/gcs.py`: `GcsClient`/`GcsBucket`/`GcsBlob` protocols (SDK untyped, fakes match). `create_client(project)` lazy import, ADC, `GcsNotInstalledError` (503, install hint). `open_gcs_object` = `blob.open("rb", chunk_size)`, check `readable()`/`seekable()`. `chunk_size_for` = larger window rounded up to 256 KiB. Client built once in lifespan (`app.py`), failure logged, route retry per request (`to_thread`). No module-level `google.*` import, no `download*` call (AST test).
-  - `streaming.py`: `AsyncIteratorReader(io.RawIOBase)`: sync `read()` in library worker thread, `run_coroutine_threadsafe` next chunk on loop. Read max 8 KiB (`MAX_READ_BYTES`, keep library buffers small). Errors = `OSError` (library `FileSampleReadError`): `ReaderClosedError`, `BodyTooLargeError` (+ `limit_exceeded` flag), `TimeoutError` per-chunk wait (`timeout_seconds`).
-  - `routes/health.py`: `GET /health`, `HealthResponse`, no model call, no secrets. `?probe=true` run public `ensure_backend_ready` (config only, no network; skipped with custom invoker), fail = 503.
-  - `request_id.py`: pure ASGI `RequestIdMiddleware`: `X-Request-ID` (valid token or `uuid4`) echoed, `request_id_var` ContextVar, one access line `csv_inspector_api.access` (method path status ms, 499 on cancel). `RequestIdFilter` set `record.request_id`: put on handler, not logger.
-  - `Dockerfile`: cloud backend only (no Ollama, no compose). Build from repo root: `docker build -f examples/csv_inspector_api/Dockerfile -t csv-inspector-api .`. `python:3.14-slim`, uv build stage: `uv sync --frozen --no-dev --no-editable --package csv-inspector-api --extra gcs` + agent `[cloud]` extra (`--inexact`), venv `/opt/venv`, `PYTHONPATH=/app/src`, uid 10001, port 8000. No Docker on dev machine: CI job is the build proof.
-  - `errors.py`: one handler `CSVInspectorError` to `application/problem+json` (`ProblemDetails`, `error` = class name). Ordered `_RULES`: 422 input, 504 timeout (before 502 parent), 503 backend config, 502 model, 500 rest. `UploadTooLargeError` 413, `BackendOverrideDisabledError` 403, `GcsNotInstalledError` 503. GCS handler registered only if `google.api_core` importable (imports inside `_register_gcs_handlers`): `NotFound` 404 (fixed detail, bucket vs object not distinguished), `Forbidden` 403, `Unauthorized`/`DefaultCredentialsError`/`RefreshError` 503, `TooManyRequests` 429 + `Retry-After` passthrough, other `GoogleAPICallError`/`RetryError` 502. SDK message only in log. `ValueError`/`TypeError` not caught. `problem_responses(*statuses, gcs=False)` for OpenAPI.
-  - Tests: `fakes.py` `FakeInvoker` (answer/error/delay, records calls), `FakeClient`/`FakeBucket`/`FakeBlob` (`open("rb")` = `RecordingReader(BytesIO)` record `read`/`seek`; `error` raised on first seek). `test_inspect_gcs.py` (bytes read <= windows, reader closed, generation, lifespan), `test_gcs_errors.py` (table parametrised, `importorskip` google). conftest block network (`socketpair` allowed, event loop need it), `anyio` asyncio, `httpx.ASGITransport`. `test_errors.py` iterate library `__all__`. `test_embedding_rules.py` AST rules. `test_inspect_raw.py`: 20 MiB `tracemalloc` bound, disconnect releases worker thread. `test_overrides.py`, `test_request_id.py` (filter on `caplog.handler`). Coverage floor 90%.
+- Live run: `ollama serve` + `qwen2.5-coder:7b`, `:3b`. `uv run agents/csv_inspector/main_demo.py`, `uv run csv-inspector file.csv [--backend api]`.
+- Pytest not measure LLM accuracy. Prompt/grounding change: `uv run --directory agents/csv_inspector python scripts/eval_samples.py [--category X]` before + after, both scores in PR.
+- Dependency change: also build wheel, install in clean venv, run `scripts/smoke_test_installed.py` outside repo.
 
 ## Rules
 
-- Python 3.10+ (CI 3.10–3.14 Linux, 3.14 Windows). Dev 3.14.
-- Library: module logger only. No `print()`, no `basicConfig()` outside `cli.py`.
-- All exceptions derive `CSVInspectorError`.
-- Branches `feat/`, `fix/`, `docs/`, `chore/`. Release tag `<package>-vX.Y.Z`.
-- New agent: follow `ARCHITECTURE.md` checklist.
+- Cost first: no new runtime dependency, no extra model call, without asking.
+- Python 3.10+ (CI 3.10–3.14 Linux, 3.14 Windows). Dev 3.14. Full type hints, Google docstrings.
+- Public API = `csv_inspector.__all__` only (test enforce). Change `__all__` or JSON contract: ask first. Examples import `__all__` only, never `_` modules or `cli`.
+- Library: module logger only. No `print()`, no `basicConfig()` outside `cli.py` (and example `main_demo.py`).
+- All exceptions derive `CSVInspectorError`. No bare `except`.
+- Explicit `Settings` never read env. Example builds library settings only in `ApiSettings.to_library_settings()`.
+- Example `allow_backend_override` default False forever (cost guard, test check).
+- User-visible change: `agents/csv_inspector/CHANGELOG.md` `[Unreleased]` (Added / Changed / Changed (breaking) / Fixed / Documentation) + README/docs in same PR. Breaking while `0.x` = minor bump.
+- Branches `feat/`, `fix/`, `docs/`, `chore/`, `refactor/`. Conventional Commits. Never commit `_issues/`, `.env`, `.coverage`, `dist/`.
+- New agent/example: `ARCHITECTURE.md` checklist.

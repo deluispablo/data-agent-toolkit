@@ -178,35 +178,10 @@ flowchart TD
   attempt.
 
 **Grounding.** Small local models reliably *recognize* headers and footers
-but count and copy lines poorly: they miscount preamble lines, paraphrase
-column names ("Importe" as "Monto"), and drop blank lines or skip a footer
-line. The model's answer is therefore used as a key to recompute positions
-deterministically from the sampled text:
-
-- **Delimiter:** kept when it splits at least two head lines into the same
-  number (2 or more) of fields. Otherwise (e.g. `,` for a tab-separated
-  file, even one whose values hold a comma) it is replaced by the usual
-  delimiter (`,`, `;`, tab, `|`) that splits the most lines that way, when
-  exactly one does. Ties and one-column files keep the model's answer.
-- **Header:** the head line whose fields equal the inferred column names;
-  failing that, the first line with as many fields as inferred columns,
-  followed by a line of the same shape, that shares at least one name with
-  the model's answer. Its index becomes `header_row_index`, and its fields
-  replace any paraphrased column names. Skipped when the model reports
-  `has_header=false`: a header-less file keeps its positional names
-  (`column_1`, ...) and `header_row_index=None`. When no header line
-  anchors and the model's header at row 0 holds its own example values
-  (at least two, and half the fields), that row is data: the result is
-  corrected to `has_header=false` with positional names.
-- **Footer:** the earliest reported footer line (by last occurrence) that
-  really appears at the end of the source, taken verbatim through to the
-  end, and extended backwards over blank separators and totals-labelled rows
-  (`TOTAL`, `Subtotal`, `Total registros: 250`, `Suma`...).
-
-A header that cannot be anchored is returned as the model reported it. A
-reported footer that does not occur at the sampled end of the source is
-dropped, since keeping it would make readers skip real data rows. Grounding
-never promotes an unlabelled data row to a footer.
+but count and copy lines poorly, so the model's answer is used as a key to
+recompute the delimiter, the header row and literal column names (or "no
+header"), and the verbatim footer from the sampled text. The exact rules
+are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
 
 ## Backends
 

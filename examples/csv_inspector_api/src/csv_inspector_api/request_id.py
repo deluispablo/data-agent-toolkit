@@ -12,7 +12,26 @@ workers, so it follows the library into its sampling thread.
 filters only see records logged on that exact logger, while a handler's see
 every record it emits, including those of the ``csv_inspector`` library.
 Configuring handlers is the application's job (``main_demo.py``), never this
-package's.
+package's::
+
+    handler = logging.StreamHandler()
+    handler.addFilter(RequestIdFilter())
+    logging.basicConfig(
+        format="%(levelname)s [%(request_id)s] %(name)s: %(message)s", handlers=[handler]
+    )
+
+A client id is kept when it is a plain token of at most 128 printable ASCII
+characters. The middleware logs one access line per request on
+``csv_inspector_api.access`` (method, path, status, elapsed ms; ``499`` when
+the client went away first), so run uvicorn with ``--no-access-log`` to
+avoid a second one. Records logged outside a request carry ``-``.
+
+On Cloud Run, stdout lines holding one JSON object are parsed as structured
+entries: a small ``logging.Formatter`` whose ``format()`` returns
+``json.dumps({"severity": record.levelname, "message": record.getMessage(),
+"logger": record.name, "logging.googleapis.com/labels": {"request_id":
+record.request_id}})``, on the same filtered handler, makes every entry
+searchable by ``labels.request_id``.
 """
 
 from __future__ import annotations

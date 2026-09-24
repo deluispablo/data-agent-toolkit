@@ -119,6 +119,64 @@ instead of failing on an empty matrix. One more job, **Docker image
 checks its size and that `GET /health` answers from a running container; it
 never pushes to a registry.
 
+## Module map
+
+This is the one place that lists what each module does. `CLAUDE.md` and
+the READMEs point here instead of repeating it.
+
+### `agents/csv_inspector` (package `csv-inspector`)
+
+The public API is exactly `csv_inspector.__all__`, and a test enforces it.
+Modules prefixed with `_` are internal.
+
+| Module | Responsibility |
+|---|---|
+| `__init__.py` | The public exports (`inspect_csv`, `ainspect_csv`, `ensure_backend_ready`, `CSVSource`, `CSVInspectionResult`, `ColumnSchema`, `ColumnType`, `LLMBackend`, `Settings`, `load_settings`, `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES`, `ModelInvoker`, `AsyncModelInvoker`, every exception, `__version__`) and the package logger's `NullHandler`. |
+| `_backends.py` | `LLMBackend` (`local`, `api`); no third-party imports. |
+| `_config.py` | The frozen `Settings` model, which never reads the environment when constructed. `load_settings(env_file=None)` reads the environment and an optional `.env` with the standard library. `resolve_settings`, `CloudCredentials`, and `ensure_backend_ready`, which checks a backend before any source is read. |
+| `_sampling.py` | Bounded I/O: the head window (4 KiB by default) and a tail of the bytes the head did not cover (each window at most 16 KiB), from a path, a buffer, a seekable stream or a forward-only stream (64 KiB chunks, at most 64 MiB scanned past the head). A truncated head is trimmed to its last line break. An empty source raises `EmptySampleError` before any model call. |
+| `_encoding.py` | Encoding detection (chardet) and decoding; BOM-less, code-unit-aligned tail codecs; the shared line-break pattern. No I/O. |
+| `_prompt.py` | The system prompt and `build_prompt`, plus `parse_and_validate`: lenient JSON extraction (fenced or bare) into `CSVInspectionResult`. |
+| `_models.py` | `ColumnType`, `ColumnSchema` and `CSVInspectionResult`, with the validators that normalize small-model spellings (tab, "no escape", "no quoting", `null`/`-1` header index, type aliases). |
+| `_invokers.py` | Sync and async Ollama and Gemini invokers. They create a new client per call (thread-safe) and import SDKs lazily. Ollama's `num_ctx` is sized to the prompt. Secrets are redacted from errors, and Gemini gets one retry on 429/503. |
+| `_inspect.py` | `inspect_csv` / `ainspect_csv`: plan, sample, prompt, then the primary and fallback models within one time budget (`PRIMARY_SHARE` for a model followed by another), then grounding. |
+| `_grounding.py` | Recomputes delimiter, header row, literal column names, header-less files and the verbatim footer from the samples, using the model's answer as the key. |
+| `_exceptions.py` | `CSVInspectorError` and its hierarchy. |
+| `cli.py`, `__main__.py` | The `csv-inspector` CLI: the only module that prints, calls `logging.basicConfig()` or reads `./.env` implicitly. |
+
+Around the package:
+
+- `scripts/eval_samples.py`: the manual accuracy harness (a live model
+  against every `samples/manifest.json` case, per-field scores). Not run
+  by pytest or CI.
+- `scripts/smoke_test_installed.py`: run by CI against the installed wheel
+  and sdist, from outside the repository.
+- `samples/`: generated, byte-exact fixtures plus `manifest.json`, written
+  by `samples/generate_samples.py`. Edit the generator, never the fixtures.
+- `tests/`: `conftest.py` clears the settings variables and runs each test
+  in an empty directory; `fakes.py` fakes every backend. The files are
+  split by concern: pipeline, prompt, parsing and grounding
+  (`test_csv_inspector.py`); sources; time budget and async; backends;
+  configuration; CLI; the embedding contract (`__all__`, no `print`, a
+  `NullHandler`); the fixture catalog; the eval scoring; and the
+  `docs/using-the-result.md` recipe, executed from the Markdown.
+- `docs/embedding.md` (host guide) and `docs/using-the-result.md` (reader
+  options) ship in the sdist.
+
+### `examples/csv_inspector_api`
+
+| Module | Responsibility |
+|---|---|
+| `app.py` | `create_app(settings=None, *, model_invoker=None, gcs_client=None)`. The two keyword arguments are the test seams. The Cloud Storage client is built once in the lifespan. |
+| `settings.py` | `ApiSettings` (`CSV_INSPECTOR_API_*`); `to_library_settings()` is the only place that builds `csv_inspector.Settings`. |
+| `routes/inspect.py` | `POST /inspect` (multipart, seekable), `/inspect/raw` (streamed, non-seekable) and `/inspect/gcs` (ranged `BlobReader`); shared query parameters and the cost guard on overrides. |
+| `routes/health.py` | `GET /health`, and `?probe=true` for `ensure_backend_ready`. |
+| `streaming.py` | `AsyncIteratorReader`: a blocking reader over `request.stream()` for the library's worker thread. |
+| `sources/gcs.py` | Opens a `gs://` object for ranged reads; typed protocols over the untyped SDK; no `google.*` import at module level. |
+| `errors.py` | One handler maps every `CSVInspectorError`, and every Cloud Storage error, to an `application/problem+json` response. |
+| `request_id.py` | `RequestIdMiddleware` (the `X-Request-ID` header and the access line) and `RequestIdFilter`. |
+| `main_demo.py`, `Dockerfile` | The demo (the only file that prints or configures logging) and the cloud-backend image. |
+
 ## Examples
 
 An example under `examples/<name>/` is a small, runnable host that embeds an
@@ -191,6 +249,42 @@ job, never a push.
   newest versions and the lowest-dependencies job for the floors. The
   development environment is pinned in
   `uv.lock`, which Dependabot refreshes weekly, as it does the GitHub Actions.
+
+## Decision log
+
+One line per notable design choice, with the issue that records it.
+
+- **Local and free by default; cloud is an opt-in extra** with lazily
+  imported SDKs: no agent needs a paid API to run.
+- **Bounded sampling**: only a head and a tail window are read, never the
+  whole source, whatever its size or type (paths, buffers, streams).
+- **The model answers; grounding decides positions and verbatim text**:
+  small models recognize structure but miscount lines, so header row,
+  column names, footer and delimiter are recomputed from the samples
+  ([#53](https://github.com/deluispablo/data-agent-toolkit/issues/53),
+  [#97](https://github.com/deluispablo/data-agent-toolkit/issues/97)).
+- **One time budget per inspection**, enforced by the library even for
+  custom invokers. With a fallback, the primary gets 70 % of it
+  ([#12](https://github.com/deluispablo/data-agent-toolkit/issues/12),
+  [#95](https://github.com/deluispablo/data-agent-toolkit/issues/95)).
+- **Explicit `Settings` never read the environment**, and hosts inject
+  them. `load_settings` is the opt-in loader and needs no extra
+  ([#96](https://github.com/deluispablo/data-agent-toolkit/issues/96),
+  [#99](https://github.com/deluispablo/data-agent-toolkit/issues/99)).
+- **Configuration is checked before the source is read**, so a
+  non-seekable stream is never consumed only to fail on a missing setting
+  ([#82](https://github.com/deluispablo/data-agent-toolkit/issues/82)).
+- **Lenient input, strict output**: common small-model spellings are
+  normalized, while anything `csv` or pandas could not read fails
+  validation and moves on to the fallback model
+  ([#93](https://github.com/deluispablo/data-agent-toolkit/issues/93)).
+- **One transient-error retry on the cloud backend**, never more; the
+  fallback model handles persistent failures
+  ([#98](https://github.com/deluispablo/data-agent-toolkit/issues/98)).
+- **A header-less file is part of the contract** (`has_header`), not a
+  sentinel value ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
+- **Every exception derives from `CSVInspectorError`**, and the library
+  logs through module loggers only (a `NullHandler`, no `print`).
 
 ## Adding a new agent
 

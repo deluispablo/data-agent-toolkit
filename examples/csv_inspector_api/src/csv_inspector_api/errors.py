@@ -12,6 +12,34 @@ imports ``google.*`` inside that registration, never at module level.
 range, an unsupported source) are programming errors in this host, not
 domain failures: they are deliberately not handled here and surface as a
 plain 500 through FastAPI's default handling.
+
+Status per exception (``error`` in the body is the class name, so clients
+can branch without parsing ``detail``):
+
+- 403 ``BackendOverrideDisabledError`` (API): drop ``backend=api`` or the
+  model overrides, or ask the operator.
+- 413 ``UploadTooLargeError`` (API): send a smaller file.
+- 503 ``GcsNotInstalledError`` (API): install the ``[gcs]`` extra.
+- 404 ``NotFound`` (Cloud Storage): a missing bucket and a missing object
+  answer the same, so buckets cannot be enumerated.
+- 403 ``Forbidden``: grant ``storage.objects.get`` to the service account.
+- 503 ``Unauthorized``, ``DefaultCredentialsError``, ``RefreshError``: the
+  deployment's credentials are missing or unusable, not the request.
+- 429 ``TooManyRequests``: ``Retry-After`` is passed through when sent.
+- 502 any other ``GoogleAPICallError`` or ``RetryError``.
+- 422 ``EmptySampleError``, ``FileSampleReadError``: fix the input.
+- 504 ``InspectionTimeoutError``, matched **before** its parent
+  ``InspectionFailedError``: retry with a larger budget or smaller windows.
+- 503 ``CredentialsNotConfiguredError``, ``BackendConfigurationError``: a
+  misconfigured deployment, not a bad request; another instance may work.
+- 502 ``InspectionFailedError``, ``ModelInvocationError``,
+  ``ResponseParsingError``, ``SchemaValidationError``: retry, maybe with
+  another model.
+- 500 any other ``CSVInspectorError``: report it.
+
+For Cloud Storage errors ``detail`` is a fixed sentence per status. The
+SDK's message (which names the bucket and whether it exists) only reaches
+the server log.
 """
 
 from __future__ import annotations

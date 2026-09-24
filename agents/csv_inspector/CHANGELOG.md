@@ -104,6 +104,10 @@ listed under **Changed (breaking)**.
 
 ### Documentation
 
+- The grounding rules moved from the README to
+  `docs/using-the-result.md` ("How the result is grounded"); the README
+  keeps a one-paragraph summary
+  ([#104](https://github.com/deluispablo/data-agent-toolkit/issues/104)).
 - The `api` backend is verified against the real Gemini Developer API
   (`google-genai` 2.25.0): the `CSVInspectionResult` JSON Schema is
   accepted, timeouts map to `ModelTimeoutError`, and an invalid key maps to

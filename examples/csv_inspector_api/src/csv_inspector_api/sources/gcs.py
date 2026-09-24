@@ -10,6 +10,57 @@ The object is opened with ``blob.open("rb")``, a seekable ``BlobReader``:
 the library samples it from its current position like a local file, so a
 request costs one metadata GET (the reader's first ``seek`` learns the size)
 and one ranged GET per sampled window, whatever the object's size.
+
+Chunk size: the larger sampling window rounded up to 256 KiB (the Cloud
+Storage unit, not the SDK's 40 MiB default), so at most 512 KiB are read.
+The route checks that the reader is readable and seekable (the library
+would consume a forward-only stream instead of seeking) and closes it in a
+``finally``. The blocking reads run in the library's sampling worker
+thread, never on the event loop.
+
+Credentials: the client is built once at startup (``app.py`` lifespan) with
+Application Default Credentials, and with the project of
+``CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT`` when set. Locally, run
+``gcloud auth application-default login``. If the client cannot be built
+(no extra, no credentials), the API starts anyway and each request tries
+again, so fixing the deployment needs no restart. Tests inject a fake with
+``create_app(settings, gcs_client=...)``.
+
+IAM, least privilege: the route needs exactly ``storage.objects.get`` on
+the objects it reads (no ``storage.objects.list``, no
+``storage.buckets.get``). On Cloud Run, give the service its own service
+account and grant the permission on the bucket, never on the project:
+``roles/storage.objectViewer`` on the bucket is the simplest predefined
+role (it also grants ``objects.list``, which is never used). A custom role
+holding only ``storage.objects.get`` is tighter::
+
+    gcloud iam service-accounts create csv-inspector-api
+    gcloud iam roles create csvInspectorObjectReader --project=PROJECT \
+      --title="csv-inspector object reader" --permissions=storage.objects.get
+    gcloud storage buckets add-iam-policy-binding gs://BUCKET \
+      --member=serviceAccount:csv-inspector-api@PROJECT.iam.gserviceaccount.com \
+      --role=projects/PROJECT/roles/csvInspectorObjectReader
+
+Then deploy with
+``--service-account=csv-inspector-api@PROJECT.iam.gserviceaccount.com``.
+The container finds the credentials on the metadata server, so never ship
+a key file in the image. Without ``objects.list``, a missing object is a
+``403``, not a ``404``, so object names cannot be probed.
+google-cloud-storage 3.x may read the bucket's metadata once per process for
+its telemetry; it ignores a ``403`` there.
+
+Cost per request, whatever the object's size: one metadata GET and one or
+two ranged media GETs (head and tail), all class B operations. Egress is at
+most the first chunk plus the tail window, about 260 KiB with the default
+windows, and it is free from Cloud Run in the bucket's region.
+
+Not supported:
+
+- requester-pays buckets (no billing project is sent, so ``502``);
+- signed URLs and any scheme other than ``gs://`` (``422``);
+- a bucket without an object (``422``);
+- wildcards (``*.csv`` is an object name, usually a ``404``);
+- compressed objects (``.csv.gz``, ``Content-Encoding: gzip``).
 """
 
 from __future__ import annotations

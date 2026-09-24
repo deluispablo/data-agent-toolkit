@@ -3,6 +3,31 @@
 No ``from __future__ import annotations`` here: FastAPI evaluates the route's
 annotations, and the ``Query`` bounds refer to the factory's ``settings``,
 which is not a module global.
+
+``/inspect`` or ``/inspect/raw``? ``/inspect`` takes ``multipart/form-data``
+(browsers, ``curl -F``). Starlette receives the whole upload first, spooled
+to a temporary file past 1 MiB, and the library samples it as a seekable
+stream, tail included whatever the size. Its ``413`` comes after the body
+was received, so it caps what is inspected, not what is received: cap the
+request size at the reverse proxy too. ``/inspect/raw`` takes the file
+bytes as the body (scripts, pipes, ``curl --data-binary``). It is inspected
+as it streams, with ``n_bytes + tail_bytes`` plus one chunk in memory and
+nothing on disk. Its ``413`` comes before reading (``Content-Length``) or
+while streaming. A body over 64 MiB past the head is not read to its end,
+so there is no tail and no footer. A client that stops sending for
+``timeout_seconds`` fails the read (``422``); one that disconnects cancels
+the request and releases the worker thread at once. Never send
+``multipart/form-data`` to ``/inspect/raw``: the envelope would be
+inspected as the file.
+
+Content types are not checked: clients send anything from ``text/csv`` to
+``application/octet-stream``, and the library detects what the bytes are.
+Invalid query parameters are FastAPI's own ``422`` (``application/json``);
+every other error is a problem response (see ``errors.py``).
+
+Model names must be plain tokens (letters, digits and ``._:/@+-``, at most
+200 characters) because they appear in log lines; an unknown model is the
+library's normal failure path (``502`` after the fallback, or ``503``).
 """
 
 import asyncio

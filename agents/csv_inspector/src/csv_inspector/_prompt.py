@@ -88,7 +88,7 @@ markdown, no backticks) with exactly this shape:
 {{
   "encoding": "<real encoding, e.g. utf-8, latin-1, cp1252>",
   "delimiter": "<field separator character, e.g. ',' or ';'>",
-  "quotechar": "<character used to quote fields>",
+  "quotechar": "<character used to quote fields, or null if fields are never quoted>",
   "escapechar": "<"\\\\" if quotes inside fields are written as \\", otherwise null>",
   "doublequote": <true if quotes inside fields are written as "", false if as \\">,
   "header_row_index": <0-based index of the row containing the real column names>,

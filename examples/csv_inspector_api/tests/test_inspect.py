@@ -270,8 +270,9 @@ async def test_openapi_documents_the_contract(client: httpx.AsyncClient) -> None
     operation = (await client.get("/openapi.json")).json()["paths"]["/inspect"]["post"]
 
     assert operation["tags"] == ["inspection"]
-    ok = operation["responses"]["200"]["content"]["application/json"]["schema"]
-    assert ok == {"$ref": "#/components/schemas/CSVInspectionResult"}
+    ok = operation["responses"]["200"]["content"]["application/json"]
+    assert ok["schema"] == {"$ref": "#/components/schemas/CSVInspectionResult"}
+    csv_inspector.CSVInspectionResult.model_validate(ok["example"])
     for status in ("413", "422", "502", "503", "504"):
         content = operation["responses"][status]["content"]
         assert content[PROBLEM_MEDIA_TYPE]["schema"]["title"] == "ProblemDetails"

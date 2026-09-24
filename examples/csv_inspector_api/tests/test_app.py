@@ -27,7 +27,11 @@ async def test_openapi_is_served(client: httpx.AsyncClient) -> None:
 
     assert response.status_code == 200
     info = response.json()["info"]
-    assert info["title"] == "csv-inspector API"
+    assert info["title"] == "csv-inspector API example"
+    assert info["summary"]
+    assert "github.com/deluispablo/data-agent-toolkit" in info["description"]
+    tags = [tag["name"] for tag in response.json()["tags"]]
+    assert tags == ["inspection", "meta"]
     assert info["version"] == __version__
 
 

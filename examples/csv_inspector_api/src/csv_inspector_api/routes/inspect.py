@@ -23,6 +23,34 @@ MIN_HEAD_BYTES = 512
 MAX_WINDOW_BYTES = 16384
 
 
+# Shown in OpenAPI as the 200 example; the library model itself stays untouched.
+_EXAMPLE_RESULT = {
+    "encoding": "utf-8",
+    "delimiter": ";",
+    "quotechar": '"',
+    "escapechar": None,
+    "doublequote": True,
+    "header_row_index": 2,
+    "footer_lines": [],
+    "columns": [
+        {
+            "name": "Fecha",
+            "inferred_type": "date",
+            "nullable": False,
+            "example_values": ["2024-01-15", "2024-01-16"],
+        },
+        {
+            "name": "Importe",
+            "inferred_type": "float",
+            "nullable": False,
+            "example_values": ["1250.50", "890.00"],
+        },
+    ],
+    "confidence": 0.9,
+    "notes": "Two preamble lines precede the header row.",
+}
+
+
 def build_inspect_router(settings: ApiSettings) -> APIRouter:
     """Build the router of ``POST /inspect``.
 
@@ -41,7 +69,10 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         "/inspect",
         response_model=CSVInspectionResult,
         summary="Inspect an uploaded CSV/TSV file",
-        responses=problem_responses(413, 422, 502, 503, 504),
+        responses={
+            200: {"content": {"application/json": {"example": _EXAMPLE_RESULT}}},
+            **problem_responses(413, 422, 502, 503, 504),
+        },
     )
     async def inspect_upload(
         request: Request,

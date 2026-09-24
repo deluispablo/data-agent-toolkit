@@ -19,6 +19,12 @@ from pydantic import ValidationError
 from ._exceptions import ResponseParsingError, SchemaValidationError
 from ._models import ColumnType, CSVInspectionResult
 
+# Bumped by hand on any change to the prompt wording (date-based; the suffix
+# tells several bumps in one month apart). Recorded in every Usage and eval
+# run, so measurements of different prompts are never mixed; see
+# docs/evaluation.md "Changing the prompt".
+PROMPT_VERSION = "2026.09-a"
+
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
 # Built from the model's vocabulary so the prompt can never drift from it.

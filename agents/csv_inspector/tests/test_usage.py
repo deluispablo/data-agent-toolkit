@@ -1,4 +1,4 @@
-"""``result.usage``: tokens, latency, attempts and retries of an inspection (issue #121)."""
+"""``result.usage``: tokens, latency, attempts, retries and prompt version (issues #121, #127)."""
 
 from __future__ import annotations
 
@@ -11,6 +11,7 @@ from typing import Any
 import pytest
 
 from csv_inspector import CSVInspectionResult, Settings, ainspect_csv, inspect_csv
+from csv_inspector._prompt import PROMPT_VERSION
 from csv_inspector.cli import main
 from fakes import install_fake_ollama, ollama_reply
 
@@ -51,6 +52,8 @@ def test_ollama_counters_reach_the_usage(
     assert usage.load_seconds == pytest.approx(2.5)
     assert usage.latency_seconds >= 0
     assert "model=big prompt_tokens=900 completion_tokens=150" in caplog.text
+    assert usage.prompt_version == PROMPT_VERSION
+    assert f"prompt_version={PROMPT_VERSION}" in caplog.text
 
 
 @pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
@@ -102,6 +105,7 @@ def test_a_custom_invoker_reports_no_tokens_but_counts_attempts(use_async: bool)
     assert usage is not None
     assert (usage.model, usage.attempts, usage.retries) == ("second", 2, 0)
     assert (usage.prompt_tokens, usage.completion_tokens) == (None, None)
+    assert usage.prompt_version == PROMPT_VERSION
 
 
 def test_usage_is_never_serialized() -> None:

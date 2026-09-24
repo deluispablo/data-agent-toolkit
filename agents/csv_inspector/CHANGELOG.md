@@ -23,6 +23,11 @@ listed under **Changed (breaking)**.
 
 ### Added
 
+- `ensure_backend_ready(backend, settings=None)` is now public. It is the
+  configuration check every inspection already runs (cloud credentials,
+  `google-genai` installed; no network or model call), so hosts can fail
+  fast at startup or in a readiness probe
+  ([#82](https://github.com/deluispablo/data-agent-toolkit/issues/82)).
 - CLI option `--fallback-model`, the model tried after `--model` fails
   (default: the backend's configured fallback). The "Inspecting ..." log
   line now names both models

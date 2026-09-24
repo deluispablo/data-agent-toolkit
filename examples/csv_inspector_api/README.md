@@ -82,12 +82,18 @@ curl localhost:8000/health
 
 The health check never contacts Ollama or Gemini: it must stay cheap and
 free. It reports the configured backend and models, never an API key, a
-cloud project or a location. There is no `?probe=true` reachability check:
-it would need `ensure_backend_ready`, which `csv-inspector` does not export
-publicly, and the example imports only the public API.
+cloud project or a location.
 
-Use `/health` as the liveness and readiness probe (Kubernetes `httpGet`,
-Cloud Run startup/liveness probe with `path: /health`).
+`GET /health?probe=true` also runs the library's `ensure_backend_ready`, the
+configuration check every inspection runs first: cloud credentials present,
+`google-genai` installed. It makes no network or model call. A failure is a
+`503` problem response, for example `CredentialsNotConfiguredError`. It does
+**not** prove Ollama is reachable: for the `local` backend it always passes,
+because reachability is only known when a model is called. With a custom
+`model_invoker` (as in the tests) the check is skipped, as the library skips it.
+
+Use `/health` as the liveness probe and `/health?probe=true` as the readiness
+or startup probe (Kubernetes `httpGet`, Cloud Run with `path: /health?probe=true`).
 
 ### `POST /inspect`
 

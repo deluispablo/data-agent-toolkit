@@ -88,12 +88,12 @@ def test_the_import_rule_detects_violations() -> None:
     tree = ast.parse(
         "import csv_inspector._config\n"
         "from csv_inspector._inspect import ainspect_csv\n"
-        "from csv_inspector import Settings, ensure_backend_ready\n"
+        "from csv_inspector import Settings, resolve_settings\n"
         "from .csv_inspector import anything\n"
     )
 
     assert _private_uses(tree) == [
         "csv_inspector._config",
         "csv_inspector._inspect",
-        "ensure_backend_ready",
+        "resolve_settings",
     ]

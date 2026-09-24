@@ -21,7 +21,7 @@ import logging
 from importlib.metadata import PackageNotFoundError, version
 
 from ._backends import LLMBackend
-from ._config import Settings, load_settings
+from ._config import Settings, ensure_backend_ready, load_settings
 from ._exceptions import (
     BackendConfigurationError,
     CredentialsNotConfiguredError,
@@ -67,6 +67,7 @@ __all__ = [
     "Settings",
     "__version__",
     "ainspect_csv",
+    "ensure_backend_ready",
     "inspect_csv",
     "load_settings",
 ]

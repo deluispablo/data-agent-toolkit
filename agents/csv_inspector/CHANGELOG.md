@@ -8,6 +8,34 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-09-24
+
+### Changed (breaking)
+
+- The result can describe a header-less file: new field
+  `has_header: bool` (default `true`), and `header_row_index` is now
+  `int | None`, `None` exactly when `has_header` is `false`. A model answer
+  of `null` or `-1` without `has_header` is read as "no header row"; a
+  contradiction fails validation. Grounding keeps the positional column
+  names (`column_1`, ...) of a header-less file instead of anchoring a
+  data row as the header, and corrects a header claimed at row 0 whose
+  fields are the model's own example values to "no header". Consumers must handle `header_row_index=None`
+  (for example `skiprows=result.header_row_index or 0`, `header=None`);
+  see `docs/using-the-result.md`. A header-less file with preamble lines
+  is not described (known limitation). The JSON contract gains
+  `has_header`; the version moves to 0.3.0
+  ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
+- The default cloud models are now `gemini-3.6-flash` (primary) and
+  `gemini-flash-lite-latest` (fallback). The Gemini Developer API answers
+  `404 NOT_FOUND` ("no longer available to new users") for the previous
+  defaults, `gemini-2.5-flash` and `gemini-2.5-flash-lite`. The fallback is
+  Google's moving Flash-Lite alias: it was the most reliable model on a
+  free-tier key during verification, and it tracks the current Flash-Lite
+  release. Pin a versioned name in `CLOUD_FALLBACK_MODEL` for reproducible
+  results. Set `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
+  fields) to keep the old names on projects that still have access
+  ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
+
 ### Added
 
 - A truncated head sample now ends on its last line break before it
@@ -55,32 +83,6 @@ listed under **Changed (breaking)**.
   after the `Retry-After` header (at most 10 s) or about one second, and
   only within the model's time budget. The retry is logged at WARNING
   ([#98](https://github.com/deluispablo/data-agent-toolkit/issues/98)).
-
-### Changed (breaking)
-
-- The result can describe a header-less file: new field
-  `has_header: bool` (default `true`), and `header_row_index` is now
-  `int | None`, `None` exactly when `has_header` is `false`. A model answer
-  of `null` or `-1` without `has_header` is read as "no header row"; a
-  contradiction fails validation. Grounding keeps the positional column
-  names (`column_1`, ...) of a header-less file instead of anchoring a
-  data row as the header, and corrects a header claimed at row 0 whose
-  fields are the model's own example values to "no header". Consumers must handle `header_row_index=None`
-  (for example `skiprows=result.header_row_index or 0`, `header=None`);
-  see `docs/using-the-result.md`. A header-less file with preamble lines
-  is not described (known limitation). The JSON contract gains
-  `has_header`; the version moves to 0.3.0
-  ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
-- The default cloud models are now `gemini-3.6-flash` (primary) and
-  `gemini-flash-lite-latest` (fallback). The Gemini Developer API answers
-  `404 NOT_FOUND` ("no longer available to new users") for the previous
-  defaults, `gemini-2.5-flash` and `gemini-2.5-flash-lite`. The fallback is
-  Google's moving Flash-Lite alias: it was the most reliable model on a
-  free-tier key during verification, and it tracks the current Flash-Lite
-  release. Pin a versioned name in `CLOUD_FALLBACK_MODEL` for reproducible
-  results. Set `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
-  fields) to keep the old names on projects that still have access
-  ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
 
 ### Fixed
 
@@ -360,6 +362,7 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...HEAD
+[0.3.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...csv-inspector-v0.3.0
 [0.2.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.1.0...csv-inspector-v0.2.0
 [0.1.0]: https://github.com/deluispablo/data-agent-toolkit/releases/tag/csv-inspector-v0.1.0

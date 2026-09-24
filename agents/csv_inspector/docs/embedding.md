@@ -15,16 +15,16 @@ Pin a released tag so upgrades are deliberate:
 
 ```text
 # requirements.txt
-csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.2.0#subdirectory=agents/csv_inspector
+csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.3.0#subdirectory=agents/csv_inspector
 # ...or with the cloud (Gemini) backend and environment loading:
-csv-inspector[cloud] @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.2.0#subdirectory=agents/csv_inspector
+csv-inspector[cloud] @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.3.0#subdirectory=agents/csv_inspector
 ```
 
 ```toml
 # pyproject.toml
 [project]
 dependencies = [
-    "csv-inspector[cloud] @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.2.0#subdirectory=agents/csv_inspector",
+    "csv-inspector[cloud] @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.3.0#subdirectory=agents/csv_inspector",
 ]
 ```
 

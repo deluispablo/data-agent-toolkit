@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 DEFAULT_MODEL: str = "qwen2.5-coder:7b"
 FALLBACK_MODEL: str = "qwen2.5-coder:3b"
 DEFAULT_CLOUD_MODEL: str = "gemini-3.6-flash"
-DEFAULT_CLOUD_FALLBACK_MODEL: str = "gemini-3.5-flash-lite"
+DEFAULT_CLOUD_FALLBACK_MODEL: str = "gemini-flash-lite-latest"
 
 CLOUD_EXTRA_HINT = "Install it with: pip install 'csv-inspector[cloud]'."
 

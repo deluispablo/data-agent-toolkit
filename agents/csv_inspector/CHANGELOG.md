@@ -11,11 +11,14 @@ listed under **Changed (breaking)**.
 ### Changed (breaking)
 
 - The default cloud models are now `gemini-3.6-flash` (primary) and
-  `gemini-3.5-flash-lite` (fallback). The Gemini Developer API answers
+  `gemini-flash-lite-latest` (fallback). The Gemini Developer API answers
   `404 NOT_FOUND` ("no longer available to new users") for the previous
-  defaults, `gemini-2.5-flash` and `gemini-2.5-flash-lite`. Set
-  `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings` fields) to keep
-  the old names on projects that still have access
+  defaults, `gemini-2.5-flash` and `gemini-2.5-flash-lite`. The fallback is
+  Google's moving Flash-Lite alias: it was the most reliable model on a
+  free-tier key during verification, and it tracks the current Flash-Lite
+  release. Pin a versioned name in `CLOUD_FALLBACK_MODEL` for reproducible
+  results. Set `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
+  fields) to keep the old names on projects that still have access
   ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
 
 ### Fixed
@@ -32,8 +35,10 @@ listed under **Changed (breaking)**.
 - The `api` backend is verified against the real Gemini Developer API
   (`google-genai` 2.25.0): the `CSVInspectionResult` JSON Schema is
   accepted, timeouts map to `ModelTimeoutError`, and an invalid key maps to
-  a redacted `ModelInvocationError`. Vertex AI is still unverified
-  ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
+  a redacted `ModelInvocationError`
+  ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)). Vertex
+  AI is still unverified
+  ([#92](https://github.com/deluispablo/data-agent-toolkit/issues/92)).
 
 ## [0.2.0] - 2026-09-24
 

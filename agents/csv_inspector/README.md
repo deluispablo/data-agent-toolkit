@@ -207,7 +207,7 @@ never promotes an unlabelled data row to a footer.
 
 Verified against the real Gemini Developer API on 2026-09-24 with
 `google-genai` 2.25.0. Vertex AI has not been verified against the real
-service yet ([#5](https://github.com/deluispablo/data-agent-toolkit/issues/5)).
+service yet ([#92](https://github.com/deluispablo/data-agent-toolkit/issues/92)).
 Gemini answers `503 UNAVAILABLE` (high demand) or `429 RESOURCE_EXHAUSTED`
 (free-tier quota) often; the library does not retry, so the fallback model
 is the only second attempt.
@@ -236,7 +236,7 @@ There are two ways to configure the library:
 | `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:3b` |
 | `gemini_api_key` | `GEMINI_API_KEY` (takes precedence when set) | unset |
 | `google_cloud_project` / `google_cloud_location` | `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` (Vertex AI with ADC) | unset |
-| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-3.6-flash` / `gemini-3.5-flash-lite` |
+| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-3.6-flash` / `gemini-flash-lite-latest` |
 
 Each fallback is a different model from its primary, so a failing primary
 is retried with another model out of the box. Setting the fallback equal to

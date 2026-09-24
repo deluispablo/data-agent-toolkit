@@ -314,7 +314,7 @@ async def test_openapi_documents_the_object_headers(client: httpx.AsyncClient) -
     schema = (await client.get("/openapi.json")).json()
 
     ok = schema["paths"]["/inspect/gcs"]["post"]["responses"]["200"]
-    assert set(ok["headers"]) == {"X-Object-Size", "X-Object-Generation"}
+    assert {"X-Object-Size", "X-Object-Generation", "X-Inspection-Model"} <= set(ok["headers"])
 
 
 def _google_imports(tree: ast.Module) -> list[tuple[str, bool]]:

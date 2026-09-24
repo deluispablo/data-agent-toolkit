@@ -105,6 +105,10 @@ unchanged:
  "confidence": 1.0, "notes": null, "footer_rows_to_skip": 0}
 ```
 
+Every successful inspection also returns `X-Inspection-Model` (the model
+whose answer was kept) and, when the backend reports them,
+`X-Inspection-Prompt-Tokens` and `X-Inspection-Completion-Tokens` (summed
+over the primary and fallback attempts); the body never changes.
 `/inspect/gcs` also returns the `X-Object-Size` and `X-Object-Generation`
 headers. It reads the object with Application Default Credentials and
 needs only `storage.objects.get`. Credentials, IAM, cost and the

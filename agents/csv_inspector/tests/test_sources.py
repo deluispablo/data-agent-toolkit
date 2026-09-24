@@ -138,7 +138,8 @@ def test_every_source_type_matches_the_path_case(fixture: Path) -> None:
     for label, source in _variants(fixture.read_bytes()):
         prompt, result = _inspect(source)
         assert prompt == path_prompt, label
-        assert result == path_result, label
+        # model_dump() leaves out usage, whose latency differs between runs.
+        assert result.model_dump() == path_result.model_dump(), label
 
 
 @pytest.mark.parametrize("fixture", PARITY_FIXTURES, ids=lambda path: path.name)

@@ -14,9 +14,27 @@ import pytest
 ChatHandler = Callable[..., Any]
 
 
-def ollama_reply(content: str | None) -> SimpleNamespace:
-    """Build an object shaped like ``ollama``'s chat response."""
-    return SimpleNamespace(message=SimpleNamespace(content=content))
+def ollama_reply(
+    content: str | None,
+    *,
+    prompt_eval_count: int | None = None,
+    eval_count: int | None = None,
+    load_duration: int | None = None,
+) -> SimpleNamespace:
+    """Build an object shaped like ``ollama``'s chat response.
+
+    Args:
+        content: The message text.
+        prompt_eval_count: Prompt tokens, as Ollama reports them.
+        eval_count: Completion tokens.
+        load_duration: Model load time, in nanoseconds.
+    """
+    return SimpleNamespace(
+        message=SimpleNamespace(content=content),
+        prompt_eval_count=prompt_eval_count,
+        eval_count=eval_count,
+        load_duration=load_duration,
+    )
 
 
 class FakeOllama:

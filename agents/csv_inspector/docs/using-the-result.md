@@ -38,6 +38,14 @@ reported footer that does not occur at the sampled end of the source is
 dropped, since keeping it would make readers skip real data rows. Grounding
 never promotes an unlabelled data row to a footer.
 
+## What is not serialized
+
+`result.usage` (the model, tokens, latency and attempts of the inspection;
+see the README's Usage section) describes the call, not the file. It is
+never part of `model_dump()`, `model_dump_json()` or the JSON Schema, so
+the JSON a pipeline stores or forwards is the same with or without it. Read
+it from the Python object right after the call if you want to keep it.
+
 ## Rules that apply to every reader
 
 - **`has_header=False` means the first row is data.** `header_row_index`

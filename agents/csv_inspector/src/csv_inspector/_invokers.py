@@ -15,7 +15,7 @@ import random
 import time
 from collections.abc import Awaitable, Callable, Sequence
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, Protocol
+from typing import TYPE_CHECKING, Any, NamedTuple, Protocol
 
 from pydantic import SecretStr
 
@@ -40,6 +40,24 @@ ModelInvoker = Callable[[str, str], str]
 
 AsyncModelInvoker = Callable[[str, str], Awaitable[str]]
 """An async callable that sends ``prompt`` to ``model`` and returns the raw text."""
+
+
+class InvokerResponse(NamedTuple):
+    """One model call's raw text plus what the backend reported about its cost.
+
+    Attributes:
+        text: The raw response text, exactly as the model returned it.
+        prompt_tokens: Prompt tokens, or ``None`` when not reported.
+        completion_tokens: Completion tokens, or ``None`` when not reported.
+        retries: Transient errors retried before this answer (cloud only).
+        load_seconds: Time Ollama spent loading the model, or ``None``.
+    """
+
+    text: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    retries: int = 0
+    load_seconds: float | None = None
 
 
 class _OllamaMessage(Protocol):
@@ -93,6 +111,11 @@ def _is_timeout(exc: BaseException) -> bool:
     except ImportError:  # pragma: no cover - both SDKs depend on httpx.
         return False
     return isinstance(exc, httpx.TimeoutException)
+
+
+def _count(value: object) -> int | None:
+    """A token count read from an SDK response, or ``None`` when absent or malformed."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 def _redact(message: str, secret: SecretStr | None) -> str:
@@ -179,12 +202,48 @@ def _ollama_error(model: str, exc: Exception) -> ModelInvocationError:
     return ModelInvocationError(f"Model '{model}' failed to respond: {exc}")
 
 
-def _ollama_content(response: _OllamaChatResponse, model: str) -> str:
-    """Extract the non-empty message content from an Ollama chat response."""
+def _ollama_response(response: _OllamaChatResponse, model: str) -> InvokerResponse:
+    """Extract the non-empty message content and the usage counters of an Ollama reply.
+
+    ``prompt_eval_count``, ``eval_count`` and ``load_duration`` (nanoseconds)
+    are optional in the SDK, so each one missing is ``None``.
+    """
     content = response.message.content
     if not content:
         raise ModelInvocationError(f"Model '{model}' returned an empty response.")
-    return content
+    load_ns = _count(getattr(response, "load_duration", None))
+    return InvokerResponse(
+        content,
+        prompt_tokens=_count(getattr(response, "prompt_eval_count", None)),
+        completion_tokens=_count(getattr(response, "eval_count", None)),
+        load_seconds=None if load_ns is None else load_ns / 1e9,
+    )
+
+
+def _invoke_ollama(
+    prompt: str, model: str, *, host: str | None, timeout_seconds: float | None
+) -> InvokerResponse:
+    """:func:`invoke_ollama_model`, returning the usage counters with the text."""
+    ollama = _import_ollama()
+    try:
+        with ollama.Client(host=host, timeout=timeout_seconds) as client:
+            response = client.chat(**_ollama_request(prompt, model))
+    except Exception as exc:
+        raise _ollama_error(model, exc) from exc
+    return _ollama_response(response, model)
+
+
+async def _ainvoke_ollama(
+    prompt: str, model: str, *, host: str | None, timeout_seconds: float | None
+) -> InvokerResponse:
+    """:func:`ainvoke_ollama_model`, returning the usage counters with the text."""
+    ollama = _import_ollama()
+    try:
+        async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
+            response = await client.chat(**_ollama_request(prompt, model))
+    except Exception as exc:
+        raise _ollama_error(model, exc) from exc
+    return _ollama_response(response, model)
 
 
 def invoke_ollama_model(
@@ -209,13 +268,7 @@ def invoke_ollama_model(
         ModelInvocationError: If the backend cannot be reached, the model is
             not available locally, or the model returns an empty message.
     """
-    ollama = _import_ollama()
-    try:
-        with ollama.Client(host=host, timeout=timeout_seconds) as client:
-            response = client.chat(**_ollama_request(prompt, model))
-    except Exception as exc:
-        raise _ollama_error(model, exc) from exc
-    return _ollama_content(response, model)
+    return _invoke_ollama(prompt, model, host=host, timeout_seconds=timeout_seconds).text
 
 
 async def ainvoke_ollama_model(
@@ -237,13 +290,8 @@ async def ainvoke_ollama_model(
         ModelTimeoutError: If the request times out.
         ModelInvocationError: If the request fails or the response is empty.
     """
-    ollama = _import_ollama()
-    try:
-        async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
-            response = await client.chat(**_ollama_request(prompt, model))
-    except Exception as exc:
-        raise _ollama_error(model, exc) from exc
-    return _ollama_content(response, model)
+    response = await _ainvoke_ollama(prompt, model, host=host, timeout_seconds=timeout_seconds)
+    return response.text
 
 
 # ---------------------------------------------------------------------
@@ -401,14 +449,70 @@ def _empty_response_reason(response: _GenaiResponse) -> str:
     return ""
 
 
-def _cloud_text(response: _GenaiResponse, model: str) -> str:
-    """Extract the non-empty text of a Gemini response."""
+def _cloud_response(response: _GenaiResponse, model: str, *, retries: int) -> InvokerResponse:
+    """Extract the non-empty text and the token counts of a Gemini response."""
     text = response.text
     if not text:
         raise ModelInvocationError(
             f"Cloud model '{model}' returned an empty response{_empty_response_reason(response)}."
         )
-    return text
+    usage = getattr(response, "usage_metadata", None)
+    return InvokerResponse(
+        text,
+        prompt_tokens=_count(getattr(usage, "prompt_token_count", None)),
+        completion_tokens=_count(getattr(usage, "candidates_token_count", None)),
+        retries=retries,
+    )
+
+
+def _invoke_cloud(
+    prompt: str, model: str, *, settings: Settings | None, timeout_seconds: float | None
+) -> InvokerResponse:
+    """:func:`invoke_cloud_model`, returning the usage counters with the text."""
+    call = _CloudCall(settings, timeout_seconds)
+    logger.debug("Calling cloud model '%s' via %s.", model, call.credentials.describe())
+    retries = 0
+    while True:
+        try:
+            with call.client() as client:
+                response = client.models.generate_content(
+                    model=model, contents=prompt, config=call.config
+                )
+            break
+        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
+            delay = None if retries else call.retry_delay(model, exc)
+            if delay is None:
+                # Re-raised "from None" on purpose: the original exception (and its
+                # traceback) could carry the API key, so only a redacted message is kept.
+                raise call.error(model, exc) from None
+        retries += 1
+        time.sleep(delay)
+    return _cloud_response(response, model, retries=retries)
+
+
+async def _ainvoke_cloud(
+    prompt: str, model: str, *, settings: Settings | None, timeout_seconds: float | None
+) -> InvokerResponse:
+    """:func:`ainvoke_cloud_model`, returning the usage counters with the text."""
+    call = _CloudCall(settings, timeout_seconds)
+    logger.debug("Calling cloud model '%s' via %s (async).", model, call.credentials.describe())
+    retries = 0
+    while True:
+        try:
+            with call.client() as client:
+                async with client.aio as aio:
+                    response = await aio.models.generate_content(
+                        model=model, contents=prompt, config=call.config
+                    )
+            break
+        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
+            delay = None if retries else call.retry_delay(model, exc)
+            if delay is None:
+                # Re-raised "from None" on purpose; see _invoke_cloud.
+                raise call.error(model, exc) from None
+        retries += 1
+        await asyncio.sleep(delay)
+    return _cloud_response(response, model, retries=retries)
 
 
 def invoke_cloud_model(
@@ -444,25 +548,7 @@ def invoke_cloud_model(
         ModelInvocationError: If the service rejects or fails the request, or
             returns an empty response.
     """
-    call = _CloudCall(settings, timeout_seconds)
-    logger.debug("Calling cloud model '%s' via %s.", model, call.credentials.describe())
-    retried = False
-    while True:
-        try:
-            with call.client() as client:
-                response = client.models.generate_content(
-                    model=model, contents=prompt, config=call.config
-                )
-            break
-        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
-            delay = None if retried else call.retry_delay(model, exc)
-            if delay is None:
-                # Re-raised "from None" on purpose: the original exception (and its
-                # traceback) could carry the API key, so only a redacted message is kept.
-                raise call.error(model, exc) from None
-        retried = True
-        time.sleep(delay)
-    return _cloud_text(response, model)
+    return _invoke_cloud(prompt, model, settings=settings, timeout_seconds=timeout_seconds).text
 
 
 async def ainvoke_cloud_model(
@@ -490,25 +576,10 @@ async def ainvoke_cloud_model(
         ModelTimeoutError: If the request times out.
         ModelInvocationError: If the request fails or the response is empty.
     """
-    call = _CloudCall(settings, timeout_seconds)
-    logger.debug("Calling cloud model '%s' via %s (async).", model, call.credentials.describe())
-    retried = False
-    while True:
-        try:
-            with call.client() as client:
-                async with client.aio as aio:
-                    response = await aio.models.generate_content(
-                        model=model, contents=prompt, config=call.config
-                    )
-            break
-        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
-            delay = None if retried else call.retry_delay(model, exc)
-            if delay is None:
-                # Re-raised "from None" on purpose; see invoke_cloud_model.
-                raise call.error(model, exc) from None
-        retried = True
-        await asyncio.sleep(delay)
-    return _cloud_text(response, model)
+    response = await _ainvoke_cloud(
+        prompt, model, settings=settings, timeout_seconds=timeout_seconds
+    )
+    return response.text
 
 
 # ---------------------------------------------------------------------
@@ -518,25 +589,31 @@ async def ainvoke_cloud_model(
 
 def builtin_invoker(
     backend: LLMBackend, settings: Settings
-) -> Callable[[str, str, float | None], str]:
-    """Return the built-in sync invoker as ``(prompt, model, timeout_seconds) -> text``."""
+) -> Callable[[str, str, float | None], InvokerResponse]:
+    """Return the built-in sync invoker as ``(prompt, model, timeout_seconds) -> response``.
+
+    This is the seam the inspection calls: ``response.text`` is the model's
+    raw text, before any parsing, and the other fields feed ``Usage``. A
+    wrapper around the returned callable (e.g. one keeping the raw text)
+    must return the :class:`InvokerResponse` unchanged so usage keeps flowing.
+    """
     if backend is LLMBackend.API:
-        return lambda prompt, model, timeout: invoke_cloud_model(
+        return lambda prompt, model, timeout: _invoke_cloud(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
-    return lambda prompt, model, timeout: invoke_ollama_model(
+    return lambda prompt, model, timeout: _invoke_ollama(
         prompt, model, host=settings.ollama_host, timeout_seconds=timeout
     )
 
 
 def builtin_async_invoker(
     backend: LLMBackend, settings: Settings
-) -> Callable[[str, str, float | None], Awaitable[str]]:
-    """Return the built-in async invoker as ``(prompt, model, timeout_seconds) -> text``."""
+) -> Callable[[str, str, float | None], Awaitable[InvokerResponse]]:
+    """Return the built-in async invoker; the async twin of :func:`builtin_invoker`."""
     if backend is LLMBackend.API:
-        return lambda prompt, model, timeout: ainvoke_cloud_model(
+        return lambda prompt, model, timeout: _ainvoke_cloud(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
-    return lambda prompt, model, timeout: ainvoke_ollama_model(
+    return lambda prompt, model, timeout: _ainvoke_ollama(
         prompt, model, host=settings.ollama_host, timeout_seconds=timeout
     )

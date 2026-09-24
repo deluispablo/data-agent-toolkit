@@ -564,7 +564,7 @@ def test_ainspect_csv_matches_the_sync_result() -> None:
     )
 
     assert isinstance(async_result, CSVInspectionResult)
-    assert async_result == sync_result
+    assert async_result.model_dump() == sync_result.model_dump()  # usage aside (latency)
 
 
 def test_ainspect_csv_cancels_a_slow_async_invoker_at_the_budget() -> None:

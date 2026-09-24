@@ -9,6 +9,7 @@ Usage:
     csv-inspector data.csv
     csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
     csv-inspector data.csv --bytes 8192 --timeout 30
+    csv-inspector data.csv --stats
     csv-inspector data.csv --backend api --model gemini-3.6-flash --env-file secrets.env
 """
 
@@ -220,6 +221,12 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
             f"(default: {DEFAULT_CLI_TIMEOUT_SECONDS:g}; 0 disables the limit)."
         ),
     )
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="After the result, print the inspection's usage (model, tokens, latency, "
+        "attempts, retries) to stderr as JSON; stdout stays the result only.",
+    )
     add_settings_arguments(parser)
     add_log_level_argument(parser)
     return parser.parse_args(argv)
@@ -270,6 +277,8 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
         sys.exit(1)
 
     print(result.model_dump_json(indent=2))
+    if args.stats and result.usage is not None:
+        print(result.usage.model_dump_json(indent=2), file=sys.stderr)
 
     logger.info(
         "Summary: encoding=%s delimiter=%r header_row=%s columns=%s confidence=%.2f",

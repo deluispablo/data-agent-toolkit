@@ -87,6 +87,7 @@ pip install -r requirements-dev.txt   # editable csv-inspector[cloud] + pytest, 
 
 ollama serve                          # only needed for live runs, never for tests
 ollama pull qwen2.5-coder:7b
+ollama pull qwen2.5-coder:3b          # default fallback model
 
 python agents/csv_inspector/main_demo.py              # or: csv-inspector path/to/file.csv
 python agents/csv_inspector/scripts/eval_samples.py   # score a live model on the fixture catalog

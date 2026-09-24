@@ -239,6 +239,14 @@ CSVSource: TypeAlias = str | os.PathLike[str] | bytes | bytearray | memoryview |
 # Chunk size for reading streams; also the largest single read ever issued.
 STREAM_CHUNK_BYTES = 64 * 1024
 
+MAX_FORWARD_SCAN_BYTES: int = 64 * 1024 * 1024
+"""Most bytes read past the head of a non-seekable stream while looking for its end.
+
+A non-seekable stream can only reach its tail by reading everything before
+it, which for an unbounded body or pipe would take unbounded time. Past this
+limit the tail is skipped and the end of the stream is treated as unsampled.
+"""
+
 _TEXT_STREAM_MESSAGE = (
     "csv_inspector needs a binary stream: open the file in binary mode ('rb') or pass "
     "the content as bytes."
@@ -257,7 +265,8 @@ class Samples:
         description: A log-safe description of the source.
         covers_whole_file: Whether the samples reach the real end of the
             source: the head covers it all, or a tail was sampled. ``False``
-            when the head was truncated and tail sampling is disabled, in
+            when the head was truncated and tail sampling is disabled, or a
+            non-seekable stream ran past :data:`MAX_FORWARD_SCAN_BYTES`, in
             which case the end of the source was never seen.
     """
 
@@ -275,12 +284,13 @@ class _Reader(Protocol):
         """Return up to ``n_bytes`` from the start of the source."""
         ...
 
-    def tail(self, head_length: int, max_bytes: int, unit: int) -> bytes:
+    def tail(self, head_length: int, max_bytes: int, unit: int) -> bytes | None:
         """Return the end of the source that lies past the head window.
 
         At most ``max_bytes`` bytes are returned, trimmed to a multiple of
         ``unit`` (the encoding's code-unit size) so the sample starts on a
-        character boundary for UTF-16/UTF-32.
+        character boundary for UTF-16/UTF-32. ``None`` means the end of the
+        source could not be reached within the reader's limits.
         """
         ...
 
@@ -388,6 +398,8 @@ class _ForwardStreamReader:
     The head is read first; the rest of the stream is then consumed in
     chunks while only the last ``max_bytes`` bytes are retained, so memory
     stays bounded by ``n_bytes + max_bytes`` however long the stream is.
+    At most :data:`MAX_FORWARD_SCAN_BYTES` are read past the head, so the
+    time spent is bounded too: a longer stream gets no tail.
     """
 
     def __init__(self, stream: SupportsBinaryRead) -> None:
@@ -396,13 +408,22 @@ class _ForwardStreamReader:
     def head(self, n_bytes: int) -> bytes:
         return _read_up_to(self._stream, n_bytes)
 
-    def tail(self, head_length: int, max_bytes: int, unit: int) -> bytes:
+    def tail(self, head_length: int, max_bytes: int, unit: int) -> bytes | None:
         if max_bytes <= 0:
             return b""
         retained = bytearray()
         uncovered = 0
-        while chunk := _read_chunk(self._stream, STREAM_CHUNK_BYTES):
+        # One byte past the limit tells a stream that ends exactly there from a longer one.
+        while chunk := _read_chunk(
+            self._stream, min(STREAM_CHUNK_BYTES, MAX_FORWARD_SCAN_BYTES + 1 - uncovered)
+        ):
             uncovered += len(chunk)
+            if uncovered > MAX_FORWARD_SCAN_BYTES:
+                logger.warning(
+                    "Stream continues past %d bytes after the head; skipping the tail sample.",
+                    MAX_FORWARD_SCAN_BYTES,
+                )
+                return None
             retained += chunk
             del retained[:-max_bytes]
         window = _tail_window(uncovered, max_bytes, unit)
@@ -458,10 +479,13 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     Paths are read with one bounded read per window. Buffers are sliced.
     Seekable streams are sampled from their **current position** to their
     end, and that position is restored afterwards. Non-seekable streams are
-    consumed once, with memory bounded by ``n_bytes + tail_bytes``. The tail
-    never overlaps the head and is skipped when the head already covers the
-    whole source. No single read exceeds ``max(n_bytes, tail_bytes)`` for
-    files, or :data:`STREAM_CHUNK_BYTES` for streams.
+    consumed once, with memory bounded by ``n_bytes + tail_bytes``; when one
+    runs on for more than :data:`MAX_FORWARD_SCAN_BYTES` past the head,
+    reading stops there and the tail is skipped (``covers_whole_file`` is
+    then ``False``). The tail never overlaps the head and is skipped when
+    the head already covers the whole source. No single read exceeds
+    ``max(n_bytes, tail_bytes)`` for files, or :data:`STREAM_CHUNK_BYTES`
+    for streams.
 
     Args:
         source: The source to sample; see :data:`CSVSource`.
@@ -501,8 +525,9 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
             tail_raw = reader.tail(len(head_raw), tail_bytes, _code_unit_size(encoding))
             if tail_raw:
                 tail_text = decode_sample(tail_raw, _tail_encoding(head_raw, encoding))
-            elif tail_bytes == 0:
-                # Nothing tells whether the source ends here: assume it does not.
+            elif tail_raw is None or tail_bytes == 0:
+                # The end was out of reach, or nothing tells whether the source
+                # ends here: assume it does not.
                 covers_whole_file = False
     except OSError as exc:
         raise FileSampleReadError(f"Unable to read sample from '{description}': {exc}") from exc

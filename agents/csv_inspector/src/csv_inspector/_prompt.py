@@ -133,17 +133,25 @@ backslash-escaped (\\"); see "escapechar" and "doublequote" above.
 def _extract_json_payload(raw_response: str) -> str:
     """Extract a bare JSON object from a raw LLM response.
 
-    Some models wrap their JSON output in a markdown code fence even when
-    explicitly instructed not to. This strips that fence when present.
+    Some models wrap their JSON output in a markdown code fence, or in prose
+    such as ``Here is the result: {...}``, even when explicitly instructed
+    not to. A fenced object is taken as is; otherwise the text from the
+    first ``{`` to the last ``}`` is taken, which drops any surrounding
+    prose.
 
     Args:
         raw_response: The raw text returned by the model.
 
     Returns:
-        The response text with any surrounding markdown code fence removed.
+        The JSON object's text, or the stripped response when it holds no
+        ``{...}`` span, so that parsing reports the real content.
     """
     match = _JSON_FENCE_PATTERN.search(raw_response)
-    return match.group(1) if match else raw_response.strip()
+    if match:
+        return match.group(1)
+    text = raw_response.strip()
+    start, end = text.find("{"), text.rfind("}")
+    return text[start : end + 1] if 0 <= start < end else text
 
 
 def parse_and_validate(raw_response: str, model: str) -> CSVInspectionResult:

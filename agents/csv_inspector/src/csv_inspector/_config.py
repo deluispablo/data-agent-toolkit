@@ -20,9 +20,12 @@ from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, field_va
 from ._backends import LLMBackend
 from ._exceptions import BackendConfigurationError, CredentialsNotConfiguredError
 
+# Each fallback differs from its primary: a fallback equal to the primary is
+# skipped, so it would leave only one model to try out of the box.
 DEFAULT_MODEL: str = "qwen2.5-coder:7b"
-FALLBACK_MODEL: str = "qwen2.5-coder:7b"
+FALLBACK_MODEL: str = "qwen2.5-coder:3b"
 DEFAULT_CLOUD_MODEL: str = "gemini-2.5-flash"
+DEFAULT_CLOUD_FALLBACK_MODEL: str = "gemini-2.5-flash-lite"
 
 CLOUD_EXTRA_HINT = "Install it with: pip install 'csv-inspector[cloud]'."
 
@@ -92,7 +95,7 @@ class Settings(BaseModel):
     google_cloud_project: str | None = None
     google_cloud_location: str | None = None
     cloud_model: str = DEFAULT_CLOUD_MODEL
-    cloud_fallback_model: str = DEFAULT_CLOUD_MODEL
+    cloud_fallback_model: str = DEFAULT_CLOUD_FALLBACK_MODEL
 
     @field_validator("llm_backend", mode="before")
     @classmethod

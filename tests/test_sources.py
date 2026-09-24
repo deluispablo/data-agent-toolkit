@@ -248,6 +248,63 @@ def test_tail_bytes_zero_does_not_consume_a_non_seekable_stream_past_the_head() 
     assert sum(size for size in stream.read_sizes if size > 0) <= 64
 
 
+SCAN_LIMIT = 4096
+
+
+def test_a_non_seekable_stream_is_read_no_further_than_the_scan_limit(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Past the scan limit the tail is skipped and the end counts as unsampled.
+
+    Regression test for issue #17: a forward-only stream used to be read to
+    its end, however long it was, just to sample its tail.
+    """
+    monkeypatch.setattr("csv_inspector._sampling.MAX_FORWARD_SCAN_BYTES", SCAN_LIMIT)
+    stream = NonSeekableStream(b"a;b\n" + b"1;2\n" * 100_000)
+
+    samples = sample_source(stream, 64, 64)
+
+    assert samples.tail_text is None
+    assert samples.covers_whole_file is False
+    assert sum(size for size in stream.read_sizes if size > 0) <= 64 + SCAN_LIMIT + 1
+    assert "skipping the tail sample" in caplog.text
+
+
+def test_a_non_seekable_stream_ending_at_the_scan_limit_keeps_its_tail(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A stream that ends exactly at the limit is still sampled to its real end."""
+    monkeypatch.setattr("csv_inspector._sampling.MAX_FORWARD_SCAN_BYTES", SCAN_LIMIT)
+    head = b"a;b\n" + b"1;2\n" * 15
+    rest = b"1;2\n" * (SCAN_LIMIT // 4 - 1) + b"END\n"
+    assert (len(head), len(rest)) == (64, SCAN_LIMIT)
+
+    samples = sample_source(NonSeekableStream(head + rest, max_chunk=1000), 64, 64)
+
+    assert samples.covers_whole_file is True
+    assert samples.tail_text is not None
+    assert samples.tail_text.endswith("1;2\nEND\n")
+
+
+def test_an_over_long_stream_is_inspected_without_a_footer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The model is told the end was not sampled, and no footer is reported."""
+    monkeypatch.setattr("csv_inspector._sampling.MAX_FORWARD_SCAN_BYTES", SCAN_LIMIT)
+    reported = json.loads(RESULT_JSON) | {"footer_lines": ["1;2"]}
+    prompts: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        return json.dumps(reported)
+
+    stream = NonSeekableStream(b"Fecha;Cliente\n" + b"1;2\n" * 100_000)
+    result = inspect_csv(stream, model="m", fallback_model="m", model_invoker=invoker)
+
+    assert "its end was not sampled" in prompts[0]
+    assert result.footer_lines == []
+
+
 @pytest.mark.parametrize(
     ("data", "n_bytes", "tail_bytes", "expected"),
     [

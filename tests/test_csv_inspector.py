@@ -32,11 +32,14 @@ from csv_inspector import (
     FileSampleReadError,
     InspectionFailedError,
     ModelInvocationError,
+    ResponseParsingError,
+    Settings,
     inspect_csv,
 )
+from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
 from csv_inspector._grounding import _extends_footer
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
-from csv_inspector._prompt import _extract_json_payload, build_prompt
+from csv_inspector._prompt import _extract_json_payload, build_prompt, parse_and_validate
 from csv_inspector._sampling import (
     MAX_SAMPLE_BYTES,
     decode_sample,
@@ -409,6 +412,61 @@ def test_extract_json_payload_passes_through_bare_json() -> None:
     bare = '  {"a": 1}  '
 
     assert _extract_json_payload(bare) == '{"a": 1}'
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        'Here is the result: {"a": {"b": 1}}',
+        '{"a": {"b": 1}}\nLet me know if you need anything else.',
+        'Sure!\n{"a": {"b": 1}}\nThe delimiter is ";".',
+    ],
+    ids=["leading-prose", "trailing-prose", "both"],
+)
+def test_extract_json_payload_drops_prose_around_an_unfenced_object(raw: str) -> None:
+    """Without a fence, the object is taken from the first ``{`` to the last ``}``.
+
+    Regression test for issue #23: such replies used to fail as invalid JSON.
+    """
+    assert _extract_json_payload(raw) == '{"a": {"b": 1}}'
+
+
+def test_a_reply_without_any_object_is_still_invalid_json() -> None:
+    """Text with no ``{...}`` span is parsed as is, and fails as invalid JSON."""
+    with pytest.raises(ResponseParsingError, match="invalid JSON"):
+        parse_and_validate("I could not determine the dialect.", "m")
+
+
+def test_a_prose_wrapped_reply_is_accepted_on_the_first_attempt() -> None:
+    """A valid answer wrapped in prose no longer spends the fallback attempt."""
+    models: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        models.append(model)
+        payload = json.dumps(VALID_RESULT_PAYLOAD)
+        return f"Here is the inspection result:\n{payload}\nHope this helps!"
+
+    result = inspect_csv(
+        SAMPLE_CSV_PATH, model="primary", fallback_model="fallback", model_invoker=invoker
+    )
+
+    assert models == ["primary"]
+    assert result.delimiter == ";"
+
+
+def test_the_default_models_include_a_distinct_fallback() -> None:
+    """With default settings, a failing primary is retried with the default fallback."""
+    models: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        models.append(model)
+        if len(models) == 1:
+            raise ModelInvocationError("primary unavailable")
+        return json.dumps(VALID_RESULT_PAYLOAD)
+
+    inspect_csv(SAMPLE_CSV_PATH, settings=Settings(), model_invoker=invoker)
+
+    assert models == [DEFAULT_MODEL, FALLBACK_MODEL]
 
 
 # ---------------------------------------------------------------------

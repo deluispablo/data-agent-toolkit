@@ -21,6 +21,7 @@ from csv_inspector import (
     load_settings,
 )
 from csv_inspector._config import (
+    DEFAULT_CLOUD_FALLBACK_MODEL,
     DEFAULT_CLOUD_MODEL,
     DEFAULT_MODEL,
     FALLBACK_MODEL,
@@ -38,7 +39,20 @@ def test_defaults_select_the_local_backend_with_built_in_models() -> None:
     assert settings.ollama_model == DEFAULT_MODEL
     assert settings.ollama_fallback_model == FALLBACK_MODEL
     assert settings.cloud_model == DEFAULT_CLOUD_MODEL
+    assert settings.cloud_fallback_model == DEFAULT_CLOUD_FALLBACK_MODEL
     assert settings.gemini_api_key is None
+
+
+@pytest.mark.parametrize("backend", list(LLMBackend))
+def test_every_backend_has_a_distinct_fallback_by_default(backend: LLMBackend) -> None:
+    """Out of the box, a failed primary is retried with a different model.
+
+    Regression test for issue #13: each default fallback equalled its primary,
+    so it was skipped and only one model was ever tried.
+    """
+    settings = Settings()
+
+    assert settings.fallback_model_for(backend) != settings.model_for(backend)
 
 
 @pytest.mark.parametrize("raw", ["api", "API", " Api "])

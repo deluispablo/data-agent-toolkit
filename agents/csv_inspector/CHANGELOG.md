@@ -21,6 +21,14 @@ listed under **Changed (breaking)**.
   copying the library's values
   ([#100](https://github.com/deluispablo/data-agent-toolkit/issues/100)).
 
+### Changed
+
+- The `api` backend retries a `429 RESOURCE_EXHAUSTED` or
+  `503 UNAVAILABLE` answer once on the same model before falling back:
+  after the `Retry-After` header (at most 10 s) or about one second, and
+  only within the model's time budget. The retry is logged at WARNING
+  ([#98](https://github.com/deluispablo/data-agent-toolkit/issues/98)).
+
 ### Changed (breaking)
 
 - The default cloud models are now `gemini-3.6-flash` (primary) and

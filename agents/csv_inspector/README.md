@@ -211,8 +211,13 @@ Verified against the real Gemini Developer API on 2026-09-24 with
 `google-genai` 2.25.0. Vertex AI has not been verified against the real
 service yet ([#92](https://github.com/deluispablo/data-agent-toolkit/issues/92)).
 Gemini answers `503 UNAVAILABLE` (high demand) or `429 RESOURCE_EXHAUSTED`
-(free-tier quota) often; the library does not retry, so the fallback model
-is the only second attempt.
+(free-tier quota) often. The `api` backend retries such an answer **once**,
+on the same model: after the `Retry-After` header when it asks for 10 s or
+less, else after about one second, and only when the retry still fits the
+model's time budget. A longer `Retry-After` (a quota, not a blip), a second
+failure, or any other error goes to the fallback model. The retry costs the
+same tokens as the first request; it avoids discarding the primary model's
+answer for a transient error. The local backend never retries.
 
 Both backends send the same prompt: JSON output (constrained by
 `CSVInspectionResult`'s JSON Schema on Gemini) at `temperature=0.0`, then

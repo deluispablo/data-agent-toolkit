@@ -37,8 +37,9 @@ pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolk
 ```
 
 Requires Python 3.10+. The local backend needs a running
-[Ollama](https://ollama.com) with the model pulled, e.g.
-`ollama pull qwen2.5-coder:7b`.
+[Ollama](https://ollama.com) with the models pulled:
+`ollama pull qwen2.5-coder:7b` (primary) and `ollama pull qwen2.5-coder:3b`
+(fallback, only used when the primary fails).
 
 ## Quickstart
 
@@ -85,7 +86,7 @@ stable API. Every other module and name is internal.
 - **Paths** are read with one bounded read per window.
 - **Buffers** are sliced; only the sampled windows are copied.
 - **Seekable streams** are sampled from their **current position** to their end, and that position is restored afterwards.
-- **Non-seekable streams**, such as an upload body, are consumed once, keeping only a rolling tail buffer, so memory stays bounded by `n_bytes + tail_bytes` however long the stream is.
+- **Non-seekable streams**, such as an upload body, are consumed once, keeping only a rolling tail buffer, so memory stays bounded by `n_bytes + tail_bytes` however long the stream is. Reaching the tail means reading everything before it, so at most 64 MiB are read past the head: a longer stream gets no tail sample, and is treated like `tail_bytes=0` (no footer is reported). To sample the end of a longer stream, spool it to a temporary file and pass that. A stalled stream still blocks in `read()`, which the library cannot interrupt, so set a read timeout on the stream itself.
 - **Text-mode streams** are rejected with `TypeError`; open files with `"rb"`.
 - **Non-blocking streams** must have their data available: a `read()` that returns `None` (no data yet) raises `FileSampleReadError` instead of being taken as the end of the stream.
 
@@ -140,6 +141,10 @@ flowchart TD
 - **The Ollama context window is sized to the prompt** (`num_ctx`): Ollama's
   small default would otherwise silently drop the start of a long prompt,
   the instructions and head sample included.
+- **The JSON answer is extracted leniently**: from a markdown code fence
+  when there is one, otherwise from the first `{` to the last `}`, so
+  prose around the object (`Here is the result: {...}`) does not waste an
+  attempt.
 
 **Grounding.** Small local models reliably *recognize* headers and footers
 but count and copy lines poorly: they miscount preamble lines, paraphrase
@@ -194,10 +199,14 @@ There are two ways to configure the library:
 | `Settings` field | Environment variable | Default |
 |---|---|---|
 | `llm_backend` | `LLM_BACKEND` (`local` / `api`) | `local` |
-| `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` |
+| `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:3b` |
 | `gemini_api_key` | `GEMINI_API_KEY` (takes precedence when set) | unset |
 | `google_cloud_project` / `google_cloud_location` | `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` (Vertex AI with ADC) | unset |
-| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-2.5-flash` |
+| `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-2.5-flash` / `gemini-2.5-flash-lite` |
+
+Each fallback is a different model from its primary, so a failing primary
+is retried with another model out of the box. Setting the fallback equal to
+the primary turns the fallback off: only one attempt is made.
 
 The `api` backend needs **either** an API key **or** both project and
 location. A missing credential, package or invalid setting fails fast with

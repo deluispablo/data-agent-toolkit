@@ -8,6 +8,18 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Added
+
+- A model answer that wraps its JSON object in prose rather than a code
+  fence (`Here is the result: {...}`) is now parsed from the first `{` to
+  the last `}` instead of failing as invalid JSON and using up an attempt
+  ([#23](https://github.com/deluispablo/data-agent-toolkit/issues/23)).
+- Sampling a non-seekable stream reads at most 64 MiB past the head while
+  looking for its end. A longer stream gets no tail sample and is treated
+  like `tail_bytes=0` (the end is unsampled, so no footer is reported),
+  instead of being read to the end in unbounded time
+  ([#17](https://github.com/deluispablo/data-agent-toolkit/issues/17)).
+
 ### Fixed
 
 - With `tail_bytes=0` on a source larger than the head, the head was
@@ -73,6 +85,13 @@ listed under **Changed (breaking)**.
 
 ### Changed (breaking)
 
+- The default fallback models are now `qwen2.5-coder:3b` (local) and
+  `gemini-2.5-flash-lite` (cloud). They used to equal the primary models,
+  so the fallback was skipped and only one model was ever tried. The local
+  fallback must be pulled (`ollama pull qwen2.5-coder:3b`); set
+  `OLLAMA_FALLBACK_MODEL` / `CLOUD_FALLBACK_MODEL` (or the `Settings`
+  fields) to the primary to keep the previous single-model behaviour
+  ([#13](https://github.com/deluispablo/data-agent-toolkit/issues/13)).
 - `n_bytes` and `tail_bytes` (and the CLI's `--bytes` / `--tail-bytes`) are
   now capped at 16384 bytes each; larger values raise `ValueError` (a usage
   error in the CLI) ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).

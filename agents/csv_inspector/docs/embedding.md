@@ -44,7 +44,7 @@ already hold; you never need to write a temporary file.
 | A file on disk | `"path/to/file.csv"` or a `Path` | One bounded read per window. A `str` is always a path, never CSV content. |
 | Bytes in memory (a small upload, a downloaded blob) | `bytes` / `bytearray` / `memoryview` | Only the sampled windows are copied. |
 | A seekable binary stream (an open file, `UploadFile.file`, `io.BytesIO`, a cloud SDK reader opened with `"rb"`) | the stream | Sampled from its **current position**; the position is **restored** afterwards, so you can still read it yourself. |
-| A non-seekable stream (a raw request body) | the stream | **Consumed** in a single pass; memory stays bounded by `n_bytes + tail_bytes`. You cannot re-read it afterwards. |
+| A non-seekable stream (a raw request body) | the stream | **Consumed** in a single pass; memory stays bounded by `n_bytes + tail_bytes`. You cannot re-read it afterwards. At most 64 MiB are read past the head; a longer stream gets no tail sample, so no footer is reported. |
 
 Text-mode streams (`open(path)` without `"b"`, `io.StringIO`) are rejected
 with `TypeError`: pass bytes so the library can detect the encoding itself.
@@ -205,6 +205,11 @@ failures; let them surface.
   interpreter from exiting). For the built-in backends this is brief, because the
   same timeout is set on their HTTP client. A custom sync invoker should
   honour its own timeout too.
+- `timeout_seconds` does not cover **sampling**. Reading a non-seekable
+  stream is bounded in bytes (at most 64 MiB past the head), not in time:
+  a stream that stalls blocks in `read()`, and in `ainspect_csv` that
+  happens in a worker thread that cannot be cancelled. Set a read timeout
+  on the stream itself (e.g. the socket or HTTP client timeout).
 - **Limiting concurrency is the host's job.** A local Ollama processes a
   few requests at a time; bound concurrent inspections with your server's
   worker settings or an `asyncio.Semaphore`.

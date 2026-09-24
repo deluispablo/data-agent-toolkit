@@ -603,3 +603,16 @@ def test_ollama_num_ctx_uses_the_minimum_window_for_small_prompts(
     invoke_ollama_model("tiny", "m")
 
     assert fake.requests[0]["options"]["num_ctx"] == 4096
+
+
+def test_ollama_reply_is_capped_at_the_reserved_response_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A model stuck repeating must stop at the reply budget, not run unbounded."""
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
+
+    invoke_ollama_model("tiny", "m")
+
+    options = fake.requests[0]["options"]
+    assert options["num_predict"] == 1024
+    assert options["num_ctx"] >= len("tiny") // 2 + options["num_predict"]

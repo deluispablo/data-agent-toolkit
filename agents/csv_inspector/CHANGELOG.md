@@ -26,6 +26,11 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- Ollama requests did not cap the reply length, so a model stuck repeating
+  itself (for example an endless `example_values` list) generated until the
+  timeout, or forever with no timeout. The reply is now capped at the 1024
+  tokens the context window reserves for it; a truncated answer fails
+  parsing and the fallback model runs.
 - On a base install (no `[cloud]` extra), the CLI failed on every run when
   the working directory held a `.env` file. The implicit `./.env` is now
   ignored with a warning; an explicit `--env-file` still fails

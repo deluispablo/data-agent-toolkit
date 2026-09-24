@@ -146,7 +146,16 @@ def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
             {"role": "user", "content": prompt},
         ],
         "format": "json",
-        "options": {"temperature": 0.0, "num_ctx": _ollama_num_ctx(prompt)},
+        # num_predict caps the reply at the budget num_ctx reserves for it.
+        # Without it a model stuck repeating (e.g. an endless example_values
+        # list) generates until the timeout, or forever when there is none;
+        # a capped reply is truncated JSON, which fails parsing and moves on
+        # to the fallback model.
+        "options": {
+            "temperature": 0.0,
+            "num_ctx": _ollama_num_ctx(prompt),
+            "num_predict": _OLLAMA_RESPONSE_TOKENS,
+        },
     }
 
 

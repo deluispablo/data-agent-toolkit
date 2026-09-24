@@ -19,7 +19,8 @@ data-agent-toolkit/
 │       ├── docs/                   # Guides shipped in the sdist (e.g. embedding.md)
 │       ├── scripts/
 │       │   ├── smoke_test_installed.py  # Post-install smoke test, run by CI
-│       │   └── eval_samples.py          # Manual live-model evaluation harness
+│       │   ├── eval_samples.py          # Manual live-model evaluation harness (JSONL runs)
+│       │   └── compare_runs.py          # Markdown comparison of two or more eval runs
 │       ├── samples/                # Generated edge-case fixtures + ground-truth manifest
 │       ├── main_demo.py            # Demo: the CLI on the bundled sample.csv
 │       ├── sample.csv
@@ -147,8 +148,16 @@ Modules prefixed with `_` are internal.
 Around the package:
 
 - `scripts/eval_samples.py`: the manual accuracy harness (a live model
-  against every `samples/manifest.json` case, per-field scores). Not run
-  by pytest or CI.
+  against every `samples/manifest.json` case, per-field scores). `--out`
+  writes a JSONL run (per-fixture verdicts, `Usage`, latency, a summary
+  line), `--repeat` measures drift, and quota guards (`--max-calls`,
+  `--rpm`, `--dry-run`, ...) protect cloud quotas. It may import private
+  names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts
+  still reach `Usage`. Not run by pytest or CI.
+- `scripts/compare_runs.py`: stdlib-only Markdown table of two or more
+  runs, plus the fixtures whose verdict changed. The ritual, flags, quota
+  notes and known limitations are in
+  [`agents/csv_inspector/docs/evaluation.md`](agents/csv_inspector/docs/evaluation.md).
 - `scripts/smoke_test_installed.py`: run by CI against the installed wheel
   and sdist, from outside the repository.
 - `samples/`: generated, byte-exact fixtures plus `manifest.json`, written

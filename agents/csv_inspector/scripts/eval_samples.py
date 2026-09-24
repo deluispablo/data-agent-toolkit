@@ -75,7 +75,6 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from csv_inspector import _inspect, _prompt
 from csv_inspector import (
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
@@ -83,25 +82,26 @@ from csv_inspector import (
     CSVInspectorError,
     LLMBackend,
     Settings,
+    _inspect,
     inspect_csv,
 )
+from csv_inspector._invokers import InvokerResponse
+from csv_inspector._models import Usage
+from csv_inspector._prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_prompt
+from csv_inspector._sampling import sample_source
 from csv_inspector.cli import (
     DEFAULT_CLI_TIMEOUT_SECONDS,
     HEAD_BYTES,
     TAIL_BYTES,
     add_backend_argument,
-    bounded_int,
     add_log_level_argument,
     add_settings_arguments,
+    bounded_int,
     configure_cli,
     load_cli_settings,
     resolve_backend,
     timeout_budget,
 )
-from csv_inspector._invokers import InvokerResponse
-from csv_inspector._models import Usage
-from csv_inspector._prompt import SYSTEM_PROMPT, build_prompt
-from csv_inspector._sampling import sample_source
 
 logger = logging.getLogger(__name__)
 
@@ -621,8 +621,17 @@ def repeat_stats(evaluations: list[FileEvaluation]) -> RepeatStats:
             agreement[name].append(_agreement(field_votes))
     return RepeatStats(
         majority_score=_mean(fixture_scores),
-        field_majority={name: sum(v) / len(v) for name, v in majority.items()},
-        field_agreement={name: sum(v) / len(v) for name, v in agreement.items()},
+        # Keyed in _COMPARABLE_FIELDS order, whatever order the fixtures came in.
+        field_majority={
+            name: sum(majority[name]) / len(majority[name])
+            for name in _COMPARABLE_FIELDS
+            if name in majority
+        },
+        field_agreement={
+            name: sum(agreement[name]) / len(agreement[name])
+            for name in _COMPARABLE_FIELDS
+            if name in agreement
+        },
         disagreeing=disagreeing,
         verdicts=verdicts,
     )
@@ -735,8 +744,7 @@ def run_info(
     """The settings of one model's run, recorded first in its summary line."""
     return {
         "harness_version": HARNESS_VERSION,
-        # PROMPT_VERSION arrives with issue #127; None until then.
-        "prompt_version": getattr(_prompt, "PROMPT_VERSION", None),
+        "prompt_version": PROMPT_VERSION,
         "backend": backend.value,
         "model": model,
         "fallback_model": fallback_model,
@@ -922,7 +930,7 @@ class RateLimiter:
         clock: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
-        """Limit to ``rpm`` requests per minute (``None``: no limit); clock and sleep are injectable."""
+        """Limit to ``rpm`` requests per minute (``None``: no limit); clock and sleep for tests."""
         self.rpm = rpm
         self._clock = clock
         self._sleep = sleep

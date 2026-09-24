@@ -59,6 +59,30 @@ listed under **Changed (breaking)**.
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
   string ([#127](https://github.com/deluispablo/data-agent-toolkit/issues/127)).
+- The evaluation harness writes machine-readable runs and compares them.
+  `scripts/eval_samples.py --out` writes one JSON line per fixture and
+  repeat (verdicts, `usage`, latency, errors per attempt, and the raw model
+  text with `--keep-raw`) plus a summary line (harness and prompt
+  versions, scores per category and field, token totals and means, latency
+  p50/p95, error counts, retries, 429/503 seen). `--repeat N` adds
+  majority-vote accuracy and agreement per field and lists fixtures whose
+  answers drift; `--model` is repeatable. Quota guards for cloud runs:
+  `--max-calls` (a hard stop counting fallbacks and retries), `--rpm`,
+  `--max-fixtures`, `--fixture`, `--dry-run` (prompt sizes, no model call),
+  and a warning with the planned call count when `--backend api` runs
+  without `--max-calls`. The new `scripts/compare_runs.py` renders two or
+  more runs as a Markdown table plus the fixtures whose verdict changed.
+  `runs/` is git-ignored
+  ([#122](https://github.com/deluispablo/data-agent-toolkit/issues/122)).
+
+### Documentation
+
+- New `docs/evaluation.md`: the before/after ritual for changes that can
+  move accuracy, the flag reference, run file format, how `columns` is
+  scored, quota notes, hand-written vs matrix fixtures, the known
+  limitations, the prompt-change checklist and a fifteen-fixture cloud
+  subset. Linked from the README and `ARCHITECTURE.md`
+  ([#122](https://github.com/deluispablo/data-agent-toolkit/issues/122)).
 
 ## [0.3.0] - 2026-09-24
 

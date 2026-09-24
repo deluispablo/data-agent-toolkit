@@ -15,6 +15,11 @@ listed under **Changed (breaking)**.
   configure the local backend through `Settings` instead of the process
   environment. Unset keeps the SDK default
   ([#96](https://github.com/deluispablo/data-agent-toolkit/issues/96)).
+- Public exports `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`,
+  `MAX_SAMPLE_BYTES`, `ModelInvoker` and `AsyncModelInvoker`, so hosts can
+  validate sample windows and type their `model_invoker` seam without
+  copying the library's values
+  ([#100](https://github.com/deluispablo/data-agent-toolkit/issues/100)).
 
 ### Changed (breaking)
 

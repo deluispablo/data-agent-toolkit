@@ -85,7 +85,7 @@ uv lock                                                   # after any pyproject.
 
 Public API = `__all__` only (test enforce). `_`-modules internal.
 
-- `__init__.py`: export `inspect_csv`, `ainspect_csv`, `ensure_backend_ready`, `CSVSource`, `CSVInspectionResult`, `ColumnSchema`, `ColumnType`, `LLMBackend`, `Settings`, `load_settings`, all exceptions, `__version__`. Package logger `NullHandler`.
+- `__init__.py`: export `inspect_csv`, `ainspect_csv`, `ensure_backend_ready`, `CSVSource`, `CSVInspectionResult`, `ColumnSchema`, `ColumnType`, `LLMBackend`, `Settings`, `load_settings`, `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES`, `ModelInvoker`, `AsyncModelInvoker`, all exceptions, `__version__`. Package logger `NullHandler`.
 - `__main__.py`: `python -m csv_inspector`, call `cli.main`.
 - `py.typed`: PEP 561 marker.
 - `_backends.py`: `LLMBackend` enum `LOCAL="local"`, `API="api"`. No third-party imports.

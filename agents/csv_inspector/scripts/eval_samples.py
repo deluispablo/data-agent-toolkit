@@ -43,8 +43,15 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from csv_inspector import CSVInspectionResult, CSVInspectorError, LLMBackend, Settings, inspect_csv
-from csv_inspector._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES
+from csv_inspector import (
+    DEFAULT_SAMPLE_BYTES,
+    DEFAULT_TAIL_BYTES,
+    CSVInspectionResult,
+    CSVInspectorError,
+    LLMBackend,
+    Settings,
+    inspect_csv,
+)
 from csv_inspector.cli import (
     DEFAULT_CLI_TIMEOUT_SECONDS,
     add_backend_argument,

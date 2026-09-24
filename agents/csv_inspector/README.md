@@ -86,6 +86,8 @@ stable API. Every other module and name is internal.
 | `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
 | `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
 | `Settings` | Explicit configuration; constructing it never reads the environment |
+| `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
+| `ModelInvoker`, `AsyncModelInvoker` | Types of the `model_invoker` seam: `(prompt, model) -> str` and its async twin |
 | `ensure_backend_ready(backend, settings=None)` | Check a backend's configuration (cloud credentials, `google-genai` installed) without a network or model call; raises `BackendConfigurationError`. The `local` backend always passes |
 | `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); needs `[cloud]` |
 | `CSVInspectorError` and subclasses | See [Errors](#errors) |

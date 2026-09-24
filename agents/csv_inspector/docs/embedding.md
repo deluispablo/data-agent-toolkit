@@ -49,6 +49,28 @@ already hold; you never need to write a temporary file.
 Text-mode streams (`open(path)` without `"b"`, `io.StringIO`) are rejected
 with `TypeError`: pass bytes so the library can detect the encoding itself.
 
+If your host lets callers choose the sample windows, validate them against
+the library's own limits instead of copying the numbers, so an upgrade can
+never desynchronize the two. The same goes for a custom model seam: type it
+with the exported invoker aliases.
+
+```python
+from csv_inspector import (
+    DEFAULT_SAMPLE_BYTES,  # head window by default (4 KiB)
+    DEFAULT_TAIL_BYTES,  # tail window by default (4 KiB)
+    MAX_SAMPLE_BYTES,  # upper bound of each window (16 KiB)
+    AsyncModelInvoker,  # async (prompt, model) -> raw text
+    ModelInvoker,  # (prompt, model) -> raw text
+)
+
+
+def checked_window(value: int | None, default: int) -> int:
+    value = default if value is None else value
+    if not 0 <= value <= MAX_SAMPLE_BYTES:
+        raise ValueError(f"window must be 0..{MAX_SAMPLE_BYTES} bytes")
+    return value
+```
+
 ## 3. Synchronous hosts (Flask, Django, workers)
 
 ```python

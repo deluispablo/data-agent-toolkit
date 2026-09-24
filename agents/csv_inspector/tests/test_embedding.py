@@ -32,6 +32,10 @@ PACKAGE_DIR = Path(csv_inspector.__file__).resolve().parent
 CLI_MODULES = {"cli.py", "__main__.py"}
 
 EXPECTED_PUBLIC_API = {
+    "DEFAULT_SAMPLE_BYTES",
+    "DEFAULT_TAIL_BYTES",
+    "MAX_SAMPLE_BYTES",
+    "AsyncModelInvoker",
     "BackendConfigurationError",
     "CSVInspectionResult",
     "CSVInspectorError",
@@ -45,6 +49,7 @@ EXPECTED_PUBLIC_API = {
     "InspectionTimeoutError",
     "LLMBackend",
     "ModelInvocationError",
+    "ModelInvoker",
     "ModelTimeoutError",
     "ResponseParsingError",
     "SchemaValidationError",
@@ -107,6 +112,28 @@ def test_every_public_name_is_importable() -> None:
     """Each name in ``__all__`` resolves on the package."""
     for name in csv_inspector.__all__:
         assert getattr(csv_inspector, name) is not None, name
+
+
+def test_exported_sample_limit_is_the_enforced_one() -> None:
+    """MAX_SAMPLE_BYTES is the bound inspect_csv enforces, not a copy (issue #100)."""
+    limit = csv_inspector.MAX_SAMPLE_BYTES
+    assert 0 < csv_inspector.DEFAULT_SAMPLE_BYTES <= limit
+    assert 0 <= csv_inspector.DEFAULT_TAIL_BYTES <= limit
+
+    def inspect(n_bytes: int, tail_bytes: int) -> None:
+        csv_inspector.inspect_csv(
+            b"a,b\n1,2\n",
+            model="m",
+            fallback_model="m",
+            model_invoker=lambda prompt, model: "{}",
+            n_bytes=n_bytes,
+            tail_bytes=tail_bytes,
+        )
+
+    with pytest.raises(ValueError, match="n_bytes"):
+        inspect(limit + 1, 0)
+    with pytest.raises(ValueError, match="tail_bytes"):
+        inspect(limit, limit + 1)
 
 
 def test_all_exceptions_share_the_domain_base() -> None:

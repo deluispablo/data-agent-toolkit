@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
+from csv_inspector import AsyncModelInvoker
 from fastapi import FastAPI
 
 from .errors import register_exception_handlers
@@ -36,9 +37,6 @@ _TAGS = [
     {"name": "inspection", "description": "Inspect CSV/TSV files."},
     {"name": "meta", "description": "Health and configuration of the service."},
 ]
-
-AsyncModelInvoker = Callable[[str, str], Awaitable[str]]
-"""Async ``(prompt, model) -> raw response`` callable, as ``ainspect_csv`` accepts."""
 
 
 @asynccontextmanager

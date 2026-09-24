@@ -58,6 +58,17 @@ uv run mypy                         # strict static type-check (with the pydanti
 uv run pytest --cov                 # tests + branch coverage (fails under the agent's floor)
 ```
 
+Examples under `examples/` have the same per-folder checks, run the same
+way (see [ARCHITECTURE.md](ARCHITECTURE.md#examples)):
+
+```bash
+uv run --directory examples/<name> mypy
+uv run --directory examples/<name> pytest --cov
+```
+
+A change to an agent must keep the examples that embed it green, since they
+run against the agent's current source.
+
 The test suites are **hermetic**: no Ollama, no credentials, no network.
 Every model backend is faked. In `csv_inspector`, Ollama is replaced by a
 stand-in module, and the Gemini client by a recorder that keeps the SDK's

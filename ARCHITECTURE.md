@@ -2,8 +2,10 @@
 
 `data-agent-toolkit` is a monorepo of **self-contained agents**. Each agent
 is an independently versioned, pip-installable Python library that lives,
-with everything it needs, in its own folder under `agents/`. The repository
-root holds only what every agent shares.
+with everything it needs, in its own folder under `agents/`. Runnable hosts
+that show how to embed an agent live under `examples/` (see
+[Examples](#examples)). The repository root holds only what every agent
+shares.
 
 ## Layout
 
@@ -25,6 +27,14 @@ data-agent-toolkit/
 │       ├── README.md               # Package README (also the PyPI long description)
 │       ├── CHANGELOG.md
 │       └── LICENSE                 # Copy of the repository license, shipped in the dists
+├── examples/
+│   └── csv_inspector_api/          # One example: a FastAPI host embedding csv-inspector
+│       ├── pyproject.toml          # [project] + dependencies only (never built) + mypy/pytest/coverage config
+│       ├── src/csv_inspector_api/  # The host application
+│       ├── tests/                  # Hermetic tests (fake model invoker, no network)
+│       ├── main_demo.py
+│       ├── .env.example
+│       └── README.md
 ├── .github/
 │   ├── workflows/ci.yml            # Discovers the agents and runs every job per agent
 │   ├── ISSUE_TEMPLATE/, pull_request_template.md, dependabot.yml
@@ -66,9 +76,10 @@ defaults applies automatically.
 
 The root `pyproject.toml` is a *virtual* [uv workspace](https://docs.astral.sh/uv/concepts/projects/workspaces/)
 (it has no `[project]` table and is never built). Its members are
-`agents/*`, so a new agent joins the workspace just by existing. `uv sync`
-installs every agent in editable mode, with its extras, plus the `dev`
-tooling group, all pinned in `uv.lock`. Tests therefore import each package
+`agents/*` and `examples/*`, so a new agent or example joins the workspace
+just by existing. `uv sync --all-packages` installs every agent in editable
+mode, with its extras, every example, plus the `dev` tooling group, all
+pinned in `uv.lock`. Tests therefore import each package
 exactly as an external host would (`import csv_inspector`), never through
 `sys.path` tricks.
 
@@ -93,6 +104,51 @@ jobs:
   fresh virtual environments: the wheel without extras, and the sdist with
   every extra (`pip check` included). It then runs the agent's
   `scripts/smoke_test_installed.py` from outside the repository against both.
+
+## Examples
+
+An example under `examples/<name>/` is a small, runnable host that embeds an
+agent: an HTTP API today, perhaps a worker or a notebook later. It is
+**executable documentation** of how to embed an agent, meant to be read and
+copied, not deployed as is.
+
+An example is **not** a distribution:
+
+- no `[build-system]` and no `[project.scripts]`: it is never built, so it
+  has no wheel, sdist or console script;
+- no release tag, no PyPI upload, no SemVer contract and no `CHANGELOG.md`:
+  it may change in any commit;
+- no `scripts/smoke_test_installed.py`: there is no installed artefact to
+  smoke-test.
+
+It still has a `[project]` table (name, `version = "0.0.0"`,
+`requires-python`, dependencies), because that is how a uv workspace member
+declares its dependencies.
+
+**Depends on the agent's source.** An example is a workspace member and
+takes the agent it embeds as a workspace source:
+
+```toml
+[tool.uv.sources]
+csv-inspector = { workspace = true }
+```
+
+It therefore always runs against the agent's current source, never against
+a tag, and a change to an agent that breaks one of its examples fails CI in
+the same pull request. Like any host, an example imports only the agent's
+public API (its `__all__`), never its `_` modules.
+
+**Tooling.** Same as an agent: `[tool.ruff] extend = "../../pyproject.toml"`
+for the shared lint and format rules, plus its own `[tool.mypy]`,
+`[tool.pytest.ini_options]` and `[tool.coverage.*]`, run from the example's
+folder. Its tests are hermetic like the agents' ones: every model backend is
+faked through the agent's injection points, with no Ollama, no credentials
+and no network.
+
+**CI.** Examples get a lighter job set than agents: type-check and tests on
+a single Python version on Linux, and no lowest-dependencies or packaging
+jobs, since nothing is shipped. Lint and the lockfile check cover them
+through the root jobs.
 
 ## Policies
 
@@ -140,3 +196,30 @@ jobs:
 
 CI and the workspace pick the new agent up on their own; nothing else at the
 root needs to change.
+
+## Adding a new example
+
+1. Create `examples/<example_name>/` following the layout above:
+   `pyproject.toml`, `src/<package>/` with a `py.typed` marker and an
+   explicit `__all__` in `__init__.py`, `tests/`, `main_demo.py`,
+   `.env.example` and `README.md`. No `CHANGELOG.md`, `LICENSE` copy or
+   `scripts/smoke_test_installed.py`.
+2. In its `pyproject.toml`, declare `[project]` with `version = "0.0.0"`
+   and its dependencies, but **no `[build-system]` and no
+   `[project.scripts]`**. Take the agent it embeds as a workspace source
+   (`[tool.uv.sources] <agent-package> = { workspace = true }`), and keep
+   test-only tools in a local `[dependency-groups] dev`.
+3. Add `[tool.ruff] extend = "../../pyproject.toml"` and its own
+   `[tool.mypy]`, `[tool.pytest.ini_options]` and `[tool.coverage.*]`
+   sections (use `csv_inspector_api`'s as the template).
+4. Import only the agent's public API, pass it injected settings built in
+   one place (never the agent's own environment loading), and default to
+   the free local Ollama backend.
+5. Fake every model backend in its tests, so the suite runs without
+   credentials or network access.
+6. Run `uv lock`, and add a `mypy-<example>` hook to `.pre-commit-config.yaml`.
+7. Add it to the examples table in the root `README.md`. Examples are out
+   of scope for `SECURITY.md`: do not add them there.
+
+CI and the workspace pick the new example up on their own; nothing else at
+the root needs to change.

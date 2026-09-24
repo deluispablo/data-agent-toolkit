@@ -37,3 +37,8 @@ Of particular interest, given what the agents do:
 
 The accuracy of an LLM's answer is not a security issue; report wrong
 inspection results as a regular bug.
+
+The hosts under `examples/` are out of scope. They are executable
+documentation, never released or shipped, so a weakness in an example's
+own code is a regular bug. A vulnerability in an agent that an example
+merely makes visible is in scope, reported against the agent.

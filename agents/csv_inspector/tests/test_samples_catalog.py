@@ -24,6 +24,7 @@ from csv_inspector._sampling import (
     DEFAULT_TAIL_BYTES,
     read_sample_bytes,
     read_tail_bytes,
+    sample_source,
 )
 from generate_samples import CASES, SampleCase, build_manifest, derive_columns
 from matrix import MATRIX, FixtureSpec, render
@@ -167,8 +168,11 @@ def test_latin1_fixture_decodes_cleanly_as_latin1() -> None:
 # Footer fixtures exercise the real head/tail split (issue #2)
 # ---------------------------------------------------------------------
 
+# A known-limitation footer (longer than the tail window) is checked on its own below.
 _FOOTER_FIXTURES = sorted(
-    name for name, entry in MANIFEST.items() if entry["expected"].get("footer_lines")
+    name
+    for name, entry in MANIFEST.items()
+    if entry["expected"].get("footer_lines") and not entry["known_limitation"]
 )
 
 
@@ -307,6 +311,114 @@ def test_column_overrides_agree_with_the_derivation_when_it_can_parse(case: Samp
 
     if derived is not None:
         assert case.columns == derived
+
+
+# ---------------------------------------------------------------------
+# Hard-case and known-limitation fixtures (issue #125)
+# ---------------------------------------------------------------------
+
+_HARD_CASE_FILENAMES = {
+    "header_none_after_preamble.csv",
+    "quoting_newline_in_head_window.csv",
+    "quoting_newline_in_tail_window.csv",
+    "footer_longer_than_tail_window.csv",
+    "footer_like_data_row_numeric_label.csv",
+    "footer_after_total_energies_row.csv",
+    "delimiter_semicolon_decimal_comma.csv",
+    "delimiter_tab_commas_quoted_header.tsv",
+    "delimiter_pipe_inside_quotes.csv",
+    "encoding_cp1252_tail_only.csv",
+    "single_column.csv",
+    "single_data_row.csv",
+    "exactly_head_window_size.csv",
+    "header_duplicate_and_blank_names.csv",
+    "data_contains_sample_marker.csv",
+    "header_years.csv",
+}
+_HARD_CASES = [case for case in CASES if case.filename in _HARD_CASE_FILENAMES]
+
+
+def test_catalog_has_every_hard_case() -> None:
+    """Every hand-written hard case is in the catalog."""
+    assert {case.filename for case in _HARD_CASES} == _HARD_CASE_FILENAMES
+
+
+@pytest.mark.parametrize("case", _HARD_CASES, ids=lambda case: case.filename)
+def test_hard_case_notes_name_the_rule_it_guards(case: SampleCase) -> None:
+    """Each hard case has a one-line note naming the rule it guards."""
+    assert case.notes
+    assert "\n" not in case.notes
+    assert "_grounding." in case.notes or "_sampling." in case.notes or "#105" in case.notes
+
+
+def test_header_less_fixture_after_preamble_expects_positional_names() -> None:
+    """Preamble lines do not set the column count of a header-less file."""
+    expected = MANIFEST["header_none_after_preamble.csv"]["expected"]
+
+    assert expected["has_header"] is False
+    assert expected["columns"] == ["column_1", "column_2", "column_3"]
+
+
+@pytest.mark.parametrize(
+    ("filename", "in_head"),
+    [("quoting_newline_in_head_window.csv", True), ("quoting_newline_in_tail_window.csv", False)],
+)
+def test_multiline_record_sits_in_the_intended_window(filename: str, in_head: bool) -> None:
+    """The quoted line break lies only in the head window, or only in the tail window."""
+    path = SAMPLES_DIR / filename
+    marker = b'"Pedido urgente\nentregado'
+    head = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
+    tail = read_tail_bytes(path, n_bytes=DEFAULT_TAIL_BYTES)
+
+    assert path.stat().st_size > DEFAULT_SAMPLE_BYTES + DEFAULT_TAIL_BYTES
+    assert (marker in head, marker in tail) == (in_head, not in_head)
+
+
+def test_long_footer_does_not_fit_the_default_tail_window() -> None:
+    """The known limitation holds: the footer's last line is in the tail, its first is not."""
+    filename = "footer_longer_than_tail_window.csv"
+    footer = MANIFEST[filename]["expected"]["footer_lines"]
+    samples = sample_source(SAMPLES_DIR / filename, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES)
+
+    assert MANIFEST[filename]["known_limitation"] is True
+    assert samples.tail_text is not None
+    assert len("\n".join(footer).encode("utf-8")) > DEFAULT_TAIL_BYTES
+    assert footer[-1] in samples.tail_text
+    assert footer[0] not in samples.tail_text
+
+
+def test_cp1252_tail_is_detected_although_the_head_is_ascii() -> None:
+    """The head is pure ASCII; the accented tail still moves the encoding off UTF-8."""
+    path = SAMPLES_DIR / "encoding_cp1252_tail_only.csv"
+    head = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
+
+    samples = sample_source(path, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES)
+
+    assert head.isascii()
+    assert samples.encoding.lower() in {"windows-1252", "cp1252", "iso-8859-1", "latin-1"}
+    assert samples.tail_text is not None
+    assert "Muñoz Hermanos" in samples.tail_text
+
+
+def test_file_of_exactly_the_head_window_is_sampled_whole() -> None:
+    """A file exactly one head window long is fully covered and not trimmed."""
+    path = SAMPLES_DIR / "exactly_head_window_size.csv"
+    raw = path.read_bytes()
+
+    samples = sample_source(path, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES)
+
+    assert len(raw) == DEFAULT_SAMPLE_BYTES
+    assert raw.endswith(b"\n")
+    assert samples.tail_text is None
+    assert samples.covers_whole_file is True
+    assert samples.head_text == raw.decode("utf-8")
+
+
+def test_duplicate_and_blank_column_names_are_kept_verbatim() -> None:
+    """A blank index name and duplicated names are expected as written."""
+    expected = MANIFEST["header_duplicate_and_blank_names.csv"]["expected"]
+
+    assert expected["columns"] == ["", "id", "id", "value"]
 
 
 # ---------------------------------------------------------------------

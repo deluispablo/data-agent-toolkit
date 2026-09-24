@@ -535,6 +535,381 @@
     "generated": false,
     "notes": null
   },
+  "header_none_after_preamble.csv": {
+    "category": "header_footer",
+    "description": "No header row, but two comment lines before the first data row.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "has_header": false,
+      "header_row_index": null,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "column_1",
+        "column_2",
+        "column_3"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._first_row_is_data: it checks line 0 only, and the result cannot describe preamble lines without a header row (#94)."
+  },
+  "quoting_newline_in_head_window.csv": {
+    "category": "quoting",
+    "description": "Production-sized ledger (~14 KiB) whose 11th data row has a quoted field spanning two physical lines, inside the default head window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._split_lines: grounding splits the head on every line break, so the record reads as two short rows."
+  },
+  "quoting_newline_in_tail_window.csv": {
+    "category": "quoting",
+    "description": "Production-sized ledger (~14 KiB) whose fifth-to-last data row has a quoted field spanning two physical lines, inside the default tail window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._split_lines on the tail: the second half of the record looks like a short trailing line."
+  },
+  "footer_longer_than_tail_window.csv": {
+    "category": "header_footer",
+    "description": "Production-sized ledger followed by a 40-line footer of ~130-character notes (~5 KiB), longer than the default 4 KiB tail window.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 40,
+      "footer_lines": [
+        "Nota 01: importes provisionales hasta el cierre contable del periodo; revise la partida 01 antes de conciliar con el extracto bancario",
+        "Nota 02: importes provisionales hasta el cierre contable del periodo; revise la partida 02 antes de conciliar con el extracto bancario",
+        "Nota 03: importes provisionales hasta el cierre contable del periodo; revise la partida 03 antes de conciliar con el extracto bancario",
+        "Nota 04: importes provisionales hasta el cierre contable del periodo; revise la partida 04 antes de conciliar con el extracto bancario",
+        "Nota 05: importes provisionales hasta el cierre contable del periodo; revise la partida 05 antes de conciliar con el extracto bancario",
+        "Nota 06: importes provisionales hasta el cierre contable del periodo; revise la partida 06 antes de conciliar con el extracto bancario",
+        "Nota 07: importes provisionales hasta el cierre contable del periodo; revise la partida 07 antes de conciliar con el extracto bancario",
+        "Nota 08: importes provisionales hasta el cierre contable del periodo; revise la partida 08 antes de conciliar con el extracto bancario",
+        "Nota 09: importes provisionales hasta el cierre contable del periodo; revise la partida 09 antes de conciliar con el extracto bancario",
+        "Nota 10: importes provisionales hasta el cierre contable del periodo; revise la partida 10 antes de conciliar con el extracto bancario",
+        "Nota 11: importes provisionales hasta el cierre contable del periodo; revise la partida 11 antes de conciliar con el extracto bancario",
+        "Nota 12: importes provisionales hasta el cierre contable del periodo; revise la partida 12 antes de conciliar con el extracto bancario",
+        "Nota 13: importes provisionales hasta el cierre contable del periodo; revise la partida 13 antes de conciliar con el extracto bancario",
+        "Nota 14: importes provisionales hasta el cierre contable del periodo; revise la partida 14 antes de conciliar con el extracto bancario",
+        "Nota 15: importes provisionales hasta el cierre contable del periodo; revise la partida 15 antes de conciliar con el extracto bancario",
+        "Nota 16: importes provisionales hasta el cierre contable del periodo; revise la partida 16 antes de conciliar con el extracto bancario",
+        "Nota 17: importes provisionales hasta el cierre contable del periodo; revise la partida 17 antes de conciliar con el extracto bancario",
+        "Nota 18: importes provisionales hasta el cierre contable del periodo; revise la partida 18 antes de conciliar con el extracto bancario",
+        "Nota 19: importes provisionales hasta el cierre contable del periodo; revise la partida 19 antes de conciliar con el extracto bancario",
+        "Nota 20: importes provisionales hasta el cierre contable del periodo; revise la partida 20 antes de conciliar con el extracto bancario",
+        "Nota 21: importes provisionales hasta el cierre contable del periodo; revise la partida 21 antes de conciliar con el extracto bancario",
+        "Nota 22: importes provisionales hasta el cierre contable del periodo; revise la partida 22 antes de conciliar con el extracto bancario",
+        "Nota 23: importes provisionales hasta el cierre contable del periodo; revise la partida 23 antes de conciliar con el extracto bancario",
+        "Nota 24: importes provisionales hasta el cierre contable del periodo; revise la partida 24 antes de conciliar con el extracto bancario",
+        "Nota 25: importes provisionales hasta el cierre contable del periodo; revise la partida 25 antes de conciliar con el extracto bancario",
+        "Nota 26: importes provisionales hasta el cierre contable del periodo; revise la partida 26 antes de conciliar con el extracto bancario",
+        "Nota 27: importes provisionales hasta el cierre contable del periodo; revise la partida 27 antes de conciliar con el extracto bancario",
+        "Nota 28: importes provisionales hasta el cierre contable del periodo; revise la partida 28 antes de conciliar con el extracto bancario",
+        "Nota 29: importes provisionales hasta el cierre contable del periodo; revise la partida 29 antes de conciliar con el extracto bancario",
+        "Nota 30: importes provisionales hasta el cierre contable del periodo; revise la partida 30 antes de conciliar con el extracto bancario",
+        "Nota 31: importes provisionales hasta el cierre contable del periodo; revise la partida 31 antes de conciliar con el extracto bancario",
+        "Nota 32: importes provisionales hasta el cierre contable del periodo; revise la partida 32 antes de conciliar con el extracto bancario",
+        "Nota 33: importes provisionales hasta el cierre contable del periodo; revise la partida 33 antes de conciliar con el extracto bancario",
+        "Nota 34: importes provisionales hasta el cierre contable del periodo; revise la partida 34 antes de conciliar con el extracto bancario",
+        "Nota 35: importes provisionales hasta el cierre contable del periodo; revise la partida 35 antes de conciliar con el extracto bancario",
+        "Nota 36: importes provisionales hasta el cierre contable del periodo; revise la partida 36 antes de conciliar con el extracto bancario",
+        "Nota 37: importes provisionales hasta el cierre contable del periodo; revise la partida 37 antes de conciliar con el extracto bancario",
+        "Nota 38: importes provisionales hasta el cierre contable del periodo; revise la partida 38 antes de conciliar con el extracto bancario",
+        "Nota 39: importes provisionales hasta el cierre contable del periodo; revise la partida 39 antes de conciliar con el extracto bancario",
+        "Nota 40: importes provisionales hasta el cierre contable del periodo; revise la partida 40 antes de conciliar con el extracto bancario"
+      ],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": true,
+    "generated": false,
+    "notes": "Guards _grounding._locate_footer_lines: footer exceeds tail window, so only its last lines can be anchored; a larger tail_bytes is the workaround."
+  },
+  "footer_like_data_row_numeric_label.csv": {
+    "category": "header_footer",
+    "description": "The last data row ('2024,,4241.25') is shaped like a totals row but has a numeric first field and belongs to the data.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Anio",
+        "Region",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._extends_footer: a year is not a totals label, so the row is never pulled into a footer."
+  },
+  "footer_after_total_energies_row.csv": {
+    "category": "header_footer",
+    "description": "Production-sized ledger keyed by client whose last data row starts with 'Total Energies SA', followed by an end-of-report marker.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 1,
+      "footer_lines": [
+        "--- Fin del informe ---"
+      ],
+      "columns": [
+        "Cliente",
+        "Fecha",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards the _grounding._extends_footer label rule: 'Total Energies SA' is not a bare totals label and its other fields are filled, so the row stays data."
+  },
+  "delimiter_semicolon_decimal_comma.csv": {
+    "category": "delimiter",
+    "description": "Semicolon-delimited amounts with decimal comma and thousands dot ('1.234,56'); every data row also splits evenly on the comma.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Base",
+        "IVA",
+        "Total"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter: ',' agrees on every data row too, so a reported ',' is kept; only ';' splits the header."
+  },
+  "delimiter_tab_commas_quoted_header.tsv": {
+    "category": "delimiter",
+    "description": "Tab-delimited file with a quoted header and unquoted values containing commas.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "\t",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter: commas in the values must not beat the tab."
+  },
+  "delimiter_pipe_inside_quotes.csv": {
+    "category": "delimiter",
+    "description": "Pipe-delimited file where quoted fields contain the pipe character.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": "|",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._agreement_score: fields are split with the quotechar, so quoted pipes do not change the field count."
+  },
+  "encoding_cp1252_tail_only.csv": {
+    "category": "encoding",
+    "description": "Semicolon ledger (~10 KiB) in cp1252 whose head is pure ASCII; accented client names occur only in the last rows.",
+    "expected": {
+      "encoding": "latin-1 or cp1252 (not utf-8)",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Concepto",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _sampling.sample_source tail re-detection: an ASCII head must not settle the encoding as utf-8."
+  },
+  "single_column.csv": {
+    "category": "structural",
+    "description": "A single column: no delimiter occurs anywhere in the file.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Cliente"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter boundary: no candidate splits a line, so the reported delimiter is kept; ',' is the conventional answer."
+  },
+  "single_data_row.csv": {
+    "category": "structural",
+    "description": "A header row followed by exactly one data row.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._ground_delimiter and _locate_header_row boundaries: only two lines exist to agree on a shape."
+  },
+  "exactly_head_window_size.csv": {
+    "category": "structural",
+    "description": "A file of exactly 4096 bytes, the default head window, ending in a newline.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Importe",
+        "Observaciones"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _sampling.sample_source boundary: a full head window with nothing past it covers the whole file and is not trimmed."
+  },
+  "header_duplicate_and_blank_names.csv": {
+    "category": "header_footer",
+    "description": "A pandas-style export: blank first column name (the index) and a duplicated column name ('id,id').",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "",
+        "id",
+        "id",
+        "value"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._locate_header_row named-set rule: names are kept verbatim, the blank one included, and duplicates are not merged."
+  },
+  "data_contains_sample_marker.csv": {
+    "category": "data_format",
+    "description": "A data value is the literal prompt marker '--- HEAD SAMPLE END ---'.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "Fecha",
+        "Cliente",
+        "Descripcion",
+        "Importe"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards grounding against the plain-text sample markers (#105): the dialect comes from the real bytes, not from where the model thinks the sample ends."
+  },
+  "header_years.csv": {
+    "category": "header_footer",
+    "description": "The header is made of years ('2023,2024,2025') above numeric data rows.",
+    "expected": {
+      "encoding": "utf-8",
+      "delimiter": ",",
+      "quotechar": "\"",
+      "has_header": true,
+      "header_row_index": 0,
+      "footer_rows_to_skip": 0,
+      "footer_lines": [],
+      "columns": [
+        "2023",
+        "2024",
+        "2025"
+      ]
+    },
+    "known_limitation": false,
+    "generated": false,
+    "notes": "Guards _grounding._first_row_is_data (#131): a numeric header row is still a header; the no-header rule must not fire."
+  },
   "gen_footer_none_wide.csv": {
     "category": "header_footer",
     "description": "Generated comma-delimited file, utf-8, LF, 40 columns x 30 rows.",

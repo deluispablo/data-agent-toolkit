@@ -5,8 +5,8 @@ reads environment variables or files. Hosts that manage their own secrets
 build it directly and pass it to :func:`csv_inspector.inspect_csv`.
 
 :func:`load_settings` is the explicit, opt-in way to read settings from the
-process environment (and, only if asked, from a ``.env`` file). It needs the
-``pydantic-settings`` package from the ``[cloud]`` extra, imported lazily.
+process environment (and, only if asked, from a ``.env`` file). It needs no
+extra package: a base install reads the environment too.
 
 :func:`resolve_settings` picks between the two for one call, and
 :func:`ensure_backend_ready` checks that a backend is usable as configured,
@@ -18,8 +18,11 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
+from types import MappingProxyType
 
 from pydantic import BaseModel, ConfigDict, SecretStr, ValidationError, field_validator
 
@@ -177,82 +180,101 @@ class Settings(BaseModel):
         )
 
 
+# The environment variable of each Settings field: its name, upper-cased.
+_ENV_VARIABLES: Mapping[str, str] = MappingProxyType(
+    {name.upper(): name for name in Settings.model_fields}
+)
+
+
+def _unquote(value: str) -> str:
+    """Strip matching surrounding quotes, or a trailing `` # comment`` from a bare value."""
+    for quote in "\"'":
+        if len(value) > 1 and value.startswith(quote) and value.endswith(quote):
+            return value[1:-1]
+    return value.split(" #", 1)[0].rstrip()
+
+
+def _read_env_file(path: str | os.PathLike[str]) -> dict[str, str]:
+    """Read ``KEY=VALUE`` lines from a ``.env`` file; a missing file reads as empty.
+
+    Supported: blank lines, ``#`` comment lines, an ``export`` prefix,
+    values in single or double quotes, and a `` # comment`` after a bare
+    value. Not supported: variable interpolation, escape sequences and
+    multi-line values. Keys are matched case-insensitively.
+
+    Raises:
+        BackendConfigurationError: If the file exists but cannot be read.
+    """
+    file = Path(path)
+    if not file.is_file():
+        return {}
+    try:
+        text = file.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeDecodeError) as exc:
+        raise BackendConfigurationError(f"Cannot read settings file '{file}': {exc}") from None
+    values: dict[str, str] = {}
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if line.startswith("export "):
+            line = line[len("export ") :].lstrip()
+        key, separator, value = line.partition("=")
+        if not separator or line.startswith("#"):
+            continue
+        values[key.strip().upper()] = _unquote(value.strip())
+    return values
+
+
 def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings:
     """Read :class:`Settings` from the process environment, explicitly.
 
     Only environment variables are read by default. A ``.env`` file is read
     only when ``env_file`` is given: the library never assumes that the
-    process's working directory is a safe place to load secrets from.
+    process's working directory is a safe place to load secrets from. Each
+    field is read from its upper-cased name (e.g. ``ollama_model`` from
+    ``OLLAMA_MODEL``), case-insensitively; other variables are ignored.
 
     Args:
-        env_file: Optional path to a ``.env`` file. Environment variables
-            take precedence over its values.
+        env_file: Optional path to a ``.env`` file (see
+            :func:`_read_env_file` for the syntax). Environment variables
+            take precedence over its values. A missing file is ignored.
 
     Returns:
-        The loaded settings, as a plain :class:`Settings`.
+        The loaded settings.
 
     Raises:
-        BackendConfigurationError: If ``pydantic-settings`` (``[cloud]``
-            extra) is not installed, or a variable holds an invalid value.
-            The message names the variable but never echoes the value,
-            which could be a secret.
+        BackendConfigurationError: If the ``.env`` file cannot be read, or a
+            variable holds an invalid value. The message names the variable
+            but never echoes the value, which could be a secret.
     """
+    found = {} if env_file is None else _read_env_file(env_file)
+    found.update((name.upper(), value) for name, value in os.environ.items())
+    values = {field: found[name] for name, field in _ENV_VARIABLES.items() if name in found}
     try:
-        from pydantic_settings import (  # noqa: PLC0415 - optional extra, imported lazily.
-            BaseSettings,
-            SettingsConfigDict,
-        )
-    except ImportError as exc:
-        raise BackendConfigurationError(
-            f"Reading settings from the environment needs 'pydantic-settings'. {CLOUD_EXTRA_HINT}"
-        ) from exc
-
-    # Defined here because pydantic-settings is optional. Settings comes first
-    # in the bases so its fields, defaults and validators define the schema;
-    # it defines no __init__, so BaseSettings.__init__ (which reads the
-    # environment and .env sources) is still the one that runs. The config
-    # overrides Settings' extra="forbid": unrelated variables in a .env file
-    # must be ignored, not rejected.
-    class _EnvSettings(Settings, BaseSettings):
-        model_config = SettingsConfigDict(frozen=True, extra="ignore")
-
-    try:
-        loaded = _EnvSettings(_env_file=None if env_file is None else os.fspath(env_file))
+        return Settings.model_validate(values)
     except ValidationError as exc:
         problems = "; ".join(
             f"{'.'.join(str(part) for part in error['loc']).upper()}: {error['msg']}"
             for error in exc.errors()
         )
         raise BackendConfigurationError(f"Invalid csv_inspector settings: {problems}") from None
-    # Hand back a plain Settings, not the env-reading subclass: copies and
-    # re-validation of the result must never go back to the environment.
-    return Settings.model_validate(loaded.model_dump())
 
 
-def resolve_settings(settings: Settings | None, backend: LLMBackend) -> Settings:
+def resolve_settings(settings: Settings | None) -> Settings:
     """Return the settings to use: the injected ones, or the environment's.
 
     Args:
         settings: Explicitly injected settings. When given, the environment
             is never read.
-        backend: The backend the settings are needed for.
 
     Returns:
         ``settings`` if given; otherwise settings read from the process
-        environment (:func:`load_settings`, no ``.env``). On a base install
-        without ``pydantic-settings``, the local backend falls back to the
-        built-in defaults.
+        environment (:func:`load_settings`, no ``.env``).
 
     Raises:
-        BackendConfigurationError: If the environment cannot be read for the
-            cloud backend (missing extra) or holds an invalid value.
+        BackendConfigurationError: If an environment variable holds an
+            invalid value.
     """
-    if settings is not None:
-        return settings
-    if backend is LLMBackend.LOCAL and importlib.util.find_spec("pydantic_settings") is None:
-        logger.debug("pydantic-settings not installed; using built-in local defaults.")
-        return Settings()
-    return load_settings()
+    return settings if settings is not None else load_settings()
 
 
 def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) -> None:
@@ -280,7 +302,7 @@ def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) 
     """
     if backend is not LLMBackend.API:
         return
-    resolve_settings(settings, backend).cloud_credentials()
+    resolve_settings(settings).cloud_credentials()
     try:
         sdk_installed = importlib.util.find_spec("google.genai") is not None
     except ModuleNotFoundError:

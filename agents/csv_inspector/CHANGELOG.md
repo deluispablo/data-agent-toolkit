@@ -29,6 +29,14 @@ listed under **Changed (breaking)**.
 
 ### Changed
 
+- `load_settings()` reads the environment (and an explicit `.env` file)
+  with the standard library instead of `pydantic-settings`, which is no
+  longer a dependency of the `[cloud]` extra. A base install now reads
+  `OLLAMA_MODEL` and the other variables, and the CLI reads `./.env`
+  without the extra. The `.env` syntax is `KEY=VALUE` with comments,
+  `export` and quotes; variable interpolation and multi-line values are
+  not supported. The signature of `load_settings` is unchanged
+  ([#99](https://github.com/deluispablo/data-agent-toolkit/issues/99)).
 - With a fallback model, the primary may now use about 70 % of the
   `timeout_seconds` budget instead of half; the fallback still gets
   everything left. A cold 7B load on CPU often needed more than half, so

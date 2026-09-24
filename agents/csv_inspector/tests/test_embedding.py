@@ -290,7 +290,6 @@ def test_explicit_settings_never_call_load_settings(monkeypatch: pytest.MonkeyPa
 
 def test_without_settings_the_environment_is_used(monkeypatch: pytest.MonkeyPatch) -> None:
     """Standalone mode (no settings=) still honours environment variables."""
-    pytest.importorskip("pydantic_settings")
     monkeypatch.setenv("OLLAMA_MODEL", "from-environment")
     fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(_ANSWER))
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -90,36 +89,10 @@ def test_timeout_budget_rejects_everything_else(raw: str) -> None:
 
 
 def test_cli_reads_dotenv_in_the_working_directory_by_default(tmp_path: Path) -> None:
-    """As an application, the CLI opts in to ./.env when it exists."""
-    pytest.importorskip("pydantic_settings")
+    """As an application, the CLI opts in to ./.env when it exists, on any install."""
     (tmp_path / ".env").write_text("OLLAMA_MODEL=from-dotenv\n")
 
     assert load_cli_settings(None, no_env_file=False).ollama_model == "from-dotenv"
-
-
-def test_cli_skips_dotenv_on_a_base_install(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Without the [cloud] extra, an implicit ./.env is ignored with a warning."""
-    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
-    (tmp_path / ".env").write_text("OLLAMA_MODEL=from-dotenv\n")
-
-    settings = load_cli_settings(None, no_env_file=False)
-
-    assert settings.ollama_model == Settings().ollama_model
-    assert "Ignoring .env" in caplog.text
-
-
-def test_cli_explicit_env_file_needs_the_cloud_extra(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """An explicit --env-file still fails loudly when it cannot be read."""
-    monkeypatch.setitem(sys.modules, "pydantic_settings", None)
-    env_file = tmp_path / "x.env"
-    env_file.write_text("OLLAMA_MODEL=from-dotenv\n")
-
-    with pytest.raises(BackendConfigurationError, match="pydantic-settings"):
-        load_cli_settings(env_file, no_env_file=False)
 
 
 def test_cli_no_env_file_ignores_dotenv(tmp_path: Path) -> None:

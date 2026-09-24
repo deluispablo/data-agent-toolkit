@@ -33,7 +33,7 @@ a service.
 ```bash
 # From a clone of the repository
 pip install ./agents/csv_inspector            # local backend (Ollama)
-pip install "./agents/csv_inspector[cloud]"   # + Gemini backend and load_settings()
+pip install "./agents/csv_inspector[cloud]"   # + Gemini backend
 
 # As a dependency of another project, pinned to a release tag
 pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.2.0#subdirectory=agents/csv_inspector"
@@ -89,7 +89,7 @@ stable API. Every other module and name is internal.
 | `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
 | `ModelInvoker`, `AsyncModelInvoker` | Types of the `model_invoker` seam: `(prompt, model) -> str` and its async twin |
 | `ensure_backend_ready(backend, settings=None)` | Check a backend's configuration (cloud credentials, `google-genai` installed) without a network or model call; raises `BackendConfigurationError`. The `local` backend always passes |
-| `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); needs `[cloud]` |
+| `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); works on a base install |
 | `CSVInspectorError` and subclasses | See [Errors](#errors) |
 | `__version__` | The installed version |
 
@@ -236,8 +236,10 @@ There are two ways to configure the library:
 2. **From the environment**, standalone: when `settings` is omitted, the
    library reads the environment variables below, **never a `.env` file**.
    `load_settings(env_file=...)` reads a `.env` file only when you ask it to.
-   Reading the environment needs the `[cloud]` extra; without it, the local
-   backend uses built-in defaults.
+   Both work on a base install. A `.env` file holds `KEY=VALUE` lines, with
+   `#` comment lines, an optional `export` prefix, single or double quotes,
+   and a ` # comment` after a bare value; there is no variable
+   interpolation and no multi-line value.
 
 | `Settings` field | Environment variable | Default |
 |---|---|---|

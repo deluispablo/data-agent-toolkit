@@ -62,7 +62,7 @@ variables (all optional). To use a file, copy
 | `CSV_INSPECTOR_API_GEMINI_API_KEY` | unset | Gemini Developer API key; never commit it |
 | `CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT` | unset | Vertex AI project; also the project of the Cloud Storage client (unset: inferred from the credentials) |
 | `CSV_INSPECTOR_API_GOOGLE_CLOUD_LOCATION` | unset | Vertex AI location |
-| `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request |
+| `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request; 90 or more on a CPU-only local deployment (a cold model load) |
 | `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
 | `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` | `268435456` (256 MiB) | larger uploads get `413` |
 | `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE` | `false` | let requests switch to `backend=api` (paid) or pick cloud models; see [Per-request overrides](#per-request-overrides) |

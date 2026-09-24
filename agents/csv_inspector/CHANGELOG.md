@@ -23,6 +23,15 @@ listed under **Changed (breaking)**.
 
 ### Changed
 
+- With a fallback model, the primary may now use about 70 % of the
+  `timeout_seconds` budget instead of half; the fallback still gets
+  everything left. A cold 7B load on CPU often needed more than half, so
+  the weaker fallback answered on every cold start. Trade-off: a hung
+  primary now leaves the fallback about 30 % of the budget instead of
+  50 %; on CPU-only local deployments of the API example, set
+  `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` to 90 or more. A model the
+  budget leaves out is logged at INFO
+  ([#95](https://github.com/deluispablo/data-agent-toolkit/issues/95)).
 - The `api` backend retries a `429 RESOURCE_EXHAUSTED` or
   `503 UNAVAILABLE` answer once on the same model before falling back:
   after the `Retry-After` header (at most 10 s) or about one second, and

@@ -26,8 +26,10 @@ import csv_inspector
 from csv_inspector import (
     CSVInspectionResult,
     InspectionTimeoutError,
+    LLMBackend,
     Settings,
     ainspect_csv,
+    ensure_backend_ready,
     inspect_csv,
 )
 
@@ -65,6 +67,7 @@ def main() -> None:
         "__version__ does not match the installed distribution",
     )
     _check((installed_at.parent / "py.typed").is_file(), "py.typed marker missing")
+    ensure_backend_ready(LLMBackend.LOCAL, Settings())  # public readiness check; never raises
 
     def invoker(prompt: str, model: str) -> str:
         return ANSWER

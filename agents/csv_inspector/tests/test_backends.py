@@ -19,6 +19,7 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from pydantic import SecretStr
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -26,14 +27,11 @@ from csv_inspector import (
     CSVInspectionResult,
     LLMBackend,
     ModelInvocationError,
+    Settings,
+    ensure_backend_ready,
     inspect_csv,
 )
-from csv_inspector._config import (
-    DEFAULT_MODEL,
-    FALLBACK_MODEL,
-    ensure_backend_ready,
-    resolve_settings,
-)
+from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL, resolve_settings
 from csv_inspector._invokers import invoke_cloud_model
 from fakes import install_fake_ollama, ollama_reply
 
@@ -436,3 +434,16 @@ def test_cli_api_backend_without_credentials_fails_cleanly(
     assert "GEMINI_API_KEY" in completed.stderr
     assert "Traceback" not in completed.stderr
     assert completed.stdout == ""
+
+
+@needs_cloud_extra
+def test_ensure_backend_ready_checks_explicit_settings_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """With explicit settings the public check ignores the environment (issue #82)."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+
+    with pytest.raises(CredentialsNotConfiguredError):
+        ensure_backend_ready(LLMBackend.API, Settings())
+    ensure_backend_ready(LLMBackend.API, Settings(gemini_api_key=SecretStr(FAKE_KEY)))
+    ensure_backend_ready(LLMBackend.LOCAL, Settings())

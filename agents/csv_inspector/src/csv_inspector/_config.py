@@ -248,11 +248,21 @@ def resolve_settings(settings: Settings | None, backend: LLMBackend) -> Settings
 
 
 def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) -> None:
-    """Fail fast if ``backend`` cannot be used, before any source is read.
+    """Fail fast if ``backend`` cannot be used as configured.
 
-    The local backend needs nothing up front (Ollama reachability is only
-    known when it is called). The cloud backend needs sufficient
-    credentials and the ``google-genai`` package.
+    Every inspection with a built-in invoker runs this check before reading
+    the source. Hosts can call it too: at startup, or in a readiness probe,
+    to report a misconfigured deployment before the first request. It makes
+    no network call and no model call, so it is free and fast.
+
+    The local backend needs nothing up front and always passes: Ollama's
+    reachability is only known when it is called. The cloud backend needs
+    sufficient credentials and the ``google-genai`` package.
+
+    Args:
+        backend: The backend to check.
+        settings: The settings inspections will use. ``None`` reads them
+            from the environment, as :func:`inspect_csv` does.
 
     Raises:
         BackendConfigurationError: If the ``[cloud]`` extra is missing or a

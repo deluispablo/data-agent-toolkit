@@ -150,6 +150,21 @@ value) raise `BackendConfigurationError` **before the source is read**, so
 a non-seekable request body is never consumed only to fail on
 configuration.
 
+The same check is public, so a host can run it before the first request,
+at startup or in a readiness probe. It makes no network or model call:
+
+```python
+from csv_inspector import BackendConfigurationError, LLMBackend, ensure_backend_ready
+
+try:
+    ensure_backend_ready(LLMBackend.API, settings)
+except BackendConfigurationError as exc:  # CredentialsNotConfiguredError included
+    ...  # report "not ready"
+```
+
+For the `local` backend it always passes: whether Ollama is reachable is
+only known when it is called.
+
 ## 6. Timeouts and error handling
 
 `timeout_seconds` is **one budget for the whole model phase**, shared by

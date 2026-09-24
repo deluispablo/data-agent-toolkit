@@ -51,6 +51,7 @@ EXPECTED_PUBLIC_API = {
     "Settings",
     "__version__",
     "ainspect_csv",
+    "ensure_backend_ready",
     "inspect_csv",
     "load_settings",
 }

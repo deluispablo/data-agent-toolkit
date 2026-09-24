@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 import csv_inspector
-from csv_inspector import LLMBackend, Settings
-from fastapi import APIRouter, Request
+from csv_inspector import LLMBackend, Settings, ensure_backend_ready
+from fastapi import APIRouter, Query, Request
 from pydantic import BaseModel
+
+from ..errors import problem_responses
 
 router = APIRouter(tags=["meta"])
 
@@ -35,16 +37,34 @@ class HealthResponse(BaseModel):
     fallback_model: str
 
 
-@router.get("/health", response_model=HealthResponse, summary="Liveness and configuration")
-async def health(request: Request) -> HealthResponse:
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    summary="Liveness and configuration",
+    responses=problem_responses(503),
+)
+async def health(
+    request: Request,
+    probe: Annotated[
+        bool,
+        Query(
+            description="Also check the backend configuration (credentials, SDK), "
+            "without a network or model call; 503 when it is unusable."
+        ),
+    ] = False,
+) -> HealthResponse:
     """Report that the API is up, and which backend and models it uses.
 
     The model backend is never contacted: a health check must be cheap and
-    free. A reachability probe needs ``ensure_backend_ready``, which
-    ``csv_inspector`` does not export publicly, so there is none.
+    free. With ``probe=true`` the library's own readiness check runs, the one
+    every inspection runs first; a failure is a 503 through the error handler.
+    It is skipped when the app runs with a custom model invoker, as the
+    library skips it then.
     """
     settings: Settings = request.app.state.library_settings
     backend = settings.llm_backend
+    if probe and request.app.state.model_invoker is None:
+        ensure_backend_ready(backend, settings)
     return HealthResponse(
         csv_inspector_version=csv_inspector.__version__,
         api_version=request.app.version,

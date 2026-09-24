@@ -11,10 +11,10 @@ import pytest
 from csv_inspector import CSVInspectorError
 from fastapi import FastAPI
 
-from conftest import fake_model_invoker
 from csv_inspector_api import create_app
 from csv_inspector_api.errors import PROBLEM_MEDIA_TYPE, status_for
 from csv_inspector_api.settings import ApiSettings
+from fakes import FakeInvoker
 
 EXPECTED_STATUS = {
     "EmptySampleError": 422,
@@ -77,7 +77,7 @@ async def _raise() -> None:
 @pytest.fixture
 async def raising_client() -> AsyncIterator[httpx.AsyncClient]:
     """A client for an app with one route that raises the queued exception."""
-    app: FastAPI = create_app(ApiSettings(), model_invoker=fake_model_invoker)
+    app: FastAPI = create_app(ApiSettings(), model_invoker=FakeInvoker())
     app.add_api_route("/boom", _raise)
     # Let unhandled errors become responses, as they would under a server.
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)

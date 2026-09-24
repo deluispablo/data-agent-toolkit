@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from typing import Any
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -85,6 +86,7 @@ _RULES = (
         "Model backend failed",
     ),
 )
+_UPLOAD_TOO_LARGE_TITLE = "Upload too large"
 _FALLBACK = _Rule((CSVInspectorError,), 500, "Inspection error", logging.ERROR)
 
 
@@ -104,6 +106,13 @@ def status_for(exc: CSVInspectorError) -> int:
         backend, 502 for a failed or nonsensical model answer, 500 otherwise.
     """
     return _rule_for(exc).status
+
+
+class UploadTooLargeError(Exception):
+    """The upload exceeds ``ApiSettings.max_upload_bytes``; answered with 413.
+
+    Not a library error: the API raises it before calling ``csv_inspector``.
+    """
 
 
 def problem_response(status: int, title: str, exc: Exception) -> JSONResponse:
@@ -141,6 +150,12 @@ async def _handle_inspector_error(request: Request, exc: Exception) -> JSONRespo
     return problem_response(rule.status, rule.title, exc)
 
 
+async def _handle_upload_too_large(request: Request, exc: Exception) -> JSONResponse:
+    """Answer an oversize upload with 413."""
+    logger.warning("%s %s rejected with 413: %s", request.method, request.url.path, exc)
+    return problem_response(413, _UPLOAD_TOO_LARGE_TITLE, exc)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Install the API's error handlers on ``app``.
 
@@ -148,3 +163,36 @@ def register_exception_handlers(app: FastAPI) -> None:
         app: The application being built by ``create_app``.
     """
     app.add_exception_handler(CSVInspectorError, _handle_inspector_error)
+    app.add_exception_handler(UploadTooLargeError, _handle_upload_too_large)
+
+
+_VALIDATION_ERROR_SCHEMA: dict[str, Any] = {
+    "title": "HTTPValidationError",
+    "type": "object",
+    "properties": {"detail": {"type": "array", "items": {"type": "object"}}},
+}
+"""Shape of FastAPI's own 422 body for invalid parameters or a missing field."""
+
+
+def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
+    """OpenAPI ``responses`` entries for error statuses with a ``ProblemDetails`` body.
+
+    Args:
+        *statuses: The error statuses a route can return.
+
+    Returns:
+        A mapping for a route decorator's ``responses=`` argument.
+    """
+    titles = {rule.status: rule.title for rule in (*_RULES, _FALLBACK)}
+    titles[413] = _UPLOAD_TOO_LARGE_TITLE
+    schema = ProblemDetails.model_json_schema()
+    responses: dict[int | str, dict[str, Any]] = {
+        status: {"description": titles[status], "content": {PROBLEM_MEDIA_TYPE: {"schema": schema}}}
+        for status in statuses
+    }
+    if 422 in responses:  # noqa: PLR2004 - the status code itself
+        # Declaring 422 replaces FastAPI's own entry for invalid parameters,
+        # which keep FastAPI's body: document both.
+        responses[422]["description"] += " (problem+json), or invalid request (application/json)"
+        responses[422]["content"]["application/json"] = {"schema": _VALIDATION_ERROR_SCHEMA}
+    return responses

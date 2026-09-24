@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI
 
 from .errors import register_exception_handlers
+from .routes.inspect import build_inspect_router
 from .settings import ApiSettings
 
 # The example is never built or installed, so there is no package metadata to
@@ -47,4 +48,5 @@ def create_app(
     app.state.library_settings = settings.to_library_settings()
     app.state.model_invoker = model_invoker
     register_exception_handlers(app)
+    app.include_router(build_inspect_router(settings))
     return app

@@ -6,8 +6,8 @@ A small FastAPI service that embeds the
 meant to be read and copied. It is never built, tagged or published (see
 [Examples](../../ARCHITECTURE.md#examples)).
 
-> **Status: scaffold.** The app boots and serves its OpenAPI schema; the
-> endpoints arrive in the next milestone.
+> **Status: in progress.** `POST /inspect` works; `GET /health`, the demo
+> and the full README arrive with the rest of the milestone.
 
 ## Run
 
@@ -32,7 +32,42 @@ library's `Settings`: the API never calls `csv_inspector.load_settings()`.
 
 ## Endpoints
 
-To be documented with the endpoints (`POST /inspect`, `GET /health`).
+### `POST /inspect`
+
+Upload the file as `multipart/form-data` in the field `file`:
+
+```bash
+curl -F file=@../../agents/csv_inspector/sample.csv "localhost:8000/inspect?timeout_seconds=120"
+```
+
+```json
+{"encoding": "utf-8", "delimiter": ";", "quotechar": "\"", "escapechar": null,
+ "doublequote": true, "header_row_index": 2, "footer_lines": [],
+ "columns": [{"name": "Fecha", "inferred_type": "date", "nullable": false,
+              "example_values": ["2024-01-15", "2024-01-16"]}, "..."],
+ "confidence": 0.9, "notes": "..."}
+```
+
+The response is the library's `CSVInspectionResult`, unchanged.
+
+| query parameter | default | bounds | passed to `ainspect_csv` as |
+|---|---|---|---|
+| `n_bytes` | 4096 | 512–16384 | `n_bytes` |
+| `tail_bytes` | 4096 | 0–16384 | `tail_bytes` |
+| `timeout_seconds` | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | 1–`CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `timeout_seconds` |
+
+- Only a bounded head and tail of the upload are read and sent to the model.
+- An upload larger than `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` is a `413`.
+  The multipart body is already received when the route runs (Starlette
+  spools it to a temporary file past 1 MiB), so this limit caps what is
+  inspected, not what is received: cap the request size at the reverse
+  proxy too.
+- The upload's content type is **not** checked: browsers and tools send
+  anything from `text/csv` to `application/vnd.ms-excel` or
+  `application/octet-stream`, and the library detects what the bytes are.
+- Invalid query parameters or a missing `file` field are FastAPI's own
+  `422` validation errors (`application/json`); every other error is a
+  problem response, see [Errors](#errors).
 
 ## Errors
 

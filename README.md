@@ -15,7 +15,7 @@ add as a dependency to your own application or API.
 
 | Agent | Package | What it does | Docs |
 |---|---|---|---|
-| `csv_inspector` | `csv-inspector` 0.1.0 | Infers the encoding, dialect, header row, footer lines and column schema of large, messy CSV/TSV sources from bounded head/tail samples. Accepts paths, bytes or streams; sync and async API. | [README](agents/csv_inspector/README.md) · [Embedding guide](agents/csv_inspector/docs/embedding.md) · [Changelog](agents/csv_inspector/CHANGELOG.md) |
+| `csv_inspector` | `csv-inspector` 0.1.0 | Infers the encoding, dialect, header row, footer lines and column schema of large, messy CSV/TSV sources from bounded head/tail samples. Accepts paths, bytes or streams; sync and async API. | [README](agents/csv_inspector/README.md) · [Embedding guide](agents/csv_inspector/docs/embedding.md) · [Using the result](agents/csv_inspector/docs/using-the-result.md) · [Changelog](agents/csv_inspector/CHANGELOG.md) |
 
 Using an agent in another project:
 

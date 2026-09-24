@@ -10,6 +10,10 @@ listed under **Changed (breaking)**.
 
 ### Added
 
+- New guide, `docs/using-the-result.md`, on turning a result into reader
+  options for the stdlib `csv` module, pandas and PySpark, with encoding
+  names for Spark and BigQuery. The stdlib recipe is run by the test suite
+  ([#36](https://github.com/deluispablo/data-agent-toolkit/issues/36)).
 - A model answer that wraps its JSON object in prose rather than a code
   fence (`Here is the result: {...}`) is now parsed from the first `{` to
   the last `}` instead of failing as invalid JSON and using up an attempt

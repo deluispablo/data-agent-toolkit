@@ -23,6 +23,9 @@ a service.
 
 - **Embedding guide:** [docs/embedding.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md)
   (sync and async endpoints, settings injection, timeouts, thread-safety)
+- **Using the result:** [docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md)
+  (reader options for `csv`, pandas and PySpark; `header_row_index` is a
+  physical line count, so use `skiprows`, not `header`)
 - **Changelog:** [CHANGELOG.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/CHANGELOG.md)
 
 ## Install
@@ -54,6 +57,11 @@ with open("exports/ledger.csv", "rb") as f:
 print(result.delimiter, result.header_row_index, result.footer_rows_to_skip)
 print([column.name for column in result.columns])
 ```
+
+To read the file with these values, follow
+[docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md): `header_row_index`
+and `footer_rows_to_skip` count physical lines, so pandas'
+`header=result.header_row_index` silently picks the wrong row.
 
 In asyncio code, await `ainspect_csv` instead. **Never call `inspect_csv`
 on the event loop**: it blocks.

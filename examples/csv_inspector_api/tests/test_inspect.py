@@ -238,14 +238,13 @@ async def test_garbage_answer_is_502(client: httpx.AsyncClient, invoker: FakeInv
 
 
 @pytest.mark.anyio
-async def test_secrets_do_not_leak_into_error_bodies(
+async def test_secrets_do_not_leak_into_error_bodies_or_logs(
     invoker: FakeInvoker, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A secret in a model error never reaches the response body or the API's logs.
+    """A configured key in a model error reaches neither the response body nor any log.
 
-    The library's built-in invokers redact secrets from their errors. A custom
-    invoker's messages are the host's own responsibility: the library logs them
-    as they are, so this only checks what the API itself emits.
+    The library redacts the configured key from its own log lines, whatever
+    the invoker; the API adds nothing that could carry it.
     """
     secret = "AIza-test-secret-value"
     settings = ApiSettings(gemini_api_key=SecretStr(secret))
@@ -259,9 +258,9 @@ async def test_secrets_do_not_leak_into_error_bodies(
 
     assert response.status_code == 502
     assert secret not in response.text
-    api_logs = [r.getMessage() for r in caplog.records if r.name.startswith("csv_inspector_api")]
-    assert api_logs
-    assert all(secret not in message for message in api_logs)
+    assert any(r.name.startswith("csv_inspector_api") for r in caplog.records)
+    assert "***" in caplog.text
+    assert secret not in caplog.text
 
 
 @pytest.mark.anyio

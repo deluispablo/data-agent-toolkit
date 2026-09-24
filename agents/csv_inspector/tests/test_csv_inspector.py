@@ -14,16 +14,18 @@ against multi-gigabyte production files.
 
 from __future__ import annotations
 
+import asyncio
 import codecs
 import csv
 import json
+import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
 from typing import IO, Any, get_args
 
 import pytest
-from pydantic import ValidationError
+from pydantic import SecretStr, ValidationError
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -36,6 +38,7 @@ from csv_inspector import (
     ModelInvocationError,
     ResponseParsingError,
     Settings,
+    ainspect_csv,
     inspect_csv,
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
@@ -1331,3 +1334,45 @@ def test_grounding_keeps_a_bom_encoding_and_rejects_unknown_codecs(
 
     assert result.encoding == expected
     assert result.columns[0].name == "Fecha"
+
+
+def test_a_failed_attempt_log_never_shows_the_configured_api_key(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """A custom invoker's error carrying the key is logged redacted (issue #81)."""
+    secret = "AIza-test-secret-value"
+
+    def invoker(prompt: str, model: str) -> str:
+        raise PermissionError(f"API key {secret} was rejected")
+
+    settings = Settings(gemini_api_key=SecretStr(secret))
+    with (
+        caplog.at_level(logging.DEBUG, logger="csv_inspector"),
+        pytest.raises(InspectionFailedError),
+    ):
+        inspect_csv(SAMPLE_CSV_PATH, settings=settings, model_invoker=invoker)
+
+    failures = [r.getMessage() for r in caplog.records if "failed:" in r.getMessage()]
+    assert len(failures) == 2
+    assert all("API key *** was rejected" in message for message in failures)
+    assert secret not in caplog.text
+
+
+def test_a_failed_async_attempt_log_never_shows_the_configured_api_key(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """The async entry point shares the redaction (issue #81)."""
+    secret = "AIza-test-secret-value"
+
+    async def invoker(prompt: str, model: str) -> str:
+        raise PermissionError(f"API key {secret} was rejected")
+
+    settings = Settings(gemini_api_key=SecretStr(secret))
+    with (
+        caplog.at_level(logging.DEBUG, logger="csv_inspector"),
+        pytest.raises(InspectionFailedError),
+    ):
+        asyncio.run(ainspect_csv(SAMPLE_CSV_PATH, settings=settings, model_invoker=invoker))
+
+    assert "API key *** was rejected" in caplog.text
+    assert secret not in caplog.text

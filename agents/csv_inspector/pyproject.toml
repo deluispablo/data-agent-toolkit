@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "chardet>=5.2,<8",
-    "ollama>=0.6,<1",
+    "ollama>=0.6.2,<1",
     "pydantic>=2.6,<3",
 ]
 

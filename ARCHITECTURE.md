@@ -83,6 +83,11 @@ jobs:
 - **Type-check** (per agent): `mypy --strict`.
 - **Tests** (per agent × Python 3.10–3.14 on Linux, plus 3.14 on Windows):
   `pytest --cov` with branch coverage and the agent's `fail_under` floor.
+- **Tests, lowest dependencies** (per agent, Python 3.10): installs the
+  lowest versions the agent's ranges allow for its direct dependencies
+  (`uv pip install --resolution lowest-direct`, every extra) and runs
+  `pytest`. The other jobs test `uv.lock`, so only this one catches a floor
+  that is too low.
 - **Package** (per agent × Python 3.10 and 3.14): builds the sdist and
   wheel, runs `twine check --strict`, and installs with **plain pip** into
   fresh virtual environments: the wheel without extras, and the sdist with
@@ -110,7 +115,9 @@ jobs:
   guarantees the artefacts are uploadable.
 - **Dependencies.** Each agent declares version *ranges* in its
   `pyproject.toml`. Those ranges are a contract with its hosts and are only
-  changed deliberately. The development environment is pinned in
+  changed deliberately. CI tests both ends of each range: `uv.lock` for the
+  newest versions and the lowest-dependencies job for the floors. The
+  development environment is pinned in
   `uv.lock`, which Dependabot refreshes weekly, as it does the GitHub Actions.
 
 ## Adding a new agent

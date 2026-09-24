@@ -86,6 +86,9 @@ class Settings(BaseModel):
         llm_backend: Default backend: ``local`` or ``api``.
         ollama_model: Primary local model.
         ollama_fallback_model: Fallback local model.
+        ollama_host: Base URL of the Ollama server, e.g.
+            ``http://ollama:11434``. ``None`` lets the Ollama SDK use its
+            default (or ``OLLAMA_HOST`` from the process environment).
         gemini_api_key: Gemini Developer API key. Held as a ``SecretStr`` so
             it is masked in ``repr`` and logs.
         google_cloud_project: Vertex AI project.
@@ -99,6 +102,7 @@ class Settings(BaseModel):
     llm_backend: LLMBackend = LLMBackend.LOCAL
     ollama_model: str = DEFAULT_MODEL
     ollama_fallback_model: str = FALLBACK_MODEL
+    ollama_host: str | None = None
     gemini_api_key: SecretStr | None = None
     google_cloud_project: str | None = None
     google_cloud_location: str | None = None
@@ -112,7 +116,11 @@ class Settings(BaseModel):
         return value.strip().lower() if isinstance(value, str) else value
 
     @field_validator(
-        "gemini_api_key", "google_cloud_project", "google_cloud_location", mode="before"
+        "ollama_host",
+        "gemini_api_key",
+        "google_cloud_project",
+        "google_cloud_location",
+        mode="before",
     )
     @classmethod
     def _blank_as_unset(cls, value: object) -> object:

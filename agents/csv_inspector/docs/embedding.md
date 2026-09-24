@@ -132,6 +132,10 @@ result = inspect_csv(data, backend=LLMBackend.API, settings=settings)
   `gemini_key=` fails immediately.
 - `Settings` needs no extra package; only the `api` backend needs
   `csv-inspector[cloud]`.
+- The Ollama server is part of `Settings` too: pass
+  `Settings(ollama_host="http://ollama:11434")` instead of exporting
+  `OLLAMA_HOST`. Left unset, the Ollama SDK uses its default (and still
+  honours `OLLAMA_HOST` in the process environment).
 
 For standalone use you can omit `settings`: the library then reads the
 documented environment variables (`LLM_BACKEND`, `OLLAMA_MODEL`,

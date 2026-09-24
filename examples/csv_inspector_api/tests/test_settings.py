@@ -44,6 +44,7 @@ def test_to_library_settings_passes_cloud_fields_through() -> None:
         gemini_api_key=SecretStr("secret"),
         google_cloud_project="project",
         google_cloud_location="europe-west1",
+        ollama_host="http://ollama:11434",
     )
 
     library = settings.to_library_settings()
@@ -55,6 +56,7 @@ def test_to_library_settings_passes_cloud_fields_through() -> None:
     assert library.gemini_api_key.get_secret_value() == "secret"
     assert library.google_cloud_project == "project"
     assert library.google_cloud_location == "europe-west1"
+    assert library.ollama_host == "http://ollama:11434"
 
 
 def test_settings_are_frozen() -> None:

@@ -9,6 +9,7 @@ variable and runs each test from an empty directory.
 
 from __future__ import annotations
 
+import asyncio
 import importlib.util
 import json
 import logging
@@ -28,6 +29,7 @@ from csv_inspector import (
     LLMBackend,
     ModelInvocationError,
     Settings,
+    ainspect_csv,
     ensure_backend_ready,
     inspect_csv,
 )
@@ -385,6 +387,32 @@ def test_default_backend_is_local_ollama(monkeypatch: pytest.MonkeyPatch) -> Non
     inspect_csv(SAMPLE_CSV_PATH)
 
     assert models == [DEFAULT_MODEL]
+
+
+@pytest.mark.parametrize(
+    ("settings", "expected_host"),
+    [(Settings(ollama_host="http://x:1"), "http://x:1"), (Settings(), None)],
+)
+def test_ollama_client_receives_the_configured_host(
+    monkeypatch: pytest.MonkeyPatch, settings: Settings, expected_host: str | None
+) -> None:
+    """Settings.ollama_host reaches the sync Ollama client; unset means SDK default (#96)."""
+    fake = install_fake_ollama(monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON))
+
+    inspect_csv(SAMPLE_CSV_PATH, settings=settings)
+
+    assert fake.client_kwargs[0]["host"] == expected_host
+
+
+def test_async_ollama_client_receives_the_configured_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """ainspect_csv forwards Settings.ollama_host to the async Ollama client (#96)."""
+    fake = install_fake_ollama(monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON))
+
+    asyncio.run(ainspect_csv(SAMPLE_CSV_PATH, settings=Settings(ollama_host="http://x:1")))
+
+    assert fake.client_kwargs[0]["host"] == "http://x:1"
 
 
 @needs_cloud_extra

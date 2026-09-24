@@ -6,6 +6,7 @@ from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI
 
+from .errors import register_exception_handlers
 from .settings import ApiSettings
 
 # The example is never built or installed, so there is no package metadata to
@@ -13,7 +14,7 @@ from .settings import ApiSettings
 __version__ = "0.0.0"
 
 AsyncModelInvoker = Callable[[str, str], Awaitable[str]]
-"""Async ``(model, prompt) -> raw response`` callable, as ``ainspect_csv`` accepts."""
+"""Async ``(prompt, model) -> raw response`` callable, as ``ainspect_csv`` accepts."""
 
 
 def create_app(
@@ -45,4 +46,5 @@ def create_app(
     app.state.settings = settings
     app.state.library_settings = settings.to_library_settings()
     app.state.model_invoker = model_invoker
+    register_exception_handlers(app)
     return app

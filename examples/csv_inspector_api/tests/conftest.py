@@ -71,7 +71,7 @@ def _no_network(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(socket, "getaddrinfo", _refuse)
 
 
-async def fake_model_invoker(model: str, prompt: str) -> str:
+async def fake_model_invoker(prompt: str, model: str) -> str:
     """Stand-in for the model client: never contacted in the scaffold."""
     msg = f"unexpected model call to {model!r}"
     raise AssertionError(msg)

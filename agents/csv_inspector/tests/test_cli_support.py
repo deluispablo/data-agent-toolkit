@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -18,41 +19,50 @@ from csv_inspector import (
 from csv_inspector._sampling import MAX_SAMPLE_BYTES
 from csv_inspector.cli import (
     DEFAULT_CLI_TIMEOUT_SECONDS,
+    HEAD_BYTES,
+    TAIL_BYTES,
     add_log_level_argument,
+    bounded_int,
     load_cli_settings,
     main,
-    non_negative_int,
-    positive_int,
     resolve_backend,
     timeout_budget,
 )
 from fakes import install_fake_ollama, ollama_reply
 
 
-@pytest.mark.parametrize(("raw", "expected"), [("1", 1), ("4096", 4096)])
-def test_positive_int_accepts_integers_from_one(raw: str, expected: int) -> None:
-    """Integers >= 1 are parsed as-is."""
-    assert positive_int(raw) == expected
+@pytest.mark.parametrize(
+    ("converter", "raw", "expected"),
+    [(HEAD_BYTES, "1", 1), (HEAD_BYTES, "16384", 16384), (TAIL_BYTES, "0", 0)],
+)
+def test_window_converters_accept_their_range(
+    converter: Callable[[str], int], raw: str, expected: int
+) -> None:
+    """--bytes takes 1..MAX_SAMPLE_BYTES and --tail-bytes 0..MAX_SAMPLE_BYTES."""
+    assert converter(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["0", "-5", "abc", "1.5"])
-def test_positive_int_rejects_everything_else(raw: str) -> None:
-    """Zero, negatives and non-integers are rejected with an argparse error."""
-    with pytest.raises(argparse.ArgumentTypeError):
-        positive_int(raw)
+@pytest.mark.parametrize(
+    ("converter", "raw", "message"),
+    [
+        (HEAD_BYTES, "0", ">= 1"),
+        (TAIL_BYTES, "-1", ">= 0"),
+        (HEAD_BYTES, "16385", "<= 16384"),
+        (TAIL_BYTES, "x", "expected an integer"),
+        (HEAD_BYTES, "1.5", "expected an integer"),
+    ],
+)
+def test_window_converters_reject_everything_else(
+    converter: Callable[[str], int], raw: str, message: str
+) -> None:
+    """Out-of-range and non-integer values are argparse errors naming the bound."""
+    with pytest.raises(argparse.ArgumentTypeError, match=message):
+        converter(raw)
 
 
-@pytest.mark.parametrize(("raw", "expected"), [("0", 0), ("8192", 8192)])
-def test_non_negative_int_accepts_zero_and_up(raw: str, expected: int) -> None:
-    """Zero is a valid value (e.g. to disable tail sampling)."""
-    assert non_negative_int(raw) == expected
-
-
-@pytest.mark.parametrize("raw", ["-1", "x"])
-def test_non_negative_int_rejects_negatives_and_non_integers(raw: str) -> None:
-    """Negatives and non-integers are rejected with an argparse error."""
-    with pytest.raises(argparse.ArgumentTypeError):
-        non_negative_int(raw)
+def test_bounded_int_without_a_maximum() -> None:
+    """The upper bound is optional."""
+    assert bounded_int(5)("1000000") == 1_000_000
 
 
 def test_add_log_level_argument_defaults_to_info_and_restricts_choices() -> None:
@@ -185,6 +195,27 @@ def test_cli_passes_the_fallback_model(
 
     assert [request["model"] for request in fake.requests] == ["first", "second"]
     assert json.loads(capsys.readouterr().out)["delimiter"] == ";"
+
+
+def test_cli_prints_the_same_json_as_before(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """model_dump_json keeps non-ASCII text and the indented layout of json.dumps (#103)."""
+    target = tmp_path / "data.csv"
+    target.write_text("Año;Descripción\n2024;Señal\n", encoding="utf-8")
+    answer = json.loads(_CLI_ANSWER) | {
+        "columns": [
+            {"name": "Año", "inferred_type": "integer"},
+            {"name": "Descripción", "inferred_type": "string"},
+        ]
+    }
+    install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(json.dumps(answer)))
+
+    main([str(target), "--no-env-file", "--log-level", "ERROR"])
+
+    out = capsys.readouterr().out
+    assert "Descripción" in out
+    assert out == json.dumps(json.loads(out), indent=2, ensure_ascii=False) + "\n"
 
 
 def test_cli_applies_a_default_timeout(

@@ -13,7 +13,7 @@ import logging
 import math
 import random
 import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Awaitable, Callable, Sequence
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -66,6 +66,16 @@ class _GenaiResponse(Protocol):
     @property
     def text(self) -> str | None:
         """The concatenated response text."""
+        ...
+
+    @property
+    def prompt_feedback(self) -> object | None:
+        """Why the prompt was blocked, if it was (has a ``block_reason``)."""
+        ...
+
+    @property
+    def candidates(self) -> Sequence[object] | None:
+        """The answer candidates (each has a ``finish_reason``)."""
         ...
 
 
@@ -381,11 +391,10 @@ class _CloudCall:
 
 def _empty_response_reason(response: _GenaiResponse) -> str:
     """Say why a Gemini response has no text: a blocked prompt or the finish reason."""
-    feedback = getattr(response, "prompt_feedback", None)
-    block_reason = getattr(feedback, "block_reason", None)
+    block_reason = getattr(response.prompt_feedback, "block_reason", None)
     if block_reason:
         return f" (prompt blocked: {getattr(block_reason, 'value', block_reason)})"
-    candidates = getattr(response, "candidates", None) or []
+    candidates = response.candidates or []
     finish_reason = getattr(candidates[0], "finish_reason", None) if candidates else None
     if finish_reason:
         return f" (finish reason: {getattr(finish_reason, 'value', finish_reason)})"

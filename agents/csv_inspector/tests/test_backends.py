@@ -90,7 +90,8 @@ class _RecordingClient:
             raise error
         if type(self).response is not None:
             return type(self).response
-        return SimpleNamespace(text=type(self).response_text)
+        # The shape _GenaiResponse declares.
+        return SimpleNamespace(text=type(self).response_text, prompt_feedback=None, candidates=None)
 
     def __enter__(self) -> _RecordingClient:
         return self

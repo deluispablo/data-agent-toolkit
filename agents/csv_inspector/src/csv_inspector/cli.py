@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import argparse
 import io
-import json
 import logging
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from ._backends import LLMBackend
@@ -39,34 +38,38 @@ _DEFAULT_ENV_FILE = Path(".env")
 DEFAULT_CLI_TIMEOUT_SECONDS = 300.0
 
 
-def positive_int(value: str) -> int:
-    """Argparse ``type=`` converter accepting only integers >= 1.
+def bounded_int(minimum: int, maximum: int | None = None) -> Callable[[str], int]:
+    """Build an argparse ``type=`` converter for integers in ``[minimum, maximum]``.
 
-    Raises:
-        argparse.ArgumentTypeError: If ``value`` is not an integer >= 1.
+    Args:
+        minimum: The smallest accepted value.
+        maximum: The largest accepted value, or ``None`` for no upper bound.
+
+    Returns:
+        A converter raising :class:`argparse.ArgumentTypeError` for anything
+        that is not an integer in range, so argparse reports it as a usage
+        error naming the option.
     """
-    try:
-        number = int(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}") from exc
-    if number < 1:
-        raise argparse.ArgumentTypeError(f"expected an integer >= 1, got {number}")
-    return number
+
+    def convert(value: str) -> int:
+        try:
+            number = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}") from exc
+        if number < minimum:
+            raise argparse.ArgumentTypeError(f"expected an integer >= {minimum}, got {number}")
+        if maximum is not None and number > maximum:
+            raise argparse.ArgumentTypeError(f"expected an integer <= {maximum}, got {number}")
+        return number
+
+    return convert
 
 
-def non_negative_int(value: str) -> int:
-    """Argparse ``type=`` converter accepting only integers >= 0.
+HEAD_BYTES = bounded_int(1, MAX_SAMPLE_BYTES)
+"""``--bytes`` converter: a head window of 1 to ``MAX_SAMPLE_BYTES`` bytes."""
 
-    Raises:
-        argparse.ArgumentTypeError: If ``value`` is not an integer >= 0.
-    """
-    try:
-        number = int(value)
-    except ValueError as exc:
-        raise argparse.ArgumentTypeError(f"expected an integer, got {value!r}") from exc
-    if number < 0:
-        raise argparse.ArgumentTypeError(f"expected an integer >= 0, got {number}")
-    return number
+TAIL_BYTES = bounded_int(0, MAX_SAMPLE_BYTES)
+"""``--tail-bytes`` converter: a tail window of 0 (off) to ``MAX_SAMPLE_BYTES`` bytes."""
 
 
 def timeout_budget(value: str) -> float | None:
@@ -195,13 +198,13 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
     )
     parser.add_argument(
         "--bytes",
-        type=positive_int,
+        type=HEAD_BYTES,
         default=DEFAULT_SAMPLE_BYTES,
         help=f"Number of leading (head) bytes to sample (at most {MAX_SAMPLE_BYTES}).",
     )
     parser.add_argument(
         "--tail-bytes",
-        type=non_negative_int,
+        type=TAIL_BYTES,
         default=DEFAULT_TAIL_BYTES,
         help=(
             "Number of trailing (tail) bytes to sample, for footer detection "
@@ -219,11 +222,7 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
     )
     add_settings_arguments(parser)
     add_log_level_argument(parser)
-    args = parser.parse_args(argv)
-    for option, value in (("--bytes", args.bytes), ("--tail-bytes", args.tail_bytes)):
-        if value > MAX_SAMPLE_BYTES:
-            parser.error(f"{option}: expected an integer <= {MAX_SAMPLE_BYTES}, got {value}")
-    return args
+    return parser.parse_args(argv)
 
 
 def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None) -> None:
@@ -270,7 +269,7 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
             logger.error("Raise --timeout, or pass --timeout 0 to wait without a limit.")
         sys.exit(1)
 
-    print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
+    print(result.model_dump_json(indent=2))
 
     logger.info(
         "Summary: encoding=%s delimiter=%r header_row=%s columns=%s confidence=%.2f",

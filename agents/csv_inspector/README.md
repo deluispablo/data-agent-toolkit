@@ -83,11 +83,29 @@ stable API. Every other module and name is internal.
 | `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
 | `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
 | `CSVInspectionResult`, `ColumnSchema` | The validated output contract |
+| `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
 | `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
 | `Settings` | Explicit configuration; constructing it never reads the environment |
 | `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); needs `[cloud]` |
 | `CSVInspectorError` and subclasses | See [Errors](#errors) |
 | `__version__` | The installed version |
+
+### Column types
+
+`ColumnSchema.inferred_type` is always one of `string`, `integer`, `float`,
+`date` (no time part), `datetime` or `boolean`, so a downstream type mapping
+only has to cover these six values. Small models often answer with other
+words; common aliases are mapped (case-insensitively), and any other word
+becomes `string`, the safe type:
+
+| Model answer | `inferred_type` |
+|---|---|
+| `int`, `bigint`, `int64` | `integer` |
+| `number`, `decimal`, `double`, `numeric` | `float` |
+| `text`, `str`, `varchar` | `string` |
+| `bool` | `boolean` |
+| `timestamp` | `datetime` |
+| anything else | `string` |
 
 ### Sources
 

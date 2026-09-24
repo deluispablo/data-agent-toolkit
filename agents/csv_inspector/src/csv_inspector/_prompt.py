@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import json
 import re
+from typing import get_args
 
 from pydantic import ValidationError
 
 from ._exceptions import ResponseParsingError, SchemaValidationError
-from ._models import CSVInspectionResult
+from ._models import ColumnType, CSVInspectionResult
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
+
+# Built from the model's vocabulary so the prompt can never drift from it.
+_COLUMN_TYPE_CHOICES = "|".join(get_args(ColumnType))
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -92,7 +96,7 @@ markdown, no backticks) with exactly this shape:
   "columns": [
     {{
       "name": "<column name copied character for character from the header row>",
-      "inferred_type": "<string|integer|float|date|boolean>",
+      "inferred_type": "<{_COLUMN_TYPE_CHOICES}>",
       "nullable": <true|false>,
       "example_values": ["<example value 1>", "<example value 2>"]
     }}

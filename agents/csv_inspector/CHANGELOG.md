@@ -8,6 +8,17 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- `ColumnSchema.inferred_type` is now a closed vocabulary, the new public
+  `ColumnType` literal: `string`, `integer`, `float`, `date`, `datetime` or
+  `boolean` (it was any string the model wrote). Common aliases are mapped
+  (`int` and `bigint` to `integer`, `number` and `decimal` to `float`,
+  `text` and `varchar` to `string`, `bool` to `boolean`, `timestamp` to
+  `datetime`, and so on), and any other word becomes `string`. The prompt now
+  offers `datetime`, and the JSON schema sent to Gemini lists the vocabulary
+  as an enum ([#35](https://github.com/deluispablo/data-agent-toolkit/issues/35)).
+
 ### Added
 
 - New guide, `docs/using-the-result.md`, on turning a result into reader

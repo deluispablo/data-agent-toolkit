@@ -36,7 +36,7 @@ from ._exceptions import (
     SchemaValidationError,
 )
 from ._inspect import ainspect_csv, inspect_csv
-from ._models import ColumnSchema, CSVInspectionResult
+from ._models import ColumnSchema, ColumnType, CSVInspectionResult
 from ._sampling import CSVSource
 
 try:
@@ -53,6 +53,7 @@ __all__ = [
     "CSVInspectorError",
     "CSVSource",
     "ColumnSchema",
+    "ColumnType",
     "CredentialsNotConfiguredError",
     "EmptySampleError",
     "FileSampleReadError",

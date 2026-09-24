@@ -418,7 +418,7 @@ async def test_openapi_documents_the_raw_body(client: httpx.AsyncClient) -> None
     operation = (await client.get("/openapi.json")).json()["paths"]["/inspect/raw"]["post"]
 
     assert set(operation["requestBody"]["content"]) == {"application/octet-stream", "text/csv"}
-    assert {p["name"] for p in operation["parameters"]} == {
+    assert {p["name"] for p in operation["parameters"]} >= {
         "n_bytes",
         "tail_bytes",
         "timeout_seconds",

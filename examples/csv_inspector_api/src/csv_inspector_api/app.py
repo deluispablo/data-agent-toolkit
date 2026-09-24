@@ -7,6 +7,7 @@ from collections.abc import Awaitable, Callable
 from fastapi import FastAPI
 
 from .errors import register_exception_handlers
+from .request_id import RequestIdMiddleware
 from .routes import health
 from .routes.inspect import build_inspect_router
 from .settings import ApiSettings
@@ -67,6 +68,7 @@ def create_app(
     app.state.library_settings = settings.to_library_settings()
     app.state.model_invoker = model_invoker
     register_exception_handlers(app)
+    app.add_middleware(RequestIdMiddleware)
     app.include_router(build_inspect_router(settings))
     app.include_router(health.router)
     return app

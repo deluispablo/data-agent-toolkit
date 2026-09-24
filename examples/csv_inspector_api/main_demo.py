@@ -32,6 +32,7 @@ from csv_inspector import LLMBackend
 sys.path.insert(0, str(Path(__file__).resolve().parent / "src"))
 
 from csv_inspector_api import create_app
+from csv_inspector_api.request_id import RequestIdFilter
 from csv_inspector_api.settings import ApiSettings
 
 logger = logging.getLogger("csv_inspector_api.demo")
@@ -153,12 +154,25 @@ def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
             stream.reconfigure(encoding="utf-8")
-    logging.basicConfig(level=args.log_level, format="%(levelname)s %(name)s: %(message)s")
+    # The request-id filter goes on the handler, so every record it emits,
+    # the csv_inspector library's included, carries the id of its request.
+    handler = logging.StreamHandler()
+    handler.addFilter(RequestIdFilter())
+    logging.basicConfig(
+        level=args.log_level,
+        format="%(levelname)s [%(request_id)s] %(name)s: %(message)s",
+        handlers=[handler],
+    )
     settings = build_settings(args)
 
     base_url = f"http://127.0.0.1:{args.port}"
     config = uvicorn.Config(
-        create_app(settings), host="127.0.0.1", port=args.port, log_level=args.log_level.lower()
+        create_app(settings),
+        host="127.0.0.1",
+        port=args.port,
+        log_level=args.log_level.lower(),
+        # The API logs one access line per request, with its id (csv_inspector_api.access).
+        access_log=False,
     )
     server = uvicorn.Server(config)
     server_thread = threading.Thread(target=server.run, name="uvicorn", daemon=True)

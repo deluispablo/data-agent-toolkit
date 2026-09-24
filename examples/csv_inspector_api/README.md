@@ -16,7 +16,8 @@ and a preliminary column schema.
   authentication, rate limiting or multi-tenancy; add those in your own
   host.
 - **Free by default.** Inspections run on a local Ollama. Nothing calls a
-  cloud API unless `CSV_INSPECTOR_API_LLM_BACKEND=api` is set.
+  cloud API unless `CSV_INSPECTOR_API_LLM_BACKEND=api` is set, or
+  `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE=true` lets a request ask for it.
 
 ## Run
 
@@ -40,7 +41,7 @@ server up for `curl` or <http://127.0.0.1:8000/docs>.
 
 ```bash
 cd examples/csv_inspector_api
-uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory
+uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory --no-access-log
 ```
 
 Then open <http://127.0.0.1:8000/docs>.
@@ -63,6 +64,7 @@ variables (all optional). To use a file, copy
 | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request |
 | `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
 | `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` | `268435456` (256 MiB) | larger uploads get `413` |
+| `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE` | `false` | let requests ask for `backend=api` (paid); see [Per-request overrides](#per-request-overrides) |
 
 The `api` backend needs the agent's `[cloud]` extra, which
 `uv sync --all-extras` installs.
@@ -123,6 +125,9 @@ The response is the library's `CSVInspectionResult`, unchanged.
 | `n_bytes` | 4096 | 512–16384 | `n_bytes` |
 | `tail_bytes` | 4096 | 0–16384 | `tail_bytes` |
 | `timeout_seconds` | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | 1–`CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `timeout_seconds` |
+| `backend` | configured | `local`, or `api` when allowed | `backend` |
+| `model` | backend's configured model | name token, 1–200 chars | `model` |
+| `fallback_model` | backend's configured fallback | name token, 1–200 chars | `fallback_model` |
 
 - Only a bounded head and tail of the upload are read and sent to the model.
 - An upload larger than `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` is a `413`.
@@ -193,6 +198,81 @@ reader, which cancels the pending wait and fails the blocked `read()` with
 an `OSError`: the worker thread returns instead of waiting for a chunk that
 will never come. The wait for one chunk is also bounded by `timeout_seconds`.
 
+### Per-request overrides
+
+Both inspection routes take `backend`, `model` and `fallback_model` query
+parameters, forwarded to `ainspect_csv` for that request only:
+
+```bash
+curl --data-binary @../../agents/csv_inspector/sample.csv \
+  "localhost:8000/inspect/raw?model=qwen2.5-coder:3b&fallback_model=qwen2.5-coder:7b"
+```
+
+> **Cost warning.** `backend=api` sends the sample to Gemini, which is billed
+> to the deployment's credentials. It is refused with `403` (problem
+> `"Backend override disabled"`, `error: BackendOverrideDisabledError`) unless
+> the operator sets `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE=true`. The
+> default is `false` and nothing in this example turns it on (a test checks
+> it): an unauthenticated caller must never be able to move a free local
+> deployment to a paid backend. `backend=local` is always allowed.
+>
+> `model` is not guarded: on a deployment already configured with the `api`
+> backend, a caller can pick any Gemini model the credentials can use,
+> including pricier ones. Put this example behind authentication, or drop
+> the parameter, before exposing a cloud deployment.
+
+Model names must be plain tokens (letters, digits and `._:/@+-`, at most 200
+characters), since they appear in log lines. An unknown model is the
+library's normal failure path: `502` after the fallback, or `503` for a
+misconfigured backend.
+
+## Logging and request ids
+
+Every response carries an `X-Request-ID` header: the client's own, when it
+is a plain token of at most 128 printable ASCII characters, or a new
+`uuid4`. The API logs one access line per request under
+`csv_inspector_api.access` (method, path, status, elapsed ms; `499` when the
+client went away before the response), so run uvicorn with `--no-access-log`
+to avoid a second one; `main_demo.py` does.
+
+The id lives in a `contextvars.ContextVar` for the duration of the request,
+which `asyncio` copies into the library's worker thread. `RequestIdFilter`
+([`request_id.py`](src/csv_inspector_api/request_id.py)) copies it onto each
+record as `record.request_id`. Put the filter on your **handler**, not on a
+logger, so that every record the handler emits carries it, the
+`csv_inspector` library's included; the API package itself never configures
+logging. `main_demo.py` does it like this:
+
+```python
+handler = logging.StreamHandler()
+handler.addFilter(RequestIdFilter())
+logging.basicConfig(
+    format="%(levelname)s [%(request_id)s] %(name)s: %(message)s", handlers=[handler]
+)
+```
+
+Abridged output of `main_demo.py` (uvicorn's own lines left out):
+
+```text
+INFO [3324a3ae...] csv_inspector_api.access: GET /health 200 5.5 ms
+INFO [-] csv_inspector_api.demo: API up at http://127.0.0.1:8000: {...}
+INFO [6c954eb5...] csv_inspector._inspect: Inspecting '<SpooledTemporaryFile stream>' with model 'qwen2.5-coder:7b'.
+INFO [6c954eb5...] httpx: HTTP Request: POST http://127.0.0.1:11434/api/chat "HTTP/1.1 200 OK"
+INFO [6c954eb5...] csv_inspector._inspect: Inspection of '<SpooledTemporaryFile stream>' succeeded with model 'qwen2.5-coder:7b' (confidence=1.00).
+INFO [6c954eb5...] csv_inspector_api.inspect: inspected 'sample.csv' (589 bytes) with local/qwen2.5-coder:7b in 8.16 s, confidence 1.00
+INFO [6c954eb5...] csv_inspector_api.access: POST /inspect 200 8169.4 ms
+```
+
+Records logged outside a request (`[-]`) have no id.
+
+**Cloud Logging.** On Cloud Run, anything written to stdout as one JSON
+object per line is parsed as a structured entry, with no client library: a
+small `logging.Formatter` subclass whose `format()` returns
+`json.dumps({"severity": record.levelname, "message": record.getMessage(),
+"logger": record.name, "logging.googleapis.com/labels": {"request_id":
+record.request_id}})`, set on the same filtered handler, makes every entry
+searchable by `labels.request_id` in the Logs Explorer.
+
 ## Errors
 
 Every error from `csv-inspector` is answered by one exception handler
@@ -209,6 +289,8 @@ parsing `detail`.
 
 | exception | status | client action |
 |---|---|---|
+| `BackendOverrideDisabledError` (raised by the API) | 403 | drop `backend=api`, or ask the operator |
+| `UploadTooLargeError` (raised by the API) | 413 | send a smaller file |
 | `EmptySampleError`, `FileSampleReadError` | 422 | fix the input |
 | `InspectionTimeoutError` (checked **before** `InspectionFailedError`, its parent) | 504 | retry with a larger `timeout_seconds` or smaller windows |
 | `CredentialsNotConfiguredError`, `BackendConfigurationError` | 503 | none: the deployment is misconfigured; retrying elsewhere may help |
@@ -264,6 +346,10 @@ embeds the agent:
   reader under `tracemalloc` (peak after the head is decoded below twice `n_bytes` + `tail_bytes` +
   64 KiB), and cancels a request mid-body to check that the blocked worker
   thread is released by the reader, not by its timeout.
+- `tests/test_overrides.py` checks that the requested models reach the fake
+  invoker and that `backend=api` is a 403 unless allowed, on both routes;
+  `tests/test_request_id.py` checks the header and, with the filter on
+  `caplog`'s handler, the id on the API's and the library's records.
 - `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library
   exception fails the suite until it is mapped to a status.
 - `tests/test_embedding_rules.py` checks the source with `ast`: no `print()`
@@ -273,5 +359,5 @@ embeds the agent:
 
 ## Roadmap
 
-- Per-request backend and model override, request-id logging, a Dockerfile.
+- A Dockerfile.
 - `POST /inspect/gcs`: inspect a `gs://` object with ranged reads only.

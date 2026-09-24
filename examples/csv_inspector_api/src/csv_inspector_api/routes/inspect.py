@@ -15,12 +15,13 @@ from csv_inspector import (
     CSVInspectionResult,
     CSVSource,
     FileSampleReadError,
+    LLMBackend,
     Settings,
     ainspect_csv,
 )
 from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
 
-from ..errors import UploadTooLargeError, problem_responses
+from ..errors import BackendOverrideDisabledError, UploadTooLargeError, problem_responses
 from ..settings import ApiSettings
 from ..streaming import AsyncIteratorReader
 
@@ -30,6 +31,10 @@ logger = logging.getLogger("csv_inspector_api.inspect")
 DEFAULT_WINDOW_BYTES = 4096
 MIN_HEAD_BYTES = 512
 MAX_WINDOW_BYTES = 16384
+# Model names ("qwen2.5-coder:7b", "gemini-2.5-flash", "org/model:tag") are short
+# tokens: the bounds keep a client-chosen name from forging or flooding log lines.
+MAX_MODEL_NAME_LENGTH = 200
+MODEL_NAME_PATTERN = r"^[A-Za-z0-9._:/@+-]+$"
 
 
 # Shown in OpenAPI as the 200 example; the library model itself stays untouched.
@@ -68,11 +73,17 @@ class InspectParams:
         n_bytes: Bytes sampled from the start of the file.
         tail_bytes: Bytes sampled from the end of the file; 0 skips the tail.
         timeout_seconds: Time budget of the whole model phase, in seconds.
+        backend: Backend requested for this call; ``None`` keeps the configured one.
+        model: Primary model for this call; ``None`` keeps the backend's configured one.
+        fallback_model: Fallback model for this call; ``None`` keeps the configured one.
     """
 
     n_bytes: int
     tail_bytes: int
     timeout_seconds: float
+    backend: LLMBackend | None = None
+    model: str | None = None
+    fallback_model: str | None = None
 
 
 async def _inspect(
@@ -92,12 +103,14 @@ async def _inspect(
         The library's inspection result.
     """
     library_settings: Settings = request.app.state.library_settings
-    backend = library_settings.llm_backend
+    backend = params.backend or library_settings.llm_backend
     started = time.perf_counter()
     result = await ainspect_csv(
         source,
         backend=backend,
         settings=library_settings,
+        model=params.model,
+        fallback_model=params.fallback_model,
         n_bytes=params.n_bytes,
         tail_bytes=params.tail_bytes,
         timeout_seconds=params.timeout_seconds,
@@ -107,7 +120,7 @@ async def _inspect(
         "inspected %s with %s/%s in %.2f s, confidence %.2f",
         label,
         backend.value,
-        library_settings.model_for(backend),
+        params.model or library_settings.model_for(backend),
         time.perf_counter() - started,
         result.confidence,
     )
@@ -137,7 +150,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
     """
     router = APIRouter(tags=["inspection"])
 
-    def inspect_params(
+    def inspect_params(  # noqa: PLR0913, PLR0917 - one argument per query parameter
         n_bytes: Annotated[
             int,
             Query(
@@ -162,13 +175,49 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
                 description="Time budget of the whole model phase, in seconds.",
             ),
         ] = settings.default_timeout_seconds,
+        backend: Annotated[
+            LLMBackend | None,
+            Query(
+                description="Backend for this request; default: the configured one. "
+                "`api` (paid) is refused with 403 unless the deployment allows overrides.",
+            ),
+        ] = None,
+        model: Annotated[
+            str | None,
+            Query(
+                min_length=1,
+                max_length=MAX_MODEL_NAME_LENGTH,
+                pattern=MODEL_NAME_PATTERN,
+                description="Primary model for this request; default: the configured one.",
+            ),
+        ] = None,
+        fallback_model: Annotated[
+            str | None,
+            Query(
+                min_length=1,
+                max_length=MAX_MODEL_NAME_LENGTH,
+                pattern=MODEL_NAME_PATTERN,
+                description="Fallback model for this request; default: the configured one.",
+            ),
+        ] = None,
     ) -> InspectParams:
-        """Collect the query parameters shared by both routes (a FastAPI dependency)."""
-        return InspectParams(n_bytes, tail_bytes, timeout_seconds)
+        """Collect the query parameters shared by both routes (a FastAPI dependency).
+
+        Raises:
+            BackendOverrideDisabledError: If ``backend=api`` is asked for while
+                ``settings.allow_backend_override`` is off.
+        """
+        if backend is LLMBackend.API and not settings.allow_backend_override:
+            msg = (
+                "backend=api is not allowed on this deployment: cloud calls cost money, "
+                "and CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE is off"
+            )
+            raise BackendOverrideDisabledError(msg)
+        return InspectParams(n_bytes, tail_bytes, timeout_seconds, backend, model, fallback_model)
 
     responses: dict[int | str, dict[str, Any]] = {
         200: {"content": {"application/json": {"example": _EXAMPLE_RESULT}}},
-        **problem_responses(413, 422, 502, 503, 504),
+        **problem_responses(403, 413, 422, 502, 503, 504),
     }
 
     @router.post(

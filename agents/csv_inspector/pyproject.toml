@@ -1,0 +1,63 @@
+[build-system]
+requires = ["hatchling>=1.26"]
+build-backend = "hatchling.build"
+
+[project]
+name = "csv-inspector"
+version = "0.1.0"
+description = "LLM-assisted inspection of large, messy CSV/TSV sources from bounded head/tail samples."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+authors = [{ name = "Pablo de Luis" }]
+keywords = ["csv", "tsv", "dialect", "schema-inference", "data-engineering", "llm", "ollama", "gemini"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Typing :: Typed",
+]
+dependencies = [
+    "chardet>=5.2,<8",
+    "ollama>=0.6,<1",
+    "pydantic>=2.6,<3",
+]
+
+[project.optional-dependencies]
+# Opt-in cloud backend (Gemini Developer API / Vertex AI) and reading
+# settings from the environment with load_settings().
+cloud = [
+    "google-genai>=2.0,<3",
+    "pydantic-settings>=2.0,<3",
+]
+
+[project.scripts]
+csv-inspector = "csv_inspector.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/deluispablo/data-agent-toolkit/tree/main/agents/csv_inspector"
+Documentation = "https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md"
+Changelog = "https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/CHANGELOG.md"
+Issues = "https://github.com/deluispablo/data-agent-toolkit/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/csv_inspector"]
+
+[tool.hatch.build.targets.sdist]
+# Ship the library and its docs only: fixtures, scripts and tests stay in the repo.
+include = [
+    "src/csv_inspector",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE",
+]

@@ -22,26 +22,26 @@ from types import SimpleNamespace
 from typing import IO, Any
 
 import pytest
+from fakes import install_fake_ollama
 
-from exceptions import (
+from csv_inspector import (
+    BackendConfigurationError,
+    CSVInspectionResult,
     EmptySampleError,
     FileSampleReadError,
     InspectionFailedError,
     ModelInvocationError,
+    inspect_csv,
 )
-from inspector import (
-    ModelInvoker,
-    _extends_footer,
-    _extract_json_payload,
-    build_prompt,
+from csv_inspector._grounding import _extends_footer
+from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
+from csv_inspector._prompt import _extract_json_payload, build_prompt
+from csv_inspector._sampling import (
     decode_sample,
     detect_encoding,
-    inspect_csv,
-    invoke_ollama_model,
     read_sample_bytes,
     read_tail_bytes,
 )
-from models import CSVInspectionResult
 
 SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector" / "sample.csv"
 
@@ -653,8 +653,8 @@ def test_inspect_csv_decodes_utf16_tail_with_odd_budget(
 
 
 def _install_fake_ollama(monkeypatch: pytest.MonkeyPatch, chat: Any) -> None:
-    """Register a stand-in ``ollama`` module exposing the given ``chat`` callable."""
-    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(chat=chat))
+    """Register a stand-in ``ollama`` module whose clients call ``chat``."""
+    install_fake_ollama(monkeypatch, chat)
 
 
 def test_invoke_ollama_model_returns_message_content(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -699,7 +699,7 @@ def test_invoke_ollama_model_reports_missing_package(monkeypatch: pytest.MonkeyP
     """A missing ``ollama`` package yields an actionable domain error."""
     monkeypatch.setitem(sys.modules, "ollama", None)
 
-    with pytest.raises(ModelInvocationError, match="pip install ollama"):
+    with pytest.raises(BackendConfigurationError, match="pip install ollama"):
         invoke_ollama_model("prompt", "some-model")
 
 

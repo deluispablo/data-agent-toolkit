@@ -9,6 +9,7 @@ variable and runs each test from an empty directory.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import json
 import logging
@@ -19,26 +20,26 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from fakes import install_fake_ollama, ollama_reply
 
-from backends import LLMBackend
-from exceptions import (
+from csv_inspector import (
     BackendConfigurationError,
     CredentialsNotConfiguredError,
+    CSVInspectionResult,
+    LLMBackend,
     ModelInvocationError,
+    inspect_csv,
 )
-from inspector import (
-    DEFAULT_MODEL,
-    FALLBACK_MODEL,
+from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
+from csv_inspector._invokers import (
     ensure_backend_ready,
     get_configured_backend,
     get_default_model,
     get_fallback_model,
     get_model_invoker,
-    inspect_csv,
     invoke_cloud_model,
     invoke_ollama_model,
 )
-from models import CSVInspectionResult
 
 AGENT_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector"
 SAMPLE_CSV_PATH = AGENT_DIR / "sample.csv"
@@ -56,13 +57,12 @@ VALID_RESULT_JSON = json.dumps(
 
 needs_cloud_extra = pytest.mark.skipif(
     any(importlib.util.find_spec(name) is None for name in ("pydantic_settings", "google")),
-    reason="needs the cloud extra (requirements-cloud.txt)",
+    reason="needs the [cloud] extra",
 )
 
 
 def _without_cloud_extra(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Simulate an install without ``pydantic-settings`` (base requirements only)."""
-    monkeypatch.delitem(sys.modules, "config", raising=False)
+    """Simulate a base install, without ``pydantic-settings`` (imported lazily)."""
     monkeypatch.setitem(sys.modules, "pydantic_settings", None)
 
 
@@ -118,7 +118,9 @@ def test_backend_values_match_the_cli_choices() -> None:
 def test_get_model_invoker_maps_each_backend() -> None:
     """Each backend resolves to its own invoker."""
     assert get_model_invoker(LLMBackend.LOCAL) is invoke_ollama_model
-    assert get_model_invoker(LLMBackend.API) is invoke_cloud_model
+    cloud_invoker = get_model_invoker(LLMBackend.API)
+    assert isinstance(cloud_invoker, functools.partial)
+    assert cloud_invoker.func is invoke_cloud_model
 
 
 def test_local_models_default_to_the_built_in_names() -> None:
@@ -143,7 +145,7 @@ def test_api_backend_without_cloud_extra_says_how_to_install_it(
     """Selecting the API backend on a base install fails with an actionable message."""
     _without_cloud_extra(monkeypatch)
 
-    with pytest.raises(BackendConfigurationError, match=r"requirements-cloud\.txt"):
+    with pytest.raises(BackendConfigurationError, match=r"csv-inspector\[cloud\]"):
         get_default_model(LLMBackend.API)
 
 
@@ -320,7 +322,7 @@ def test_cloud_invoker_without_the_sdk_says_how_to_install_it(
     monkeypatch.setitem(sys.modules, "google.genai", None)
     monkeypatch.delattr(google, "genai", raising=False)
 
-    with pytest.raises(BackendConfigurationError, match=r"requirements-cloud\.txt"):
+    with pytest.raises(BackendConfigurationError, match=r"csv-inspector\[cloud\]"):
         invoke_cloud_model("prompt", "gemini-2.5-flash")
 
 
@@ -355,9 +357,9 @@ def test_default_backend_is_local_ollama(monkeypatch: pytest.MonkeyPatch) -> Non
 
     def chat(**kwargs: Any) -> Any:
         models.append(kwargs["model"])
-        return SimpleNamespace(message=SimpleNamespace(content=VALID_RESULT_JSON))
+        return ollama_reply(VALID_RESULT_JSON)
 
-    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(chat=chat))
+    install_fake_ollama(monkeypatch, chat)
 
     inspect_csv(SAMPLE_CSV_PATH)
 
@@ -405,11 +407,12 @@ def _run_python(*args: str, cwd: Path) -> subprocess.CompletedProcess[str]:
 
 
 def test_no_module_imports_google_genai_at_import_time(tmp_path: Path) -> None:
-    """Importing every agent module must not load the cloud SDK."""
+    """Importing the package, its CLI and the repo scripts must not load the cloud SDK."""
     code = (
         "import sys; "
-        f"sys.path.insert(0, {str(AGENT_DIR)!r}); "
-        "import backends, cli_support, eval_samples, exceptions, inspector, main_demo, models; "
+        f"sys.path.insert(0, {str(AGENT_DIR / 'scripts')!r}); "
+        "import csv_inspector, csv_inspector.cli, eval_samples; "
+        "import csv_inspector._config, csv_inspector._inspect, csv_inspector._invokers; "
         "print(sorted(name for name in sys.modules if name.startswith('google')))"
     )
 
@@ -420,10 +423,20 @@ def test_no_module_imports_google_genai_at_import_time(tmp_path: Path) -> None:
 
 
 @needs_cloud_extra
-@pytest.mark.parametrize("script", ["main_demo.py", "eval_samples.py"])
-def test_cli_api_backend_without_credentials_fails_cleanly(tmp_path: Path, script: str) -> None:
+@pytest.mark.parametrize(
+    "command",
+    [
+        ("-m", "csv_inspector", str(SAMPLE_CSV_PATH)),
+        (str(AGENT_DIR / "main_demo.py"),),
+        (str(AGENT_DIR / "scripts" / "eval_samples.py"),),
+    ],
+    ids=["python -m csv_inspector", "main_demo.py", "eval_samples.py"],
+)
+def test_cli_api_backend_without_credentials_fails_cleanly(
+    tmp_path: Path, command: tuple[str, ...]
+) -> None:
     """``--backend api`` with no credentials: exit 1, a one-line error, no traceback."""
-    completed = _run_python(str(AGENT_DIR / script), "--backend", "api", cwd=tmp_path)
+    completed = _run_python(*command, "--backend", "api", cwd=tmp_path)
 
     assert completed.returncode == 1
     assert "GEMINI_API_KEY" in completed.stderr

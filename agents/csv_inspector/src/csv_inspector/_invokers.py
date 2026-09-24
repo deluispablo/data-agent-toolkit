@@ -174,12 +174,16 @@ def _ollama_content(response: _OllamaChatResponse, model: str) -> str:
     return content
 
 
-def invoke_ollama_model(prompt: str, model: str, *, timeout_seconds: float | None = None) -> str:
+def invoke_ollama_model(
+    prompt: str, model: str, *, host: str | None = None, timeout_seconds: float | None = None
+) -> str:
     """Send a prompt to a local Ollama model and return its raw text response.
 
     Args:
         prompt: The fully-built prompt to send.
         model: Name of the Ollama model to invoke (e.g. ``"qwen2.5-coder:7b"``).
+        host: Base URL of the Ollama server, or ``None`` for the SDK's
+            default (which honours ``OLLAMA_HOST``).
         timeout_seconds: Client-side timeout for the request, or ``None``
             for the client's default (no timeout).
 
@@ -194,7 +198,7 @@ def invoke_ollama_model(prompt: str, model: str, *, timeout_seconds: float | Non
     """
     ollama = _import_ollama()
     try:
-        with ollama.Client(timeout=timeout_seconds) as client:
+        with ollama.Client(host=host, timeout=timeout_seconds) as client:
             response = client.chat(**_ollama_request(prompt, model))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
@@ -202,13 +206,14 @@ def invoke_ollama_model(prompt: str, model: str, *, timeout_seconds: float | Non
 
 
 async def ainvoke_ollama_model(
-    prompt: str, model: str, *, timeout_seconds: float | None = None
+    prompt: str, model: str, *, host: str | None = None, timeout_seconds: float | None = None
 ) -> str:
     """Async variant of :func:`invoke_ollama_model`, using ``ollama.AsyncClient``.
 
     Args:
         prompt: The fully-built prompt to send.
         model: Name of the Ollama model to invoke.
+        host: Base URL of the Ollama server, or ``None`` for the SDK's default.
         timeout_seconds: Client-side timeout for the request, or ``None``.
 
     Returns:
@@ -221,7 +226,7 @@ async def ainvoke_ollama_model(
     """
     ollama = _import_ollama()
     try:
-        async with ollama.AsyncClient(timeout=timeout_seconds) as client:
+        async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
             response = await client.chat(**_ollama_request(prompt, model))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
@@ -420,7 +425,7 @@ def builtin_invoker(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
     return lambda prompt, model, timeout: invoke_ollama_model(
-        prompt, model, timeout_seconds=timeout
+        prompt, model, host=settings.ollama_host, timeout_seconds=timeout
     )
 
 
@@ -433,5 +438,5 @@ def builtin_async_invoker(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
     return lambda prompt, model, timeout: ainvoke_ollama_model(
-        prompt, model, timeout_seconds=timeout
+        prompt, model, host=settings.ollama_host, timeout_seconds=timeout
     )

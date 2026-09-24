@@ -26,6 +26,7 @@ class ApiSettings(BaseSettings):
         llm_backend: Backend used for inspections: ``local`` (Ollama) or ``api``.
         ollama_model: Primary local model.
         ollama_fallback_model: Fallback local model.
+        ollama_host: Base URL of the Ollama server; ``None`` keeps the SDK default.
         cloud_model: Primary cloud model; ``None`` keeps the library default.
         cloud_fallback_model: Fallback cloud model; ``None`` keeps the library default.
         gemini_api_key: Gemini Developer API key, for the cloud backend only.
@@ -45,6 +46,7 @@ class ApiSettings(BaseSettings):
     llm_backend: LLMBackend = _LIBRARY_DEFAULTS.llm_backend
     ollama_model: str = _LIBRARY_DEFAULTS.ollama_model
     ollama_fallback_model: str = _LIBRARY_DEFAULTS.ollama_fallback_model
+    ollama_host: str | None = None
     cloud_model: str | None = None
     cloud_fallback_model: str | None = None
     gemini_api_key: SecretStr | None = None
@@ -85,6 +87,7 @@ class ApiSettings(BaseSettings):
             "llm_backend": self.llm_backend,
             "ollama_model": self.ollama_model,
             "ollama_fallback_model": self.ollama_fallback_model,
+            "ollama_host": self.ollama_host,
             "cloud_model": self.cloud_model,
             "cloud_fallback_model": self.cloud_fallback_model,
             "gemini_api_key": self.gemini_api_key,

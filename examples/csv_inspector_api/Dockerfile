@@ -7,6 +7,10 @@
 #   docker build -f examples/csv_inspector_api/Dockerfile -t csv-inspector-api .
 #   docker run -p 8000:8000 -e CSV_INSPECTOR_API_LLM_BACKEND=api \
 #       -e CSV_INSPECTOR_API_GEMINI_API_KEY=... csv-inspector-api
+#
+# The local backend needs an Ollama server outside the container:
+#
+#   docker run -p 8000:8000 \n#       -e CSV_INSPECTOR_API_OLLAMA_HOST=http://host.docker.internal:11434 csv-inspector-api
 
 FROM python:3.14-slim AS build
 

@@ -88,6 +88,20 @@ def test_model_names_can_be_overridden(monkeypatch: pytest.MonkeyPatch) -> None:
     assert (settings.cloud_model, settings.cloud_fallback_model) == ("gemini-x", "gemini-y")
 
 
+def test_ollama_host_is_read_from_the_sdk_variable(monkeypatch: pytest.MonkeyPatch) -> None:
+    """OLLAMA_HOST, the Ollama SDK's own variable, loads into Settings (issue #96)."""
+    monkeypatch.setenv("OLLAMA_HOST", "http://ollama:11434")
+
+    assert load_settings().ollama_host == "http://ollama:11434"
+
+
+def test_blank_ollama_host_is_unset(monkeypatch: pytest.MonkeyPatch) -> None:
+    """An empty OLLAMA_HOST leaves the SDK default in place."""
+    monkeypatch.setenv("OLLAMA_HOST", " ")
+
+    assert load_settings().ollama_host is None
+
+
 def test_a_dotenv_in_the_working_directory_is_ignored_by_default(tmp_path: Path) -> None:
     """The library never reads ``./.env`` implicitly: the host's cwd is not trusted."""
     (tmp_path / ".env").write_text("LLM_BACKEND=api\nCLOUD_MODEL=gemini-from-dotenv\n")

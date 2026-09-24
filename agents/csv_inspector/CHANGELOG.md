@@ -8,6 +8,14 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Added
+
+- `Settings.ollama_host` (environment variable `OLLAMA_HOST`, the name the
+  Ollama SDK already uses) sets the Ollama server's base URL, so hosts
+  configure the local backend through `Settings` instead of the process
+  environment. Unset keeps the SDK default
+  ([#96](https://github.com/deluispablo/data-agent-toolkit/issues/96)).
+
 ### Changed (breaking)
 
 - The default cloud models are now `gemini-3.6-flash` (primary) and

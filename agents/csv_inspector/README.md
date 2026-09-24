@@ -234,6 +234,7 @@ There are two ways to configure the library:
 |---|---|---|
 | `llm_backend` | `LLM_BACKEND` (`local` / `api`) | `local` |
 | `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:3b` |
+| `ollama_host` | `OLLAMA_HOST` (the Ollama SDK's own variable) | unset: SDK default, `http://localhost:11434` |
 | `gemini_api_key` | `GEMINI_API_KEY` (takes precedence when set) | unset |
 | `google_cloud_project` / `google_cloud_location` | `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` (Vertex AI with ADC) | unset |
 | `cloud_model` / `cloud_fallback_model` | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | `gemini-3.6-flash` / `gemini-flash-lite-latest` |

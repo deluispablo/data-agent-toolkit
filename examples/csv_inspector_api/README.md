@@ -56,6 +56,7 @@ variables (all optional). To use a file, copy
 | `CSV_INSPECTOR_API_LLM_BACKEND` | `local` | `local` (Ollama) or `api` (Gemini) |
 | `CSV_INSPECTOR_API_OLLAMA_MODEL` | `qwen2.5-coder:7b` | primary local model |
 | `CSV_INSPECTOR_API_OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:3b` | fallback local model |
+| `CSV_INSPECTOR_API_OLLAMA_HOST` | SDK default (`http://localhost:11434`) | base URL of the Ollama server |
 | `CSV_INSPECTOR_API_CLOUD_MODEL` | library default | primary cloud model |
 | `CSV_INSPECTOR_API_CLOUD_FALLBACK_MODEL` | library default | fallback cloud model |
 | `CSV_INSPECTOR_API_GEMINI_API_KEY` | unset | Gemini Developer API key; never commit it |

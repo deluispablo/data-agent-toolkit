@@ -7,7 +7,8 @@ and runnable as ``python -m csv_inspector``.
 
 Usage:
     csv-inspector data.csv
-    csv-inspector data.csv --model qwen2.5-coder:7b --bytes 8192 --timeout 30
+    csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
+    csv-inspector data.csv --bytes 8192 --timeout 30
     csv-inspector data.csv --backend api --model gemini-2.5-flash --env-file secrets.env
 """
 
@@ -24,7 +25,7 @@ from pathlib import Path
 
 from ._backends import LLMBackend
 from ._config import Settings, ensure_backend_ready, load_settings
-from ._exceptions import BackendConfigurationError, CSVInspectorError
+from ._exceptions import BackendConfigurationError, CSVInspectorError, InspectionTimeoutError
 from ._inspect import inspect_csv
 from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, MAX_SAMPLE_BYTES
 
@@ -33,6 +34,10 @@ logger = logging.getLogger(__name__)
 LOG_LEVELS: tuple[str, ...] = ("DEBUG", "INFO", "WARNING", "ERROR")
 _LOG_FORMAT = "%(asctime)s [%(levelname)s] %(name)s: %(message)s"
 _DEFAULT_ENV_FILE = Path(".env")
+# The library has no default budget (hosts set their own), but a person at a
+# shell should not wait forever on a stalled Ollama. 300 s covers a cold 7B
+# load on CPU.
+DEFAULT_CLI_TIMEOUT_SECONDS = 300.0
 
 
 def positive_int(value: str) -> int:
@@ -65,19 +70,22 @@ def non_negative_int(value: str) -> int:
     return number
 
 
-def positive_float(value: str) -> float:
-    """Argparse ``type=`` converter accepting only numbers > 0.
+def timeout_budget(value: str) -> float | None:
+    """Argparse ``type=`` converter for ``--timeout``: seconds, or 0 for no limit.
+
+    Returns:
+        The budget in seconds, or ``None`` (no limit) for ``0``.
 
     Raises:
-        argparse.ArgumentTypeError: If ``value`` is not a number > 0.
+        argparse.ArgumentTypeError: If ``value`` is not a number >= 0.
     """
     try:
         number = float(value)
     except ValueError as exc:
         raise argparse.ArgumentTypeError(f"expected a number, got {value!r}") from exc
-    if not number > 0:
-        raise argparse.ArgumentTypeError(f"expected a number > 0, got {number}")
-    return number
+    if not number >= 0:
+        raise argparse.ArgumentTypeError(f"expected a number >= 0, got {number}")
+    return number or None
 
 
 def add_backend_argument(parser: argparse.ArgumentParser) -> None:
@@ -193,6 +201,11 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
         "--model", default=None, help="Model to use. Defaults to the backend's configured model."
     )
     parser.add_argument(
+        "--fallback-model",
+        default=None,
+        help="Model to try if --model fails. Defaults to the backend's configured fallback model.",
+    )
+    parser.add_argument(
         "--bytes",
         type=positive_int,
         default=DEFAULT_SAMPLE_BYTES,
@@ -209,9 +222,12 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
     )
     parser.add_argument(
         "--timeout",
-        type=positive_float,
-        default=None,
-        help="Overall time budget for the model calls, in seconds (default: no limit).",
+        type=timeout_budget,
+        default=DEFAULT_CLI_TIMEOUT_SECONDS,
+        help=(
+            "Overall time budget for the model calls, in seconds "
+            f"(default: {DEFAULT_CLI_TIMEOUT_SECONDS:g}; 0 disables the limit)."
+        ),
     )
     add_settings_arguments(parser)
     add_log_level_argument(parser)
@@ -238,11 +254,13 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
         settings = load_cli_settings(args.env_file, no_env_file=args.no_env_file)
         backend = resolve_backend(args.backend, settings)
         model = args.model or settings.model_for(backend)
+        fallback_model = args.fallback_model or settings.fallback_model_for(backend)
         logger.info(
-            "Inspecting '%s' with %s model '%s' (head=%d bytes, tail=%d bytes).",
+            "Inspecting '%s' with %s model '%s', fallback '%s' (head=%d bytes, tail=%d bytes).",
             args.file,
             backend.value,
             model,
+            fallback_model,
             args.bytes,
             args.tail_bytes,
         )
@@ -251,6 +269,7 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
             backend=backend,
             settings=settings,
             model=model,
+            fallback_model=fallback_model,
             n_bytes=args.bytes,
             tail_bytes=args.tail_bytes,
             timeout_seconds=args.timeout,
@@ -259,6 +278,8 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
         # Expected failure modes get a one-line message; the traceback is
         # only useful when debugging.
         logger.error("Inspection failed: %s", exc, exc_info=logger.isEnabledFor(logging.DEBUG))
+        if isinstance(exc, InspectionTimeoutError):
+            logger.error("Raise --timeout, or pass --timeout 0 to wait without a limit.")
         sys.exit(1)
 
     print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))

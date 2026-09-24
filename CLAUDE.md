@@ -95,7 +95,7 @@ Public API = `__all__` only (test enforce). `_`-modules internal.
 - `_inspect.py`: `inspect_csv(source, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)`, `ainspect_csv` mirror (sampling in worker thread). Primary then fallback model. `timeout_seconds` = one budget whole model phase; each model get equal share of remainder; enforced for custom `model_invoker` too. `BackendConfigurationError` skip fallback.
 - `_grounding.py`: `ground_in_samples`. Small models miscount/paraphrase. Model answer = key to recompute `header_row_index`, literal column names, verbatim footer from samples. Totals label regex (EN/ES: total, totales, suma, sum, subtotal, grand total). Never promote unlabelled data row to footer.
 - `_exceptions.py`: base `CSVInspectorError`. Children `FileSampleReadError`, `EmptySampleError`, `ModelInvocationError` (> `BackendConfigurationError` > `CredentialsNotConfiguredError`; > `ModelTimeoutError`), `ResponseParsingError`, `SchemaValidationError`, `InspectionFailedError` (> `InspectionTimeoutError`).
-- `cli.py`: only module with `print()`, `logging.basicConfig()`, `.env` read. Args: `file`, `--backend`, `--model`, `--bytes`, `--tail-bytes`, `--timeout`, `--env-file`, `--no-env-file`, `--log-level`. Print result as indented JSON.
+- `cli.py`: only module with `print()`, `logging.basicConfig()`, `.env` read. Args: `file`, `--backend`, `--model`, `--fallback-model`, `--bytes`, `--tail-bytes`, `--timeout` (default 300 s, 0 = none), `--env-file`, `--no-env-file`, `--log-level`. Print result as indented JSON.
 
 ## scripts/
 

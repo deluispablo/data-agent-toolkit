@@ -245,7 +245,8 @@ never appears in logs or exceptions.
 
 ```bash
 csv-inspector data.csv                                   # or: python -m csv_inspector data.csv
-csv-inspector data.csv --model qwen2.5-coder:7b --bytes 8192 --tail-bytes 8192 --timeout 60
+csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
+csv-inspector data.csv --bytes 8192 --tail-bytes 8192 --timeout 60
 csv-inspector data.csv --backend api --model gemini-2.5-flash --env-file secrets.env
 ```
 
@@ -254,6 +255,12 @@ to choose another file, `--no-env-file` to disable it); environment
 variables always win. It prints the result as JSON on stdout, logs on
 stderr, and on an expected failure prints a one-line error and exits with
 code 1.
+
+`--model` and `--fallback-model` override the backend's configured model
+pair. Unlike the library, the CLI has a default time budget of 300 seconds
+for the model phase, enough for a cold 7B load on CPU, so a stalled Ollama
+ends in an `InspectionTimeoutError` message instead of a hang. `--timeout N`
+changes the budget and `--timeout 0` removes it.
 
 ## Errors
 

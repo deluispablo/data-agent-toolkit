@@ -19,13 +19,15 @@ import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import IO, Any
+from typing import IO, Any, get_args
 
 import pytest
 from pydantic import ValidationError
 
 from csv_inspector import (
     BackendConfigurationError,
+    ColumnSchema,
+    ColumnType,
     CSVInspectionResult,
     EmptySampleError,
     FileSampleReadError,
@@ -941,6 +943,55 @@ def test_numeric_example_values_are_accepted_as_text() -> None:
     result = CSVInspectionResult.model_validate(payload)
 
     assert result.columns[0].example_values == ["1447.44", "3", ""]
+
+
+@pytest.mark.parametrize(
+    ("answered", "expected"),
+    [
+        ("integer", "integer"),
+        ("DateTime", "datetime"),
+        (" Boolean ", "boolean"),
+        ("int", "integer"),
+        ("BIGINT", "integer"),
+        ("int64", "integer"),
+        ("number", "float"),
+        ("decimal", "float"),
+        ("double", "float"),
+        ("numeric", "float"),
+        ("text", "string"),
+        ("str", "string"),
+        ("varchar", "string"),
+        ("bool", "boolean"),
+        ("timestamp", "datetime"),
+        ("currency", "string"),
+        ("", "string"),
+    ],
+)
+def test_inferred_type_is_normalized_to_the_vocabulary(answered: str, expected: str) -> None:
+    """Aliases map onto the closed vocabulary; unknown words fall back to string."""
+    column = ColumnSchema(name="c", inferred_type=answered)
+
+    assert column.inferred_type == expected
+
+
+def test_non_string_inferred_type_fails_validation() -> None:
+    """Only strings are normalized; any other JSON value is a malformed answer."""
+    with pytest.raises(ValidationError):
+        ColumnSchema(name="c", inferred_type=3)
+
+
+def test_json_schema_lists_the_type_vocabulary() -> None:
+    """The schema sent to Gemini constrains inferred_type to the vocabulary."""
+    schema = CSVInspectionResult.model_json_schema()
+
+    assert schema["$defs"]["ColumnSchema"]["properties"]["inferred_type"]["enum"] == list(
+        get_args(ColumnType)
+    )
+
+
+def test_prompt_lists_the_type_vocabulary() -> None:
+    """The prompt asks for exactly the types the model accepts."""
+    assert "string|integer|float|date|datetime|boolean" in build_prompt("a\n1\n", "utf-8")
 
 
 def test_grounding_recovers_an_unreported_totals_row_above_the_footer(tmp_path: Path) -> None:

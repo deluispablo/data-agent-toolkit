@@ -8,6 +8,9 @@ inspection result without ad-hoc parsing.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
+from types import MappingProxyType
+from typing import Literal, get_args
 
 from pydantic import (
     BaseModel,
@@ -22,14 +25,35 @@ from pydantic import (
 _TAB_SPELLINGS = frozenset({"\\t", "tab"})
 _NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
 
+ColumnType = Literal["string", "integer", "float", "date", "datetime", "boolean"]
+"""The closed vocabulary of ``ColumnSchema.inferred_type`` values."""
+
+# How models spell a type outside the vocabulary. Lookup is case-insensitive.
+_COLUMN_TYPE_ALIASES: Mapping[str, ColumnType] = MappingProxyType(
+    {
+        "int": "integer",
+        "bigint": "integer",
+        "int64": "integer",
+        "number": "float",
+        "decimal": "float",
+        "double": "float",
+        "numeric": "float",
+        "text": "string",
+        "str": "string",
+        "varchar": "string",
+        "bool": "boolean",
+        "timestamp": "datetime",
+    }
+)
+
 
 class ColumnSchema(BaseModel):
     """Preliminary schema inferred for a single CSV column.
 
     Attributes:
         name: The column name as it appears in the header row.
-        inferred_type: The inferred logical type (e.g. ``string``,
-            ``integer``, ``float``, ``date``, ``boolean``).
+        inferred_type: The inferred logical type, one of ``string``,
+            ``integer``, ``float``, ``date``, ``datetime`` or ``boolean``.
         nullable: Whether the column is expected to contain missing values.
         example_values: A small sample of raw values observed for this column.
     """
@@ -37,11 +61,26 @@ class ColumnSchema(BaseModel):
     model_config = ConfigDict(frozen=True)
 
     name: str
-    inferred_type: str = Field(
-        description="Inferred logical type: string, integer, float, date, boolean, etc."
-    )
+    inferred_type: ColumnType = Field(description="Inferred logical type of the column.")
     nullable: bool = True
     example_values: list[str] = Field(default_factory=list)
+
+    @field_validator("inferred_type", mode="before")
+    @classmethod
+    def _normalize_inferred_type(cls, value: object) -> object:
+        """Map the model's type word onto the closed vocabulary.
+
+        Small models answer ``int``, ``number``, ``text`` and the like instead
+        of the requested names. Common aliases are mapped, case-insensitively,
+        and any other string becomes ``string``, the safe type, rather than
+        failing the whole inspection over one column.
+        """
+        if not isinstance(value, str):
+            return value
+        normalized = value.strip().lower()
+        if normalized in get_args(ColumnType):
+            return normalized
+        return _COLUMN_TYPE_ALIASES.get(normalized, "string")
 
     @field_validator("example_values", mode="before")
     @classmethod

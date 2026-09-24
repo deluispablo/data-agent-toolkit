@@ -37,6 +37,7 @@ EXPECTED_PUBLIC_API = {
     "CSVInspectorError",
     "CSVSource",
     "ColumnSchema",
+    "ColumnType",
     "CredentialsNotConfiguredError",
     "EmptySampleError",
     "FileSampleReadError",

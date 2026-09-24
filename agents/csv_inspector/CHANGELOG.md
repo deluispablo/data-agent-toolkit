@@ -23,6 +23,11 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- A `quotechar` answered as `""`, `"null"`, `"none"` or JSON `null` (the
+  natural answer for an unquoted file) now maps to the default `'"'` instead
+  of failing validation and triggering the fallback model. The prompt asks
+  for `null` when fields are never quoted
+  ([#93](https://github.com/deluispablo/data-agent-toolkit/issues/93)).
 - An empty Gemini response now says why in its `ModelInvocationError`: the
   prompt block reason or the candidate's finish reason (for example
   `SAFETY`).

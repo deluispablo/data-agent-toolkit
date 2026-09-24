@@ -152,17 +152,25 @@ class CSVInspectionResult(BaseModel):
 
         Small models often write a tab as ``"tab"`` or as a backslash followed
         by ``t``, and "no escape character" as ``""`` or ``"null"``.
-        Those are mapped to a real tab and to ``None``; anything else that is
-        not exactly one character is rejected, so a malformed answer fails
-        validation (and the fallback model runs) instead of breaking
+        Those are mapped to a real tab and to ``None``. For unquoted files the
+        same spellings (and JSON ``null``) come back as the quote character;
+        they map to the default ``'"'``, which is inert for ``csv``, pandas,
+        PySpark and BigQuery when it never occurs in the file. Anything else
+        that is not exactly one character is rejected, so a malformed answer
+        fails validation (and the fallback model runs) instead of breaking
         ``csv``/pandas downstream.
         """
+        if value is None and info.field_name == "quotechar":
+            return '"'
         if not isinstance(value, str):
             return value
         if value.lower() in _TAB_SPELLINGS:
             return "\t"
         if info.field_name == "escapechar" and value.strip().lower() in _NO_ESCAPE_SPELLINGS:
             return None
+        # Strip spaces only: a line break stays a (rejected) quote character.
+        if info.field_name == "quotechar" and value.strip(" ").lower() in _NO_ESCAPE_SPELLINGS:
+            return '"'
         if len(value) != 1:
             raise ValueError(f"must be exactly one character, got {value!r}")
         return value

@@ -82,7 +82,7 @@ stable API. Every other module and name is internal.
 | `inspect_csv(source, /, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)` | Synchronous inspection |
 | `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
 | `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
-| `CSVInspectionResult`, `ColumnSchema` | The validated output contract |
+| `CSVInspectionResult`, `ColumnSchema` | The validated output contract. An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
 | `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
 | `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
 | `Settings` | Explicit configuration; constructing it never reads the environment |

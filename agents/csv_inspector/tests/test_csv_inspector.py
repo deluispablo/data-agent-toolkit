@@ -1238,7 +1238,6 @@ def test_an_empty_escapechar_means_none(value: str | None) -> None:
         ("delimiter", "null"),
         ("delimiter", ";;"),
         ("delimiter", "comma"),
-        ("quotechar", ""),
         ("quotechar", "''"),
         ("escapechar", "\\\\"),
     ],
@@ -1247,6 +1246,13 @@ def test_dialect_characters_must_be_one_character(field: str, value: str) -> Non
     """Anything else that is not one character fails validation (issue #11)."""
     with pytest.raises(ValidationError, match="exactly one character"):
         CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, field: value})
+
+
+@pytest.mark.parametrize("value", ["", "null", "None", "NONE", " none ", None])
+def test_no_quoting_spellings_map_quotechar_to_default(value: str | None) -> None:
+    """Unquoted files: empty/null quotechar answers keep the inert default (issue #93)."""
+    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "quotechar": value})
+    assert result.quotechar == '"'
 
 
 @pytest.mark.parametrize(

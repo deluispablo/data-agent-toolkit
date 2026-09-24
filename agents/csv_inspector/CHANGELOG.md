@@ -21,6 +21,55 @@ listed under **Changed (breaking)**.
   sample) and the model answered garbage that still passed validation. The
   window is now sized from the prompt
   ([#9](https://github.com/deluispablo/data-agent-toolkit/issues/9)).
+- `delimiter`, `quotechar` and `escapechar` were not validated, so answers
+  such as `"\\t"`, `"tab"` or `""` passed and broke `csv`/pandas
+  downstream. Common spellings of a tab now become a real tab, `""` /
+  `"null"` mean no `escapechar`, and anything else longer or shorter than
+  one character is a `SchemaValidationError`, so the fallback model runs
+  ([#11](https://github.com/deluispablo/data-agent-toolkit/issues/11)).
+- The primary model could spend the whole `timeout_seconds` budget, so a
+  hung or slowly loading primary meant the fallback was never tried. Each
+  model now gets an equal share of what is left, and unused time carries
+  over ([#12](https://github.com/deluispablo/data-agent-toolkit/issues/12)).
+- An exception other than the library's own from a custom `model_invoker`
+  (`RuntimeError`, raw `httpx` errors, `KeyError`...) skipped the fallback
+  and escaped unwrapped. It now counts as a failed attempt, and
+  `InspectionFailedError` is raised if every model fails, in the sync and
+  async APIs alike
+  ([#14](https://github.com/deluispablo/data-agent-toolkit/issues/14)).
+- A sync call abandoned by `timeout_seconds` left a non-daemon worker
+  thread, so a custom invoker that never returned kept the interpreter
+  from exiting. The worker is now a daemon thread
+  ([#15](https://github.com/deluispablo/data-agent-toolkit/issues/15)).
+- Grounding split lines with `str.splitlines()`, which also breaks on form
+  feeds, `\x1c`-`\x1e`, `\x85`, U+2028 and U+2029. Such characters in the
+  data shifted `header_row_index` and could pull data into
+  `footer_lines`. Lines are now split only on `\r\n`, `\r` and `\n`, like
+  `csv` and pandas
+  ([#16](https://github.com/deluispablo/data-agent-toolkit/issues/16)).
+- Sampling a seekable stream relied on `seek()` returning the new
+  position, so duck-typed streams whose `seek()` returns `None` failed
+  with a `TypeError`
+  ([#18](https://github.com/deluispablo/data-agent-toolkit/issues/18)).
+- A non-blocking stream whose `read()` returned `None` (no data yet) was
+  taken as ended, so the sample was silently truncated or
+  `EmptySampleError` was raised. It is now a `FileSampleReadError`
+  ([#19](https://github.com/deluispablo/data-agent-toolkit/issues/19)).
+- A data row whose first field starts with a totals word (e.g. `Total
+  Energies,2024-01-01,10.00`) just above the footer was pulled into
+  `footer_lines`. A totals row must now have a bare label as its first
+  field (`TOTAL`, `Subtotal:`) or mostly empty other fields
+  ([#20](https://github.com/deluispablo/data-agent-toolkit/issues/20)).
+- When the model paraphrased column names, the header search also matched
+  on empty names, so with an unnamed column (e.g. a pandas index) any data
+  row with an empty cell could be taken as the header
+  ([#21](https://github.com/deluispablo/data-agent-toolkit/issues/21)).
+- The model's `encoding` was used unchecked: it could be a description
+  rather than a codec (`"UTF-8 with BOM"`), or drop a detected byte order
+  mark (`utf-8` for a `utf-8-sig` file), leaving a U+FEFF on the first
+  column name downstream. An encoding detected from a BOM now always
+  wins, and an unknown codec name falls back to the detected encoding
+  ([#22](https://github.com/deluispablo/data-agent-toolkit/issues/22)).
 
 ### Changed (breaking)
 

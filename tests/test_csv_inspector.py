@@ -23,6 +23,7 @@ from typing import IO, Any
 
 import pytest
 from fakes import install_fake_ollama
+from pydantic import ValidationError
 
 from csv_inspector import (
     BackendConfigurationError,
@@ -928,20 +929,181 @@ def test_grounding_drops_a_footer_when_the_end_of_the_file_was_not_sampled(
 
 
 @pytest.mark.parametrize(
-    ("line", "expected"),
+    ("line", "delimiter", "expected"),
     [
-        ("", True),
-        ("TOTAL;;;12.50", True),
-        ("Subtotal,,3", True),
-        ('"Total general",9', True),
-        ("Total registros: 250", True),
-        ("SUMA;;;1", True),
-        ("2024-01-01;Acme;10.00", False),
-        ("Totalmente nuevo,1,2", False),
-        ("Summary report", False),
-        ("--- Fin del informe ---", False),
+        ("", ";", True),
+        ("TOTAL;;;12.50", ";", True),
+        ("Subtotal,,3", ",", True),
+        ('"Total general",9', ",", True),
+        ("Total registros: 250", ",", True),
+        ("SUMA;;;1", ";", True),
+        ("TOTAL;120;340;460", ";", True),
+        ("Total ventas;;;460", ";", True),
+        ("2024-01-01;Acme;10.00", ";", False),
+        ("Totalmente nuevo,1,2", ",", False),
+        ("Summary report", ",", False),
+        ("--- Fin del informe ---", ",", False),
+        ("Total Energies,2024-01-01,10.00", ",", False),
+        ("Sum Holdings;Madrid;2024-01-01;10.00", ";", False),
     ],
 )
-def test_extends_footer_accepts_only_blank_and_totals_rows(line: str, expected: bool) -> None:
-    """Only blank separators and totals-labelled rows extend a footer upwards."""
-    assert _extends_footer(line) is expected
+def test_extends_footer_accepts_only_blank_and_totals_rows(
+    line: str, delimiter: str, expected: bool
+) -> None:
+    """Only blank separators and totals rows, not data rows named "Total...", extend a footer."""
+    assert _extends_footer(line, delimiter, '"') is expected
+
+
+def test_grounding_keeps_a_data_row_named_like_a_totals_label_out_of_the_footer(
+    tmp_path: Path,
+) -> None:
+    """A data row whose first field starts with "Total" is not pulled into the footer.
+
+    Regression test for issue #20.
+    """
+    target = tmp_path / "companies.csv"
+    target.write_text(
+        "Empresa,Fecha,Importe\n"
+        "Acme,2024-01-01,10.00\n"
+        "Total Energies,2024-01-02,20.00\n"
+        "--- Fin del informe ---\n",
+        encoding="utf-8",
+    )
+    columns = [
+        {"name": name, "inferred_type": "string"} for name in ("Empresa", "Fecha", "Importe")
+    ]
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",", columns=columns, footer_lines=["--- Fin del informe ---"]
+        ),
+    )
+
+    assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+def test_grounding_counts_lines_like_csv_does(tmp_path: Path) -> None:
+    """Characters str.splitlines() breaks on, but csv does not, never shift line indexes.
+
+    Regression test for issue #16: stray form feeds and U+2028 in fields made
+    the preamble look longer, and the blank "line" after a data row's form
+    feed was taken as a footer separator, so a data row would be skipped.
+    """
+    target = tmp_path / "dirty.csv"
+    target.write_text(
+        "# Export\x0cv2\n"
+        "Fecha;Cliente;Importe\n"
+        "2024-01-01;Acme\u2028S.L.;10.00\n"
+        "2024-01-02;Beta;20.00\x0c\n"
+        "--- Fin del informe ---\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"]),
+    )
+
+    assert result.header_row_index == 1
+    assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+def test_header_fallback_ignores_empty_names(tmp_path: Path) -> None:
+    """An unnamed column never makes a data row with an empty cell look like the header.
+
+    Regression test for issue #21: with columns ``["", "a", "b"]`` (a pandas
+    index), the paraphrase fallback matched the first same-width data row
+    that had an empty cell.
+    """
+    target = tmp_path / "index.csv"
+    target.write_text("# Export\n,1,\n,2,3\n,a,b\n0,4,5\n1,6,7\n", encoding="utf-8")
+    columns = [{"name": name, "inferred_type": "string"} for name in ("", "x", "b")]
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",", columns=columns, header_row_index=0, footer_lines=[]
+        ),
+    )
+
+    assert result.header_row_index == 3
+    assert [column.name for column in result.columns] == ["", "a", "b"]
+
+
+@pytest.mark.parametrize(
+    ("value", "expected"),
+    [("\t", "\t"), ("\\t", "\t"), ("tab", "\t"), ("TAB", "\t"), (";", ";")],
+)
+def test_dialect_characters_accept_common_spellings_of_tab(value: str, expected: str) -> None:
+    """A tab written as an escape sequence or a word becomes a real tab (issue #11)."""
+    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": value})
+
+    assert result.delimiter == expected
+
+
+@pytest.mark.parametrize("value", ["", "null", "None", None])
+def test_an_empty_escapechar_means_none(value: str | None) -> None:
+    """``""``, ``"null"`` and ``"none"`` mean there is no escape character (issue #11)."""
+    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "escapechar": value})
+
+    assert result.escapechar is None
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("delimiter", ""),
+        ("delimiter", "null"),
+        ("delimiter", ";;"),
+        ("delimiter", "comma"),
+        ("quotechar", ""),
+        ("quotechar", "''"),
+        ("escapechar", "\\\\"),
+    ],
+)
+def test_dialect_characters_must_be_one_character(field: str, value: str) -> None:
+    """Anything else that is not one character fails validation (issue #11)."""
+    with pytest.raises(ValidationError, match="exactly one character"):
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, field: value})
+
+
+def test_a_malformed_delimiter_moves_on_to_the_fallback_model(tmp_path: Path) -> None:
+    """A multi-character delimiter is a schema error, so the fallback model runs (issue #11)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_LEDGER, encoding="utf-8")
+    calls: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        calls.append(model)
+        delimiter = "semicolon" if model == "primary" else ";"
+        return _sloppy_answer(delimiter=delimiter)(prompt, model)
+
+    result = inspect_csv(target, model="primary", fallback_model="fallback", model_invoker=invoker)
+
+    assert calls == ["primary", "fallback"]
+    assert result.delimiter == ";"
+
+
+@pytest.mark.parametrize(
+    ("content", "reported", "expected"),
+    [
+        (codecs.BOM_UTF8 + _LEDGER.encode("utf-8"), "utf-8", "UTF-8-SIG"),
+        (codecs.BOM_UTF16_LE + _LEDGER.encode("utf-16-le"), "utf-16-le", "UTF-16"),
+        (_LEDGER.encode("utf-8"), "UTF-8 with BOM", "utf-8"),
+        (codecs.BOM_UTF8 + _LEDGER.encode("utf-8"), "utf_8_sig", "utf_8_sig"),
+        (_LEDGER.encode("cp1252"), "cp1252", "cp1252"),
+    ],
+    ids=["utf-8 BOM", "utf-16 BOM", "not a codec", "same codec, other spelling", "no BOM"],
+)
+def test_grounding_keeps_a_bom_encoding_and_rejects_unknown_codecs(
+    tmp_path: Path, content: bytes, reported: str, expected: str
+) -> None:
+    """A detected BOM, or a valid codec name, always wins over the model's answer (issue #22)."""
+    target = tmp_path / "ledger.csv"
+    target.write_bytes(content)
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(encoding=reported))
+
+    assert result.encoding == expected
+    assert result.columns[0].name == "Fecha"

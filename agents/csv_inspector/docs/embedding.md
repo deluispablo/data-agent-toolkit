@@ -154,10 +154,17 @@ configuration.
 
 `timeout_seconds` is **one budget for the whole model phase**, shared by
 the primary and fallback models, so a request never waits longer than it.
-The library enforces it itself, so custom invokers are bounded too, and
-also passes it to the HTTP client (in seconds for Ollama, in milliseconds
-for Gemini). When it runs out, `InspectionTimeoutError` is raised and no
-fallback is attempted.
+Each model may use an equal share of what is left (half for the primary
+when there is a fallback), so a hung primary still leaves the fallback
+time; time a model does not use carries over. The library enforces it
+itself, so custom invokers are bounded too, and also passes each model's
+share to the HTTP client (in seconds for Ollama, in milliseconds for
+Gemini). When it runs out, `InspectionTimeoutError` is raised.
+
+A custom invoker may raise any exception: apart from
+`BackendConfigurationError`, which is re-raised at once, it counts as a
+failed attempt, the fallback model is tried, and if every model fails the
+original exceptions are in `InspectionFailedError.attempts`.
 
 A reasonable mapping to HTTP status codes:
 
@@ -192,9 +199,10 @@ failures; let them surface.
   many tasks at once are independent. The test suite checks this with
   parallel calls and per-tenant settings.
 - With `timeout_seconds` on the **sync** API, the model call runs in a
-  short-lived worker thread. When the budget runs out, your call returns
-  on time, but Python cannot kill a blocking call, so that thread finishes
-  in the background. For the built-in backends this is brief, because the
+  short-lived daemon worker thread. When the budget runs out, your call
+  returns on time, but Python cannot kill a blocking call, so that thread
+  finishes in the background (being a daemon, it never keeps the
+  interpreter from exiting). For the built-in backends this is brief, because the
   same timeout is set on their HTTP client. A custom sync invoker should
   honour its own timeout too.
 - **Limiting concurrency is the host's job.** A local Ollama processes a

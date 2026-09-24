@@ -87,6 +87,7 @@ _RULES = (
     ),
 )
 _UPLOAD_TOO_LARGE_TITLE = "Upload too large"
+_OVERRIDE_DISABLED_TITLE = "Backend override disabled"
 _FALLBACK = _Rule((CSVInspectorError,), 500, "Inspection error", logging.ERROR)
 
 
@@ -110,6 +111,13 @@ def status_for(exc: CSVInspectorError) -> int:
 
 class UploadTooLargeError(Exception):
     """The upload exceeds ``ApiSettings.max_upload_bytes``; answered with 413.
+
+    Not a library error: the API raises it before calling ``csv_inspector``.
+    """
+
+
+class BackendOverrideDisabledError(Exception):
+    """A request asked for the cloud backend while overrides are off; answered with 403.
 
     Not a library error: the API raises it before calling ``csv_inspector``.
     """
@@ -156,6 +164,12 @@ async def _handle_upload_too_large(request: Request, exc: Exception) -> JSONResp
     return problem_response(413, _UPLOAD_TOO_LARGE_TITLE, exc)
 
 
+async def _handle_override_disabled(request: Request, exc: Exception) -> JSONResponse:
+    """Answer a refused backend override with 403."""
+    logger.warning("%s %s rejected with 403: %s", request.method, request.url.path, exc)
+    return problem_response(403, _OVERRIDE_DISABLED_TITLE, exc)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Install the API's error handlers on ``app``.
 
@@ -164,6 +178,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     """
     app.add_exception_handler(CSVInspectorError, _handle_inspector_error)
     app.add_exception_handler(UploadTooLargeError, _handle_upload_too_large)
+    app.add_exception_handler(BackendOverrideDisabledError, _handle_override_disabled)
 
 
 _VALIDATION_ERROR_SCHEMA: dict[str, Any] = {
@@ -185,6 +200,7 @@ def problem_responses(*statuses: int) -> dict[int | str, dict[str, Any]]:
     """
     titles = {rule.status: rule.title for rule in (*_RULES, _FALLBACK)}
     titles[413] = _UPLOAD_TOO_LARGE_TITLE
+    titles[403] = _OVERRIDE_DISABLED_TITLE
     schema = ProblemDetails.model_json_schema()
     responses: dict[int | str, dict[str, Any]] = {
         status: {"description": titles[status], "content": {PROBLEM_MEDIA_TYPE: {"schema": schema}}}

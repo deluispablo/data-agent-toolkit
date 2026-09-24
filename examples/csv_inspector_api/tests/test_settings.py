@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import csv_inspector
 import pytest
 from pydantic import SecretStr, ValidationError
@@ -30,6 +32,7 @@ def test_defaults_match_the_library() -> None:
     assert settings.default_timeout_seconds == 60
     assert settings.max_timeout_seconds == 300
     assert settings.max_upload_bytes == 256 * 1024 * 1024
+    assert settings.allow_backend_override is False
 
 
 def test_to_library_settings_passes_cloud_fields_through() -> None:
@@ -81,12 +84,14 @@ def test_settings_read_the_prefixed_environment(monkeypatch: pytest.MonkeyPatch)
     """Only CSV_INSPECTOR_API_* variables are read; the library's own names are not."""
     monkeypatch.setenv("CSV_INSPECTOR_API_LLM_BACKEND", "api")
     monkeypatch.setenv("CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS", "12.5")
+    monkeypatch.setenv("CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE", "true")
     monkeypatch.setenv("OLLAMA_MODEL", "not-for-the-api:1b")
 
     settings = ApiSettings()
 
     assert settings.llm_backend is csv_inspector.LLMBackend.API
     assert settings.default_timeout_seconds == 12.5
+    assert settings.allow_backend_override is True
     assert settings.ollama_model == "qwen2.5-coder:7b"
 
 
@@ -96,3 +101,13 @@ def test_secrets_are_not_in_repr() -> None:
 
     for text in (repr(settings), str(settings), repr(settings.to_library_settings())):
         assert "AIza-secret" not in text
+
+
+def test_nothing_turns_the_backend_override_on_by_default() -> None:
+    """The cost guard is opt-in by the operator only: no shipped file enables it."""
+    root = Path(__file__).resolve().parents[1]
+    shipped = [root / "main_demo.py", root / ".env.example", *sorted((root / "src").rglob("*.py"))]
+
+    for path in shipped:
+        text = path.read_text(encoding="utf-8").lower()
+        assert "allow_backend_override=true" not in text.replace(" ", ""), path

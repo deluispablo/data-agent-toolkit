@@ -87,13 +87,17 @@ stable API. Every other module and name is internal.
 - **Seekable streams** are sampled from their **current position** to their end, and that position is restored afterwards.
 - **Non-seekable streams**, such as an upload body, are consumed once, keeping only a rolling tail buffer, so memory stays bounded by `n_bytes + tail_bytes` however long the stream is.
 - **Text-mode streams** are rejected with `TypeError`; open files with `"rb"`.
+- **Non-blocking streams** must have their data available: a `read()` that returns `None` (no data yet) raises `FileSampleReadError` instead of being taken as the end of the stream.
 
 ### Timeouts
 
 `timeout_seconds` is **one overall budget for the model phase**, shared by
 the primary and fallback models, so the worst case really is
-`timeout_seconds`. The library enforces it, so custom invokers are bounded
-too, and also passes it to the HTTP clients. When it runs out,
+`timeout_seconds`. Each model may use an equal share of what is left (half
+for the primary when there is a fallback), so a hung or slowly loading
+primary still leaves the fallback time; time a model does not use carries
+over. The library enforces it, so custom invokers are bounded too, and
+also passes each model's share to the HTTP clients. When it runs out,
 `InspectionTimeoutError` is raised (for example, map it to HTTP 504).
 
 ## How it works

@@ -174,6 +174,37 @@ def test_an_open_binary_file_is_accepted(tmp_path: Path) -> None:
     assert prompt == path_prompt
 
 
+class DuckTypedSeekableStream:
+    """A stream with read/seek/tell but no ``seekable()``, whose ``seek`` returns ``None``."""
+
+    def __init__(self, data: bytes) -> None:
+        self._buffer = io.BytesIO(data)
+
+    def read(self, size: int = -1) -> bytes:
+        return self._buffer.read(size)
+
+    def seek(self, offset: int, whence: int = io.SEEK_SET) -> None:
+        self._buffer.seek(offset, whence)
+
+    def tell(self) -> int:
+        return self._buffer.tell()
+
+
+def test_a_seek_that_returns_none_is_supported() -> None:
+    """The end of a duck-typed stream is found with ``tell()``, not ``seek()``'s return value.
+
+    Regression test for issue #18.
+    """
+    fixture = SAMPLES_DIR / "header_and_footer_combined.csv"
+    path_prompt, _ = _inspect(fixture)
+    stream = DuckTypedSeekableStream(fixture.read_bytes())
+
+    prompt, _ = _inspect(stream)
+
+    assert prompt == path_prompt
+    assert stream.tell() == 0
+
+
 # ---------------------------------------------------------------------
 # Bounded reads and memory
 # ---------------------------------------------------------------------
@@ -286,6 +317,37 @@ def test_stream_read_errors_become_domain_errors() -> None:
 
     with pytest.raises(FileSampleReadError, match="connection reset"):
         _inspect(BrokenStream())
+
+
+class NonBlockingStream(io.RawIOBase):
+    """A non-blocking stream that serves ``data``, then has nothing available yet."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes | None:
+        if not self._data:
+            return None
+        chunk, self._data = self._data[:size], self._data[size:]
+        return chunk
+
+
+@pytest.mark.parametrize(
+    "available",
+    [b"", b"Fecha;Cliente\n", b"Fecha;Cliente\n" * 1000],
+    ids=["nothing", "part of the head", "past the head"],
+)
+def test_a_stream_with_no_data_available_yet_is_not_taken_as_ended(available: bytes) -> None:
+    """``read()`` returning ``None`` is a read error, never the end of the stream.
+
+    Regression test for issue #19: it used to be treated as the end, so the
+    sample was silently truncated, or an EmptySampleError was raised.
+    """
+    with pytest.raises(FileSampleReadError, match="non-blocking"):
+        _inspect(NonBlockingStream(available))
 
 
 # ---------------------------------------------------------------------

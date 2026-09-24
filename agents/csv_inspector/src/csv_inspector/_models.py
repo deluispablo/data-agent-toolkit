@@ -9,7 +9,18 @@ from __future__ import annotations
 
 import json
 
-from pydantic import BaseModel, ConfigDict, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    computed_field,
+    field_validator,
+)
+
+# How models spell a tab or "no escape character" instead of the value itself.
+_TAB_SPELLINGS = frozenset({"\\t", "tab"})
+_NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
 
 
 class ColumnSchema(BaseModel):
@@ -90,6 +101,28 @@ class CSVInspectionResult(BaseModel):
     columns: list[ColumnSchema]
     confidence: float = Field(ge=0.0, le=1.0)
     notes: str | None = None
+
+    @field_validator("delimiter", "quotechar", "escapechar", mode="before")
+    @classmethod
+    def _normalize_dialect_character(cls, value: object, info: ValidationInfo) -> object:
+        """Map common spellings of dialect characters to the character itself.
+
+        Small models often write a tab as ``"tab"`` or as a backslash followed
+        by ``t``, and "no escape character" as ``""`` or ``"null"``.
+        Those are mapped to a real tab and to ``None``; anything else that is
+        not exactly one character is rejected, so a malformed answer fails
+        validation (and the fallback model runs) instead of breaking
+        ``csv``/pandas downstream.
+        """
+        if not isinstance(value, str):
+            return value
+        if value.lower() in _TAB_SPELLINGS:
+            return "\t"
+        if info.field_name == "escapechar" and value.strip().lower() in _NO_ESCAPE_SPELLINGS:
+            return None
+        if len(value) != 1:
+            raise ValueError(f"must be exactly one character, got {value!r}")
+        return value
 
     @computed_field  # type: ignore[prop-decorator]
     @property

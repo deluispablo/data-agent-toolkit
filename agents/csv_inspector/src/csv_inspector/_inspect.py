@@ -6,8 +6,9 @@ its asyncio counterpart. Both share the same steps and guarantees:
 * configuration is resolved and checked **before** the source is read, so a
   non-seekable stream is never consumed only to fail on a missing setting;
 * ``timeout_seconds`` is one overall budget for the model phase, shared by
-  the primary and fallback models, and enforced by the library itself, so
-  custom invokers are bounded too;
+  the primary and fallback models (each gets an equal share of what is
+  left, so a hung primary still leaves the fallback time), and enforced by
+  the library itself, so custom invokers are bounded too;
 * no state is shared between calls: every call builds its own clients.
 """
 
@@ -16,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
@@ -75,6 +77,16 @@ class _Deadline:
         if self._expires_at is None:
             return None
         return self._expires_at - time.monotonic()
+
+    def share(self, models_left: int) -> float | None:
+        """This model's slice of the budget: an equal share of what is left.
+
+        Giving the current model the whole remainder would let a hung or
+        slowly loading primary spend it all, so the fallback, needed exactly
+        then, would never run. Time a model does not use carries over.
+        """
+        remaining = self.remaining()
+        return None if remaining is None else remaining / models_left
 
     @property
     def expired(self) -> bool:
@@ -143,27 +155,31 @@ def _timed_out(model: str, remaining: float) -> ModelTimeoutError:
 def _call_with_deadline(call: _SyncCall, prompt: str, model: str, remaining: float | None) -> str:
     """Run one sync model call, returning no later than ``remaining`` seconds.
 
-    With a budget, the call runs in a worker thread and is abandoned when the
-    budget runs out: Python cannot interrupt a blocking call, but the caller
-    gets control back on time (built-in invokers also stop on their own, as
-    the same timeout is passed to their HTTP client).
+    With a budget, the call runs in a daemon worker thread and is abandoned
+    when the budget runs out: Python cannot interrupt a blocking call, but
+    the caller gets control back on time (built-in invokers also stop on
+    their own, as the same timeout is passed to their HTTP client). The
+    thread is a daemon so that a call that never returns cannot keep the
+    interpreter from exiting, as a ``ThreadPoolExecutor`` worker would.
 
     Raises:
         ModelTimeoutError: If the budget runs out first.
     """
     if remaining is None:
         return call(prompt, model, None)
-    executor = concurrent.futures.ThreadPoolExecutor(
-        max_workers=1, thread_name_prefix="csv_inspector"
-    )
-    try:
-        future = executor.submit(call, prompt, model, remaining)
+    future: concurrent.futures.Future[str] = concurrent.futures.Future()
+
+    def run() -> None:
         try:
-            return future.result(timeout=remaining)
-        except concurrent.futures.TimeoutError:
-            raise _timed_out(model, remaining) from None
-    finally:
-        executor.shutdown(wait=False, cancel_futures=True)
+            future.set_result(call(prompt, model, remaining))
+        except BaseException as exc:  # noqa: BLE001 - handed to the caller via the future
+            future.set_exception(exc)
+
+    threading.Thread(target=run, name="csv_inspector", daemon=True).start()
+    try:
+        return future.result(timeout=remaining)
+    except concurrent.futures.TimeoutError:
+        raise _timed_out(model, remaining) from None
 
 
 class _Attempts:
@@ -204,10 +220,27 @@ def _succeeded(model: str, result: CSVInspectionResult, samples: Samples) -> CSV
         samples.head_text,
         samples.tail_text,
         covers_whole_file=samples.covers_whole_file,
+        detected_encoding=samples.encoding,
     )
 
 
-_RETRYABLE = (ModelInvocationError, ResponseParsingError, SchemaValidationError)
+_RETRYABLE: tuple[type[Exception], ...] = (
+    ModelInvocationError,
+    ResponseParsingError,
+    SchemaValidationError,
+)
+
+
+def _retryable(custom_invoker: bool) -> tuple[type[Exception], ...]:
+    """The errors that count as a failed attempt, moving on to the next model.
+
+    Built-in invokers report every failure as a :class:`ModelInvocationError`.
+    A custom invoker may raise anything (``RuntimeError``, raw ``httpx``
+    errors...), so any exception from it is a failed attempt too, and ends
+    up in :class:`InspectionFailedError` rather than escaping unwrapped.
+    :class:`BackendConfigurationError` is re-raised before this applies.
+    """
+    return (Exception,) if custom_invoker else _RETRYABLE
 
 
 def inspect_csv(
@@ -252,10 +285,14 @@ def inspect_csv(
             overlaps the head. ``0`` disables tail sampling.
         timeout_seconds: Overall time budget for the model phase, shared by
             the primary and fallback models and enforced even for custom
-            invokers. ``None`` (default) means no limit.
+            invokers. Each model may use an equal share of what is left
+            (half for the primary when there is a fallback); time it does
+            not use carries over. ``None`` (default) means no limit.
         model_invoker: A custom ``(prompt, model) -> text`` callable. When
             given, it takes precedence over ``backend`` (which then only
-            selects default model names).
+            selects default model names). Any exception it raises, other
+            than :class:`BackendConfigurationError`, counts as a failed
+            attempt for that model.
 
     Returns:
         A validated :class:`CSVInspectionResult`.
@@ -289,18 +326,20 @@ def inspect_csv(
     else:
         call = builtin_invoker(backend, plan.settings)
 
+    retryable = _retryable(custom_invoker=model_invoker is not None)
     deadline = _Deadline(timeout_seconds)
     attempts = _Attempts(samples.description)
-    for candidate in plan.candidates:
+    for index, candidate in enumerate(plan.candidates):
         if deadline.expired:
             raise attempts.timeout_error(timeout_seconds)
         logger.info("Inspecting '%s' with model '%s'.", samples.description, candidate)
+        budget = deadline.share(len(plan.candidates) - index)
         try:
-            raw = _call_with_deadline(call, prompt, candidate, deadline.remaining())
+            raw = _call_with_deadline(call, prompt, candidate, budget)
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
-        except _RETRYABLE as exc:
+        except retryable as exc:
             attempts.record(candidate, exc)
             if deadline.expired:
                 raise attempts.timeout_error(timeout_seconds) from exc
@@ -340,7 +379,8 @@ async def ainspect_csv(
         tail_bytes: See :func:`inspect_csv`.
         timeout_seconds: See :func:`inspect_csv`.
         model_invoker: A custom async ``(prompt, model) -> text`` callable;
-            takes precedence over ``backend``.
+            takes precedence over ``backend``. Its exceptions are handled
+            as in :func:`inspect_csv`.
 
     Returns:
         A validated :class:`CSVInspectionResult`.
@@ -366,22 +406,23 @@ async def ainspect_csv(
     else:
         call = builtin_async_invoker(backend, plan.settings)
 
+    retryable = _retryable(custom_invoker=model_invoker is not None)
     deadline = _Deadline(timeout_seconds)
     attempts = _Attempts(samples.description)
-    for candidate in plan.candidates:
-        remaining = deadline.remaining()
-        if remaining is not None and remaining <= 0:
+    for index, candidate in enumerate(plan.candidates):
+        if deadline.expired:
             raise attempts.timeout_error(timeout_seconds)
         logger.info("Inspecting '%s' with model '%s'.", samples.description, candidate)
+        budget = deadline.share(len(plan.candidates) - index)
         try:
             try:
-                raw = await asyncio.wait_for(call(prompt, candidate, remaining), remaining)
+                raw = await asyncio.wait_for(call(prompt, candidate, budget), budget)
             except asyncio.TimeoutError:
-                raise _timed_out(candidate, remaining or 0) from None
+                raise _timed_out(candidate, budget or 0) from None
             result = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
-        except _RETRYABLE as exc:
+        except retryable as exc:
             attempts.record(candidate, exc)
             if deadline.expired:
                 raise attempts.timeout_error(timeout_seconds) from exc

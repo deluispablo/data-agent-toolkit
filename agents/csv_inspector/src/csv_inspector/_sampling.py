@@ -9,6 +9,7 @@ stream (seekable or not); see :data:`CSVSource`.
 from __future__ import annotations
 
 import codecs
+import errno
 import io
 import logging
 import os
@@ -218,7 +219,11 @@ class SupportsBinaryRead(Protocol):
     """
 
     def read(self, size: int = ..., /) -> bytes | None:
-        """Read up to ``size`` bytes (``None``: no data available yet)."""
+        """Read up to ``size`` bytes (``None``: no data available yet).
+
+        Sampling needs a blocking stream: a ``None`` read fails with
+        :class:`FileSampleReadError` rather than being taken as the end.
+        """
         ...
 
 
@@ -318,13 +323,24 @@ class _BufferReader:
 def _read_chunk(stream: SupportsBinaryRead, size: int) -> bytes:
     """Read at most ``size`` bytes from ``stream``, rejecting text streams.
 
+    Returns:
+        The bytes read; empty only at the end of the stream.
+
     Raises:
         TypeError: If the stream yields ``str`` (a text-mode stream).
+        BlockingIOError: If the stream yields ``None``: it is non-blocking
+            and has no data available yet, which is not the end of the
+            stream, so sampling cannot go on without a wrong result.
     """
     chunk: bytes | str | None = stream.read(size)
     if isinstance(chunk, str):
         raise TypeError(_TEXT_STREAM_MESSAGE)
-    return chunk or b""
+    if chunk is None:
+        raise BlockingIOError(
+            errno.EAGAIN,
+            "the stream is non-blocking and has no data available; pass a blocking stream",
+        )
+    return chunk
 
 
 def _read_up_to(stream: SupportsBinaryRead, n_bytes: int) -> bytes:
@@ -346,7 +362,9 @@ class _SeekableStreamReader:
     def __init__(self, stream: BinaryIO) -> None:
         self._stream = stream
         self.start = stream.tell()
-        self._end = stream.seek(0, os.SEEK_END)
+        # Not seek()'s return value: duck-typed streams may return None.
+        stream.seek(0, os.SEEK_END)
+        self._end = stream.tell()
 
     def head(self, n_bytes: int) -> bytes:
         self._stream.seek(self.start)

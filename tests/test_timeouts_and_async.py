@@ -84,8 +84,8 @@ def test_a_slow_sync_invoker_is_cut_at_the_budget() -> None:
     assert isinstance(exc_info.value.attempts["m"], ModelTimeoutError)
 
 
-def test_the_budget_is_shared_so_no_fallback_runs_once_it_is_spent() -> None:
-    """The fallback is not attempted after the primary exhausted the budget."""
+def test_the_budget_is_shared_so_both_models_stay_within_it() -> None:
+    """Two hanging models together never hold the caller past the overall budget."""
     calls: list[str] = []
 
     def invoker(prompt: str, model: str) -> str:
@@ -93,7 +93,8 @@ def test_the_budget_is_shared_so_no_fallback_runs_once_it_is_spent() -> None:
         time.sleep(2)
         return RESULT_JSON
 
-    with pytest.raises(InspectionTimeoutError):
+    started = time.monotonic()
+    with pytest.raises(InspectionTimeoutError) as exc_info:
         inspect_csv(
             SAMPLE_CSV,
             model="primary",
@@ -101,6 +102,161 @@ def test_the_budget_is_shared_so_no_fallback_runs_once_it_is_spent() -> None:
             model_invoker=invoker,
             timeout_seconds=0.3,
         )
+    elapsed = time.monotonic() - started
+
+    assert elapsed < 0.3 + SLACK_SECONDS
+    assert calls == ["primary", "fallback"]
+    assert set(exc_info.value.attempts) == {"primary", "fallback"}
+
+
+def test_a_hung_primary_leaves_budget_for_the_fallback() -> None:
+    """The primary only gets its share of the budget, so the fallback still answers.
+
+    Regression test for issue #12: the primary got the whole budget, so a
+    hung or slowly loading primary made the fallback unreachable.
+    """
+    release = threading.Event()
+
+    def invoker(prompt: str, model: str) -> str:
+        if model == "primary":
+            release.wait(5)
+        return RESULT_JSON
+
+    try:
+        result = inspect_csv(
+            SAMPLE_CSV,
+            model="primary",
+            fallback_model="fallback",
+            model_invoker=invoker,
+            timeout_seconds=1.0,
+        )
+    finally:
+        release.set()
+
+    assert result.delimiter == ";"
+
+
+async def _ainspect_with_hung_primary() -> CSVInspectionResult:
+    async def invoker(prompt: str, model: str) -> str:
+        if model == "primary":
+            await asyncio.sleep(5)
+        return RESULT_JSON
+
+    return await ainspect_csv(
+        SAMPLE_CSV,
+        model="primary",
+        fallback_model="fallback",
+        model_invoker=invoker,
+        timeout_seconds=1.0,
+    )
+
+
+def test_ainspect_csv_leaves_budget_for_the_fallback_after_a_hung_primary() -> None:
+    """The async path splits the budget the same way (issue #12)."""
+    result = asyncio.run(_ainspect_with_hung_primary())
+
+    assert result.delimiter == ";"
+
+
+def test_a_timed_out_call_never_blocks_interpreter_exit() -> None:
+    """The worker left behind by a timed-out call is a daemon thread.
+
+    Regression test for issue #15: ``ThreadPoolExecutor`` workers are joined
+    at interpreter exit, so an invoker that never returned kept the process
+    alive.
+    """
+    started = threading.Event()
+    release = threading.Event()
+
+    def hanging_invoker(prompt: str, model: str) -> str:
+        started.set()
+        release.wait(5)
+        return RESULT_JSON
+
+    try:
+        with pytest.raises(InspectionTimeoutError):
+            inspect_csv(
+                SAMPLE_CSV,
+                model="m",
+                fallback_model="m",
+                model_invoker=hanging_invoker,
+                timeout_seconds=0.2,
+            )
+        assert started.is_set()
+        workers = [t for t in threading.enumerate() if t.name == "csv_inspector" and t.is_alive()]
+        assert workers
+        assert all(worker.daemon for worker in workers)
+    finally:
+        release.set()
+
+
+class _CustomInvokerError(Exception):
+    """An arbitrary, non-domain exception raised by a custom invoker."""
+
+
+@pytest.mark.parametrize("error", [RuntimeError("boom"), TimeoutError(), _CustomInvokerError()])
+def test_any_custom_invoker_error_moves_on_to_the_fallback(error: Exception) -> None:
+    """Whatever a custom invoker raises is a failed attempt, not an escaping error.
+
+    Regression test for issue #14.
+    """
+    calls: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        calls.append(model)
+        if model == "primary":
+            raise error
+        return RESULT_JSON
+
+    result = inspect_csv(
+        SAMPLE_CSV, model="primary", fallback_model="fallback", model_invoker=invoker
+    )
+
+    assert calls == ["primary", "fallback"]
+    assert result.delimiter == ";"
+
+
+def test_custom_invoker_errors_are_wrapped_when_every_model_fails() -> None:
+    """With no model left, the documented InspectionFailedError is raised (issue #14)."""
+
+    def invoker(prompt: str, model: str) -> str:
+        raise KeyError(model)
+
+    with pytest.raises(InspectionFailedError) as exc_info:
+        inspect_csv(SAMPLE_CSV, model="primary", fallback_model="fallback", model_invoker=invoker)
+
+    assert {model: type(exc) for model, exc in exc_info.value.attempts.items()} == {
+        "primary": KeyError,
+        "fallback": KeyError,
+    }
+
+
+def test_async_custom_invoker_errors_are_wrapped_too() -> None:
+    """The async path records custom invoker errors the same way (issue #14)."""
+
+    async def invoker(prompt: str, model: str) -> str:
+        raise RuntimeError(model)
+
+    with pytest.raises(InspectionFailedError) as exc_info:
+        asyncio.run(
+            ainspect_csv(
+                SAMPLE_CSV, model="primary", fallback_model="fallback", model_invoker=invoker
+            )
+        )
+
+    assert set(exc_info.value.attempts) == {"primary", "fallback"}
+
+
+def test_backend_configuration_errors_from_a_custom_invoker_still_escape() -> None:
+    """A configuration error is never retried, even from a custom invoker."""
+    calls: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        calls.append(model)
+        raise BackendConfigurationError("misconfigured")
+
+    with pytest.raises(BackendConfigurationError):
+        inspect_csv(SAMPLE_CSV, model="primary", fallback_model="fallback", model_invoker=invoker)
 
     assert calls == ["primary"]
 

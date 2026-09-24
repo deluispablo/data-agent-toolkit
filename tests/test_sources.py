@@ -1,0 +1,285 @@
+"""Tests for inspecting in-memory and streamed sources, not just paths.
+
+Every source type must produce exactly the same prompt, and therefore the
+same result, as the equivalent file path, while reading only bounded windows.
+"""
+
+from __future__ import annotations
+
+import io
+import json
+import tracemalloc
+from collections.abc import Callable, Iterator
+from pathlib import Path
+
+import pytest
+
+from csv_inspector import (
+    CSVInspectionResult,
+    EmptySampleError,
+    FileSampleReadError,
+    inspect_csv,
+)
+from csv_inspector._sampling import STREAM_CHUNK_BYTES, describe_source, sample_source
+
+AGENT_DIR = Path(__file__).resolve().parent.parent / "agents" / "csv_inspector"
+SAMPLES_DIR = AGENT_DIR / "samples"
+
+# Small (head only), production-sized (head + tail) and UTF-16 (aligned tail).
+PARITY_FIXTURES = [
+    AGENT_DIR / "sample.csv",
+    SAMPLES_DIR / "header_and_footer_combined.csv",
+    SAMPLES_DIR / "footer_end_marker.csv",
+    SAMPLES_DIR / "encoding_utf16le_bom.csv",
+]
+
+RESULT_JSON = json.dumps(
+    {
+        "encoding": "utf-8",
+        "delimiter": ";",
+        "header_row_index": 0,
+        "columns": [{"name": "Fecha", "inferred_type": "date"}],
+        "confidence": 0.9,
+    }
+)
+
+
+class NonSeekableStream(io.RawIOBase):
+    """A read-only, non-seekable byte stream (like an HTTP request body).
+
+    Serves ``data`` in chunks of at most ``max_chunk`` bytes and records the
+    size of every read request.
+    """
+
+    def __init__(self, data: bytes, *, max_chunk: int = 1 << 30) -> None:
+        self._data = data
+        self._position = 0
+        self._max_chunk = max_chunk
+        self.read_sizes: list[int] = []
+
+    def readable(self) -> bool:
+        return True
+
+    def seekable(self) -> bool:
+        return False
+
+    def read(self, size: int = -1) -> bytes:
+        self.read_sizes.append(size)
+        if size < 0:
+            size = len(self._data) - self._position
+        size = min(size, self._max_chunk)
+        chunk = self._data[self._position : self._position + size]
+        self._position += len(chunk)
+        return chunk
+
+
+class GeneratedStream(io.RawIOBase):
+    """A non-seekable stream that generates ``total`` bytes lazily, never holding them."""
+
+    def __init__(self, total: int, footer: bytes) -> None:
+        self._remaining = total
+        self._footer = footer
+        self._row = b"2024-01-01;Acme;10.00\n"
+
+    def readable(self) -> bool:
+        return True
+
+    def read(self, size: int = -1) -> bytes:
+        if self._remaining <= 0:
+            footer, self._footer = self._footer, b""
+            return footer[:size] if size >= 0 else footer
+        size = min(size if size >= 0 else STREAM_CHUNK_BYTES, self._remaining)
+        repeats = size // len(self._row) + 1
+        chunk = (self._row * repeats)[:size]
+        self._remaining -= len(chunk)
+        return chunk
+
+
+def _capture() -> tuple[list[str], Callable[[str, str], str]]:
+    prompts: list[str] = []
+
+    def invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        return RESULT_JSON
+
+    return prompts, invoker
+
+
+def _inspect(source: object) -> tuple[str, CSVInspectionResult]:
+    prompts, invoker = _capture()
+    result = inspect_csv(source, model="m", fallback_model="m", model_invoker=invoker)  # type: ignore[arg-type]
+    return prompts[0], result
+
+
+def _variants(data: bytes) -> Iterator[tuple[str, object]]:
+    yield "bytes", data
+    yield "bytearray", bytearray(data)
+    yield "memoryview", memoryview(data)
+    yield "BytesIO", io.BytesIO(data)
+    yield "non-seekable stream", NonSeekableStream(data)
+    yield "short-read stream", NonSeekableStream(data, max_chunk=7)
+
+
+# ---------------------------------------------------------------------
+# Parity with the path case
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("fixture", PARITY_FIXTURES, ids=lambda path: path.name)
+def test_every_source_type_matches_the_path_case(fixture: Path) -> None:
+    """Bytes, buffers and streams yield the same prompt and result as the path."""
+    path_prompt, path_result = _inspect(fixture)
+
+    for label, source in _variants(fixture.read_bytes()):
+        prompt, result = _inspect(source)
+        assert prompt == path_prompt, label
+        assert result == path_result, label
+
+
+@pytest.mark.parametrize("fixture", PARITY_FIXTURES, ids=lambda path: path.name)
+def test_a_partially_consumed_stream_is_sampled_from_its_current_position(
+    fixture: Path,
+) -> None:
+    """A stream positioned after a prefix is inspected as if the prefix were not there."""
+    path_prompt, _ = _inspect(fixture)
+    stream = io.BytesIO(b"PREFIX THAT IS NOT PART OF THE CSV\n" + fixture.read_bytes())
+    stream.seek(len(b"PREFIX THAT IS NOT PART OF THE CSV\n"))
+
+    prompt, _ = _inspect(stream)
+
+    assert prompt == path_prompt
+
+
+def test_the_seekable_stream_position_is_restored() -> None:
+    """The host's stream is left where it was, even after head and tail reads."""
+    data = (SAMPLES_DIR / "footer_end_marker.csv").read_bytes()
+    stream = io.BytesIO(b"xx" + data)
+    stream.seek(2)
+
+    _inspect(stream)
+
+    assert stream.tell() == 2
+
+
+def test_an_open_binary_file_is_accepted(tmp_path: Path) -> None:
+    """A real file object opened with 'rb' works and keeps its position."""
+    target = tmp_path / "data.csv"
+    target.write_bytes((AGENT_DIR / "sample.csv").read_bytes())
+    path_prompt, _ = _inspect(target)
+
+    with target.open("rb") as handle:
+        prompt, _ = _inspect(handle)
+        assert handle.tell() == 0
+
+    assert prompt == path_prompt
+
+
+# ---------------------------------------------------------------------
+# Bounded reads and memory
+# ---------------------------------------------------------------------
+
+
+def test_non_seekable_streams_are_read_in_bounded_chunks() -> None:
+    """No single read of a stream exceeds the chunk size, however large the stream."""
+    stream = NonSeekableStream(b"a;b\n" + b"1;2\n" * 200_000)
+
+    sample_source(stream, 4096, 4096)
+
+    assert stream.read_sizes
+    assert max(stream.read_sizes) <= STREAM_CHUNK_BYTES
+    assert -1 not in stream.read_sizes
+
+
+def test_non_seekable_stream_memory_stays_bounded() -> None:
+    """Sampling a 50 MiB generated stream never holds more than a few chunks in memory."""
+    footer = b"\nTOTAL;;999\n--- Fin del informe ---\n"
+    stream = GeneratedStream(50 * 1024 * 1024, footer)
+
+    tracemalloc.start()
+    try:
+        samples = sample_source(stream, 4096, 4096)
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert samples.tail_text is not None
+    assert samples.tail_text.endswith("TOTAL;;999\n--- Fin del informe ---\n")
+    assert peak < 1 * 1024 * 1024
+
+
+def test_tail_bytes_zero_does_not_consume_a_non_seekable_stream_past_the_head() -> None:
+    """With tail sampling disabled, only the head is read from a forward-only stream."""
+    stream = NonSeekableStream(b"a;b\n" + b"1;2\n" * 10_000)
+
+    samples = sample_source(stream, 64, 0)
+
+    assert samples.tail_text is None
+    assert sum(size for size in stream.read_sizes if size > 0) <= 64
+
+
+# ---------------------------------------------------------------------
+# Rejected and failing sources
+# ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "source",
+    [io.StringIO("a;b\n1;2\n"), 42, None, ["a;b"]],
+    ids=["text stream", "int", "None", "list"],
+)
+def test_unsupported_sources_are_rejected_with_type_error(source: object) -> None:
+    """Text streams and non-source objects fail fast with a clear TypeError."""
+    with pytest.raises(TypeError):
+        _inspect(source)
+
+
+def test_a_text_mode_file_is_rejected(tmp_path: Path) -> None:
+    """Files opened in text mode are rejected; the message says to use 'rb'."""
+    target = tmp_path / "data.csv"
+    target.write_text("a;b\n1;2\n", encoding="utf-8")
+
+    with target.open(encoding="utf-8") as handle, pytest.raises(TypeError, match="'rb'"):
+        _inspect(handle)
+
+
+@pytest.mark.parametrize(
+    "source",
+    [b"", bytearray(), io.BytesIO(b""), NonSeekableStream(b"")],
+    ids=["bytes", "bytearray", "BytesIO", "non-seekable"],
+)
+def test_empty_sources_raise_before_any_model_call(source: object) -> None:
+    """An empty buffer or stream is an EmptySampleError, and costs no LLM call."""
+    prompts, invoker = _capture()
+
+    with pytest.raises(EmptySampleError):
+        inspect_csv(source, model="m", fallback_model="m", model_invoker=invoker)  # type: ignore[arg-type]
+
+    assert prompts == []
+
+
+def test_stream_read_errors_become_domain_errors() -> None:
+    """An I/O failure while reading a stream is reported as FileSampleReadError."""
+
+    class BrokenStream(io.RawIOBase):
+        def readable(self) -> bool:
+            return True
+
+        def read(self, size: int = -1) -> bytes:
+            raise OSError("connection reset by peer")
+
+    with pytest.raises(FileSampleReadError, match="connection reset"):
+        _inspect(BrokenStream())
+
+
+# ---------------------------------------------------------------------
+# Descriptions (used in logs and errors) never leak content
+# ---------------------------------------------------------------------
+
+
+def test_source_descriptions_never_include_content(tmp_path: Path) -> None:
+    """Buffers and anonymous streams are described by size or type, never content."""
+    secret = b"iban;ES7621000418401234567891\n"
+
+    assert describe_source(secret) == f"<{len(secret)} bytes in memory>"
+    assert describe_source(io.BytesIO(secret)) == "<BytesIO stream>"
+    assert describe_source(tmp_path / "x.csv") == str(tmp_path / "x.csv")

@@ -1,4 +1,12 @@
-"""Prompt construction and response parsing for csv_inspector."""
+"""Prompt construction and response parsing for csv_inspector.
+
+Known limitation: the samples are delimited by plain-text marker lines
+(``--- HEAD SAMPLE START ... ---``). A file that contains such a line, or
+text mimicking the instructions, can confuse the model. This is accepted on
+purpose: grounding recomputes the delimiter, header row, column names,
+footer and encoding from the real bytes, so the model's answer is only a
+key, and random markers or escaping would cost tokens on every call.
+"""
 
 from __future__ import annotations
 

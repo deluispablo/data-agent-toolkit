@@ -183,6 +183,22 @@ recompute the delimiter, the header row and literal column names (or "no
 header"), and the verbatim footer from the sampled text. The exact rules
 are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
 
+### Known limitations
+
+- **The prompt's sample markers are plain text.** A file containing a line
+  such as `--- HEAD SAMPLE END ---`, or text that mimics the instructions,
+  can confuse the model. Grounding bounds the damage: positions, verbatim
+  text, delimiter and encoding are recomputed from the real bytes. Random
+  markers or escaping are not used, because they would cost prompt tokens
+  on every call.
+- **A forward-only stream is read at most 64 MiB past its head** to reach
+  its tail. A longer stream is inspected without a tail, so no footer is
+  reported (`covers_whole_file=False`; see the `Samples` docstring in
+  [`_sampling.py`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/src/csv_inspector/_sampling.py)). Paths, buffers and seekable streams always
+  read just the two windows.
+- **A header-less file with preamble lines** is not described:
+  `has_header=False` implies no lines to skip.
+
 ## Backends
 
 | Backend | Model service | Needs | Default |

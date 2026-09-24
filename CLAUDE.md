@@ -76,6 +76,7 @@ uv lock                                                   # after any pyproject.
 - `main_demo.py`: thin wrapper over CLI, default file `sample.csv`.
 - `sample.csv`: 8-line demo CSV for `main_demo.py`.
 - `docs/embedding.md`: host-app guide. Dependency, pass existing data, sync hosts (Flask, Django), async hosts (FastAPI), config + secrets, timeouts + errors, thread-safety, logging, non-goals.
+- `docs/using-the-result.md`: result to reader options. stdlib `csv` recipe (test run it), pandas (`skiprows` not `header`, `skipfooter` python engine), PySpark (option map, drop preamble/footer lines), encoding names Spark/BigQuery.
 - `LICENSE`: MIT.
 
 ## src/csv_inspector/ (library)
@@ -114,6 +115,7 @@ Public API = `__all__` only (test enforce). `_`-modules internal.
 - `test_embedding.py`: `__all__` surface, no `print`/`basicConfig` outside `cli.py` (AST), `NullHandler`, isolation.
 - `test_samples_catalog.py`: LLM-free checks over fixtures; fixtures byte-match generator.
 - `test_eval_samples.py`: scoring logic of `eval_samples.py`.
+- `test_docs_recipes.py`: exec stdlib recipe from `docs/using-the-result.md` vs fixtures.
 - Package imported as installed. Only `samples/`, `scripts/` on `sys.path`.
 
 ## samples/ (do not open)

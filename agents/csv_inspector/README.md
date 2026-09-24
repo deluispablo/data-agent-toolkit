@@ -182,10 +182,11 @@ column names ("Importe" as "Monto"), and drop blank lines or skip a footer
 line. The model's answer is therefore used as a key to recompute positions
 deterministically from the sampled text:
 
-- **Delimiter:** kept when it occurs in the head. A delimiter that never
-  occurs (e.g. `,` for a tab-separated file) is replaced by the usual
-  delimiter (`,`, `;`, tab, `|`) that splits the most head lines into the
-  same number of fields.
+- **Delimiter:** kept when it splits at least two head lines into the same
+  number (2 or more) of fields. Otherwise (e.g. `,` for a tab-separated
+  file, even one whose values hold a comma) it is replaced by the usual
+  delimiter (`,`, `;`, tab, `|`) that splits the most lines that way, when
+  exactly one does. Ties and one-column files keep the model's answer.
 - **Header:** the head line whose fields equal the inferred column names;
   failing that, the first line with as many fields as inferred columns,
   followed by a line of the same shape, that shares at least one name with

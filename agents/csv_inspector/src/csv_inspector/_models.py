@@ -19,11 +19,15 @@ from pydantic import (
     ValidationInfo,
     computed_field,
     field_validator,
+    model_validator,
 )
 
 # How models spell a tab or "no escape character" instead of the value itself.
 _TAB_SPELLINGS = frozenset({"\\t", "tab"})
 _NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
+
+# Characters that end a row: csv and pandas reject them as dialect characters.
+_LINE_BREAKS = frozenset({"\r", "\n"})
 
 ColumnType = Literal["string", "integer", "float", "date", "datetime", "boolean"]
 """The closed vocabulary of ``ColumnSchema.inferred_type`` values."""
@@ -162,6 +166,48 @@ class CSVInspectionResult(BaseModel):
         if len(value) != 1:
             raise ValueError(f"must be exactly one character, got {value!r}")
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _escaped_quote_means_doublequote(cls, data: object) -> object:
+        """Read an escape character equal to the quote character as doubled quotes.
+
+        Models describe RFC 4180 quoting (``""`` inside a quoted field) as
+        "the quote is escaped by a quote" and answer ``escapechar='"'``.
+        ``csv`` rejects that dialect, but the meaning is clear, so it is
+        mapped to ``escapechar=None, doublequote=True``.
+        """
+        if not isinstance(data, dict):
+            return data
+        escapechar = data.get("escapechar")
+        if escapechar is not None and escapechar == data.get("quotechar", '"'):
+            return {**data, "escapechar": None, "doublequote": True}
+        return data
+
+    @model_validator(mode="after")
+    def _check_dialect(self) -> CSVInspectionResult:
+        """Reject a dialect that ``csv`` and pandas cannot read.
+
+        Each character may be valid alone, but a line break cannot separate
+        or quote fields, and the delimiter, quote and escape characters must
+        all differ. Failing validation moves on to the fallback model instead
+        of breaking grounding and every reader downstream.
+        """
+        characters = {
+            "delimiter": self.delimiter,
+            "quotechar": self.quotechar,
+            "escapechar": self.escapechar,
+        }
+        for name, character in characters.items():
+            if character in _LINE_BREAKS:
+                raise ValueError(f"{name} cannot be a line break, got {character!r}")
+        if self.delimiter in (self.quotechar, self.escapechar):
+            raise ValueError(
+                f"delimiter {self.delimiter!r} must differ from quotechar and escapechar"
+            )
+        if self.escapechar == self.quotechar:
+            raise ValueError(f"escapechar and quotechar must differ, got {self.quotechar!r}")
+        return self
 
     @computed_field  # type: ignore[prop-decorator]
     @property

@@ -42,13 +42,12 @@ from csv_inspector import (
     inspect_csv,
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
+from csv_inspector._encoding import decode_sample, detect_encoding
 from csv_inspector._grounding import _extends_footer
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
 from csv_inspector._prompt import _extract_json_payload, build_prompt, parse_and_validate
 from csv_inspector._sampling import (
     MAX_SAMPLE_BYTES,
-    decode_sample,
-    detect_encoding,
     read_sample_bytes,
     read_tail_bytes,
 )

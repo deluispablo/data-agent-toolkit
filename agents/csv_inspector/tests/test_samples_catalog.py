@@ -16,11 +16,10 @@ from typing import Any
 import pytest
 
 from csv_inspector import InspectionFailedError, ModelInvocationError, inspect_csv
+from csv_inspector._encoding import decode_sample, detect_encoding
 from csv_inspector._sampling import (
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
-    decode_sample,
-    detect_encoding,
     read_sample_bytes,
     read_tail_bytes,
 )

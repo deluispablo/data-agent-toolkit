@@ -1,4 +1,4 @@
-"""Bounded byte sampling and text decoding for csv_inspector.
+"""Bounded byte sampling for csv_inspector.
 
 Reads only a small head window and, when the source is larger, a small tail
 window of a delimited source, never loading a file or stream into memory in
@@ -8,26 +8,26 @@ stream (seekable or not); see :data:`CSVSource`.
 
 from __future__ import annotations
 
-import codecs
 import errno
 import io
 import logging
 import os
-import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO, Protocol, TypeAlias, cast
 
-import chardet
-
+from ._encoding import (
+    LINE_BREAK,
+    canonical_codec_name,
+    code_unit_size,
+    decode_sample,
+    detect_encoding,
+    is_utf8_suffix,
+    tail_encoding,
+)
 from ._exceptions import EmptySampleError, FileSampleReadError
 
 logger = logging.getLogger(__name__)
-
-# The line breaks csv and pandas split rows on. str.splitlines() also splits on
-# form feeds, vertical tabs, U+001C-U+001E, U+0085, U+2028 and U+2029, which can
-# occur inside fields of dirty or latin-1-decoded data.
-_LINE_BREAK = re.compile(r"\r\n|\r|\n")
 
 DEFAULT_SAMPLE_BYTES: int = 4096
 DEFAULT_TAIL_BYTES: int = 4096
@@ -127,114 +127,6 @@ def _file_size(path: str | os.PathLike[str]) -> int:
         return Path(path).stat().st_size
     except OSError as exc:
         raise FileSampleReadError(f"Unable to stat '{path}': {exc}") from exc
-
-
-def detect_encoding(raw_bytes: bytes) -> str:
-    """Heuristically detect the character encoding of a byte sample.
-
-    Args:
-        raw_bytes: The raw byte sample to analyze.
-
-    Returns:
-        The detected encoding name, defaulting to ``"utf-8"`` when detection
-        is inconclusive or reports plain ASCII.
-    """
-    detection = chardet.detect(raw_bytes)
-    encoding: str = detection.get("encoding") or "utf-8"
-    if encoding.lower() == "ascii":
-        encoding = "utf-8"
-    return encoding
-
-
-# The top two bits of a UTF-8 continuation byte (10xxxxxx).
-_UTF8_CONTINUATION = 0x80
-
-
-def _is_utf8_suffix(raw_bytes: bytes) -> bool:
-    """Whether ``raw_bytes`` is valid UTF-8, ignoring a character cut at its start.
-
-    A tail window may start in the middle of a multi-byte character, so up
-    to three leading continuation bytes are skipped before decoding.
-    """
-    start = 0
-    while start < min(3, len(raw_bytes)) and raw_bytes[start] & 0xC0 == _UTF8_CONTINUATION:
-        start += 1
-    try:
-        raw_bytes[start:].decode("utf-8")
-    except UnicodeDecodeError:
-        return False
-    return True
-
-
-def _canonical_codec_name(encoding: str) -> str | None:
-    """Return Python's canonical codec name for ``encoding``, or ``None`` if unknown."""
-    try:
-        return codecs.lookup(encoding).name
-    except LookupError:
-        return None
-
-
-def _code_unit_size(encoding: str) -> int:
-    """Return the fixed code-unit width, in bytes, of ``encoding``.
-
-    UTF-16 and UTF-32 cannot be decoded from an arbitrary byte offset: a
-    window that starts on an odd byte turns every character into garbage.
-    Aligning the tail window to the code unit avoids that.
-
-    Args:
-        encoding: An encoding name, typically from :func:`detect_encoding`.
-
-    Returns:
-        ``2`` for UTF-16 variants, ``4`` for UTF-32 variants, ``1`` otherwise.
-    """
-    codec = _canonical_codec_name(encoding) or ""
-    if codec.startswith("utf-16"):
-        return 2
-    if codec.startswith("utf-32"):
-        return 4
-    return 1
-
-
-def _tail_encoding(head_bytes: bytes, encoding: str) -> str:
-    """Pick the codec for decoding a tail sample, which never carries a BOM.
-
-    BOM-dependent codecs (``utf-16``, ``utf-32``, ``utf-8-sig``) decide byte
-    order from a leading BOM. A tail sample has none, so decoding it with
-    the generic codec would silently assume the host's byte order. This
-    resolves the explicit, BOM-less variant from the head's BOM instead.
-
-    Args:
-        head_bytes: The raw head sample, which may start with a BOM.
-        encoding: The encoding detected for the head sample.
-
-    Returns:
-        An encoding name that decodes a BOM-less suffix of the same file.
-    """
-    codec = _canonical_codec_name(encoding)
-    if codec == "utf-8-sig":
-        return "utf-8"
-    if codec == "utf-16":
-        return "utf-16-be" if head_bytes.startswith(codecs.BOM_UTF16_BE) else "utf-16-le"
-    if codec == "utf-32":
-        return "utf-32-be" if head_bytes.startswith(codecs.BOM_UTF32_BE) else "utf-32-le"
-    return encoding
-
-
-def decode_sample(raw_bytes: bytes, encoding: str) -> str:
-    """Decode a byte sample using the given encoding, tolerating bad bytes.
-
-    Args:
-        raw_bytes: The raw byte sample to decode.
-        encoding: The encoding to use, typically from :func:`detect_encoding`.
-
-    Returns:
-        The decoded text, with undecodable bytes replaced rather than raising.
-    """
-    try:
-        return raw_bytes.decode(encoding, errors="replace")
-    except LookupError:
-        logger.warning("Unknown encoding '%s'; falling back to utf-8.", encoding)
-        return raw_bytes.decode("utf-8", errors="replace")
 
 
 class SupportsBinaryRead(Protocol):
@@ -532,7 +424,7 @@ def _trim_to_last_line_break(text: str) -> str:
     multi-byte encoding, possibly mid-character (decoded as U+FFFD). Text
     with no line break at all (one giant line) is kept unchanged.
     """
-    end = max((match.end() for match in _LINE_BREAK.finditer(text)), default=0)
+    end = max((match.end() for match in LINE_BREAK.finditer(text)), default=0)
     return text[:end] if end else text
 
 
@@ -585,14 +477,14 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         tail_text: str | None = None
         covers_whole_file = True
         if len(head_raw) == n_bytes:
-            tail_raw = reader.tail(len(head_raw), tail_bytes, _code_unit_size(encoding))
+            tail_raw = reader.tail(len(head_raw), tail_bytes, code_unit_size(encoding))
             if tail_raw:
-                if _canonical_codec_name(encoding) == "utf-8" and not _is_utf8_suffix(tail_raw):
+                if canonical_codec_name(encoding) == "utf-8" and not is_utf8_suffix(tail_raw):
                     # An ASCII head says nothing about bytes further down, e.g.
                     # a cp1252 name in the last rows: detect from both samples.
                     encoding = detect_encoding(head_raw + tail_raw)
                     head_text = decode_sample(head_raw, encoding)
-                tail_text = decode_sample(tail_raw, _tail_encoding(head_raw, encoding))
+                tail_text = decode_sample(tail_raw, tail_encoding(head_raw, encoding))
             elif tail_raw is None:
                 covers_whole_file = False
             elif tail_bytes == 0:

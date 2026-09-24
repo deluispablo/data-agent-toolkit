@@ -13,8 +13,8 @@ import logging
 import re
 from collections import Counter
 
+from ._encoding import LINE_BREAK, canonical_codec_name
 from ._models import CSVInspectionResult
-from ._sampling import _LINE_BREAK, _canonical_codec_name
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +41,7 @@ _MIN_AGREEING_LINES = 2
 
 def _split_lines(text: str) -> list[str]:
     """Split ``text`` into lines the way ``csv``/pandas count rows."""
-    lines = _LINE_BREAK.split(text)
+    lines = LINE_BREAK.split(text)
     if lines[-1] == "":
         lines.pop()
     return lines
@@ -194,8 +194,8 @@ def _ground_encoding(reported: str, detected: str) -> str:
     Returns:
         ``reported`` or ``detected``.
     """
-    reported_codec = _canonical_codec_name(reported)
-    detected_codec = _canonical_codec_name(detected)
+    reported_codec = canonical_codec_name(reported)
+    detected_codec = canonical_codec_name(detected)
     if detected_codec in _BOM_CODECS and reported_codec != detected_codec:
         return detected
     return reported if reported_codec is not None else detected

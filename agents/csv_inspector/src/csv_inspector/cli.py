@@ -273,10 +273,10 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
     print(json.dumps(result.model_dump(), indent=2, ensure_ascii=False))
 
     logger.info(
-        "Summary: encoding=%s delimiter=%r header_row=%d columns=%s confidence=%.2f",
+        "Summary: encoding=%s delimiter=%r header_row=%s columns=%s confidence=%.2f",
         result.encoding,
         result.delimiter,
-        result.header_row_index,
+        result.header_row_index if result.has_header else "none",
         [column.name for column in result.columns],
         result.confidence,
     )

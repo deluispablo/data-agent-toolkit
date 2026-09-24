@@ -328,10 +328,11 @@ CASES: list[SampleCase] = [
         expected={
             "encoding": "utf-8",
             "delimiter": ",",
+            "has_header": False,
             "header_row_index": None,
         },
-        notes="Ground truth is intentionally null: there is no real header row. The agent should either say so in "
-        "'notes' or return a low 'confidence', not confidently assert a fabricated header row.",
+        notes="There is no real header row: the agent should answer has_header=false and "
+        "header_row_index=null, not assert a fabricated header row.",
     ),
     SampleCase(
         filename="header_duplicated_mid_file.csv",

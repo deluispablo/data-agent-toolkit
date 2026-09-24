@@ -111,6 +111,62 @@ def _locate_header_row(
     return None
 
 
+def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
+    """Whether the first line holds the model's own example values, not names.
+
+    Small models asked about a header-less file still answer
+    ``has_header=true`` and invent names (``date``, ``amount``) for the
+    first row. That row is data when at least half of its fields, and at
+    least two, are among the example values the model gave for the same
+    column. Only the first line is checked: a header-less file with
+    preamble lines is not described.
+    """
+    lines = _split_lines(head_sample.lstrip("\ufeff"))
+    fields = _split_fields(lines[0], result.delimiter, result.quotechar) if lines else None
+    if not fields or len(fields) != len(result.columns):
+        return False
+    matches = sum(
+        1
+        for field, column in zip(fields, result.columns, strict=True)
+        if field.strip() and field.strip() in {value.strip() for value in column.example_values}
+    )
+    return matches >= max(_MIN_AGREEING_LINES, (len(fields) + 1) // 2)
+
+
+def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
+    """Return the header fields to correct: row index, names, or "no header".
+
+    A header-less file keeps its positional column names. A model that
+    answers a header at row 0 whose fields are its own example values is
+    corrected to no header row (see :func:`_first_row_is_data`).
+    """
+    if not result.has_header:
+        return {}
+    header = _locate_header_row(result, head_sample)
+    if header is None:
+        if result.header_row_index != 0 or not _first_row_is_data(result, head_sample):
+            return {}
+        logger.info("The first row holds data, not column names: reporting no header row.")
+        return {
+            "has_header": False,
+            "header_row_index": None,
+            "columns": [
+                column.model_copy(update={"name": f"column_{number}"})
+                for number, column in enumerate(result.columns, start=1)
+            ],
+        }
+    updates: dict[str, object] = {}
+    header_row_index, names = header
+    if header_row_index != result.header_row_index:
+        updates["header_row_index"] = header_row_index
+    if names != [column.name for column in result.columns]:
+        updates["columns"] = [
+            column.model_copy(update={"name": name})
+            for column, name in zip(result.columns, names, strict=True)
+        ]
+    return updates
+
+
 def _locate_footer_lines(
     footer_lines: list[str], end_of_file: str, delimiter: str, quotechar: str
 ) -> list[str] | None:
@@ -306,16 +362,7 @@ def ground_in_samples(
         # Header and footer grounding split fields with the grounded delimiter.
         result = result.model_copy(update={"delimiter": delimiter})
 
-    header = _locate_header_row(result, head_sample)
-    if header is not None:
-        header_row_index, names = header
-        if header_row_index != result.header_row_index:
-            updates["header_row_index"] = header_row_index
-        if names != [column.name for column in result.columns]:
-            updates["columns"] = [
-                column.model_copy(update={"name": name})
-                for column, name in zip(result.columns, names, strict=True)
-            ]
+    updates.update(_ground_header(result, head_sample))
 
     if tail_sample is None and not covers_whole_file:
         # The head's last lines are mid-file data, never a footer.

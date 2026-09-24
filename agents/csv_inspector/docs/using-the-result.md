@@ -7,6 +7,10 @@ any error**, so read the rules below before writing your own.
 
 ## Rules that apply to every reader
 
+- **`has_header=False` means the first row is data.** `header_row_index`
+  is then `None` and the column names are positional (`column_1`, ...):
+  read with "no header" and name the columns yourself. A header-less file
+  with preamble lines above its data is not described (known limitation).
 - **`header_row_index` is a physical line count.** It is the number of
   lines before the header, blank lines included. Skip that many *lines*
   before parsing. Do not pass it as a "header row" option: pandas'
@@ -39,9 +43,9 @@ from csv_inspector import CSVInspectionResult
 
 
 def read_rows(path: Path, result: CSVInspectionResult) -> Iterator[list[str]]:
-    """Yield the header row, then every data row, skipping preamble and footer."""
+    """Yield the header row (if any), then every data row, skipping preamble and footer."""
     with path.open(encoding=result.encoding, newline="") as file:
-        for _ in range(result.header_row_index):
+        for _ in range(result.header_row_index or 0):  # None: header-less file
             file.readline()
         reader = csv.reader(
             file,
@@ -74,13 +78,16 @@ df = pd.read_csv(
     quotechar=result.quotechar,
     escapechar=result.escapechar,
     doublequote=result.doublequote,
-    skiprows=result.header_row_index,  # physical lines: NOT header=
-    header=0,
+    skiprows=result.header_row_index or 0,  # physical lines: NOT header=
+    header=0 if result.has_header else None,
+    names=None if result.has_header else [column.name for column in result.columns],
     skipfooter=result.footer_rows_to_skip,
     engine="python" if result.footer_rows_to_skip else "c",
 )
 ```
 
+- A header-less file (`has_header=False`) is read with `header=None`
+  and the positional names from `result.columns`.
 - Use `skiprows=result.header_row_index` with `header=0`. An integer
   `skiprows` counts physical lines, blank ones included, which matches
   `header_row_index`. `header=result.header_row_index` does not: with the
@@ -117,11 +124,11 @@ options = {
     "sep": result.delimiter,
     "quote": result.quotechar,
     "escape": escape,
-    "header": True,
+    "header": result.has_header,  # False: Spark names the columns _c0, _c1, ...
 }
 ```
 
-**No preamble or footer** (`header_row_index == 0` and
+**No preamble or footer** (`header_row_index` is `0` or `None` and
 `footer_rows_to_skip == 0`): read the file directly.
 
 ```python
@@ -142,7 +149,7 @@ UTF-8, and each record must fit on one physical line (there is no
 ```python
 lines = spark.sparkContext.textFile(path)
 total = lines.count()
-first, end = result.header_row_index, total - result.footer_rows_to_skip
+first, end = result.header_row_index or 0, total - result.footer_rows_to_skip
 kept = lines.zipWithIndex().filter(lambda pair: first <= pair[1] < end).keys()
 df = spark.read.options(**options).csv(kept)
 ```

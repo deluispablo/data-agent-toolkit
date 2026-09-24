@@ -91,11 +91,12 @@ markdown, no backticks) with exactly this shape:
   "quotechar": "<character used to quote fields, or null if fields are never quoted>",
   "escapechar": "<"\\\\" if quotes inside fields are written as \\", otherwise null>",
   "doublequote": <true if quotes inside fields are written as "", false if as \\">,
-  "header_row_index": <0-based index of the row containing the real column names>,
+  "has_header": <true if a row holds the column names, false if the first row is already data>,
+  "header_row_index": <0-based index of the column-name row, or null if has_header is false>,
   "footer_lines": ["<every footer line after the last data row, in file order>", "..."],
   "columns": [
     {{
-      "name": "<column name copied character for character from the header row>",
+      "name": "<name copied character for character from the header row; column_N if none>",
       "inferred_type": "<{_COLUMN_TYPE_CHOICES}>",
       "nullable": <true|false>,
       "example_values": ["<at most 3 raw values copied from this column>"]
@@ -108,7 +109,10 @@ markdown, no backticks) with exactly this shape:
 HEADER (start of the file): lines before the real column-name row, such as \
 export banners, comments (e.g. starting with '#') or blank lines, are \
 preamble. Do not list them anywhere; just count them: "header_row_index" is \
-the 0-based index of the column-name row, i.e. the number of preamble lines.
+the 0-based index of the column-name row, i.e. the number of preamble lines. \
+If the file has no column-name row at all (its first line is already a data \
+record, e.g. "17,red,3.5"), answer "has_header": false, \
+"header_row_index": null, and name the columns column_1, column_2, and so on.
 
 FOOTER (end of the file): check {file_end} independently of the header. \
 A data row holds a real record, with values like the rows above it (a date \

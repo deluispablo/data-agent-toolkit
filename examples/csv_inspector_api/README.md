@@ -34,6 +34,33 @@ library's `Settings`: the API never calls `csv_inspector.load_settings()`.
 
 To be documented with the endpoints (`POST /inspect`, `GET /health`).
 
+## Errors
+
+Every error from `csv-inspector` is answered by one exception handler
+([`errors.py`](src/csv_inspector_api/errors.py)) with an RFC 9457-style
+body and `Content-Type: application/problem+json`:
+
+```json
+{"type": "about:blank", "title": "Inspection timed out", "status": 504,
+ "detail": "...", "error": "InspectionTimeoutError"}
+```
+
+`error` is the exception class name, so clients can branch on it without
+parsing `detail`.
+
+| exception | status | client action |
+|---|---|---|
+| `EmptySampleError`, `FileSampleReadError` | 422 | fix the input |
+| `InspectionTimeoutError` (checked **before** `InspectionFailedError`, its parent) | 504 | retry with a larger `timeout_seconds` or smaller windows |
+| `CredentialsNotConfiguredError`, `BackendConfigurationError` | 503 | none: the deployment is misconfigured; retrying elsewhere may help |
+| `InspectionFailedError`, `ModelInvocationError`, `ResponseParsingError`, `SchemaValidationError` | 502 | retry, maybe with another model |
+| any other `CSVInspectorError` | 500 | report it |
+
+A misconfigured backend is a 503, not a 500: the request was fine and
+another instance may be configured correctly. `ValueError` and `TypeError`
+from the library are bugs in this host, not domain failures: they are not
+handled and surface as FastAPI's plain 500.
+
 ## Checks
 
 ```bash

@@ -29,7 +29,8 @@ class ApiSettings(BaseSettings):
         cloud_model: Primary cloud model; ``None`` keeps the library default.
         cloud_fallback_model: Fallback cloud model; ``None`` keeps the library default.
         gemini_api_key: Gemini Developer API key, for the cloud backend only.
-        google_cloud_project: Vertex AI project, for the cloud backend only.
+        google_cloud_project: Vertex AI project, for the cloud backend, and project
+            of the Cloud Storage client of ``POST /inspect/gcs``.
         google_cloud_location: Vertex AI location, for the cloud backend only.
         default_timeout_seconds: Time budget of one inspection request.
         max_timeout_seconds: Largest time budget a request may ask for.

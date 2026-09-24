@@ -31,6 +31,8 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from .sources.gcs import GcsNotInstalledError
+
 logger = logging.getLogger(__name__)
 
 PROBLEM_MEDIA_TYPE = "application/problem+json"
@@ -88,6 +90,7 @@ _RULES = (
 )
 _UPLOAD_TOO_LARGE_TITLE = "Upload too large"
 _OVERRIDE_DISABLED_TITLE = "Backend override disabled"
+_GCS_UNAVAILABLE_TITLE = "Cloud Storage unavailable on the server"
 _FALLBACK = _Rule((CSVInspectorError,), 500, "Inspection error", logging.ERROR)
 
 
@@ -170,6 +173,12 @@ async def _handle_override_disabled(request: Request, exc: Exception) -> JSONRes
     return problem_response(403, _OVERRIDE_DISABLED_TITLE, exc)
 
 
+async def _handle_gcs_not_installed(request: Request, exc: Exception) -> JSONResponse:
+    """Answer ``POST /inspect/gcs`` with 503 when the ``[gcs]`` extra is missing."""
+    logger.error("%s %s failed with 503: %s", request.method, request.url.path, exc)
+    return problem_response(503, _GCS_UNAVAILABLE_TITLE, exc)
+
+
 def register_exception_handlers(app: FastAPI) -> None:
     """Install the API's error handlers on ``app``.
 
@@ -179,6 +188,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(CSVInspectorError, _handle_inspector_error)
     app.add_exception_handler(UploadTooLargeError, _handle_upload_too_large)
     app.add_exception_handler(BackendOverrideDisabledError, _handle_override_disabled)
+    app.add_exception_handler(GcsNotInstalledError, _handle_gcs_not_installed)
 
 
 _VALIDATION_ERROR_SCHEMA: dict[str, Any] = {

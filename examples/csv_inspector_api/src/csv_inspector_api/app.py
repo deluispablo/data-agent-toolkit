@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from collections.abc import Awaitable, Callable
+import logging
+from collections.abc import AsyncIterator, Awaitable, Callable
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
@@ -11,6 +13,9 @@ from .request_id import RequestIdMiddleware
 from .routes import health
 from .routes.inspect import build_inspect_router
 from .settings import ApiSettings
+from .sources.gcs import GcsClient, GcsNotInstalledError, create_client
+
+logger = logging.getLogger(__name__)
 
 # The example is never built or installed, so there is no package metadata to
 # read the version from: keep it in step with pyproject.toml by hand.
@@ -36,10 +41,29 @@ AsyncModelInvoker = Callable[[str, str], Awaitable[str]]
 """Async ``(prompt, model) -> raw response`` callable, as ``ainspect_csv`` accepts."""
 
 
+@asynccontextmanager
+async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
+    """Build the Cloud Storage client once, at startup, unless one was injected.
+
+    A failure does not stop the API, whose other routes need no Cloud
+    Storage: ``POST /inspect/gcs`` tries again on each request and answers
+    with the error's problem response until it succeeds.
+    """
+    if app.state.gcs_client is None:
+        try:
+            app.state.gcs_client = create_client(app.state.settings.google_cloud_project)
+        except GcsNotInstalledError as exc:
+            logger.info("POST /inspect/gcs disabled: %s", exc)
+        except Exception as exc:  # noqa: BLE001 - e.g. DefaultCredentialsError; retried per request
+            logger.warning("no Cloud Storage client at startup: %s: %s", type(exc).__name__, exc)
+    yield
+
+
 def create_app(
     settings: ApiSettings | None = None,
     *,
     model_invoker: AsyncModelInvoker | None = None,
+    gcs_client: GcsClient | None = None,
 ) -> FastAPI:
     """Create the FastAPI application.
 
@@ -51,10 +75,13 @@ def create_app(
         model_invoker: Replacement for the built-in model client, forwarded to
             ``csv_inspector.ainspect_csv``. A test seam: with it, requests never
             reach Ollama or a cloud API.
+        gcs_client: Cloud Storage client of ``POST /inspect/gcs``. Defaults to
+            a ``google.cloud.storage.Client`` with Application Default
+            Credentials, built at startup (the ``[gcs]`` extra). A test seam too.
 
     Returns:
-        The application, with ``settings``, ``library_settings`` and
-        ``model_invoker`` stored on ``app.state``.
+        The application, with ``settings``, ``library_settings``,
+        ``model_invoker`` and ``gcs_client`` stored on ``app.state``.
     """
     settings = settings if settings is not None else ApiSettings()
     app = FastAPI(
@@ -63,10 +90,12 @@ def create_app(
         summary="Infer the dialect, header, footer and schema of an uploaded CSV/TSV file.",
         description=_DESCRIPTION,
         openapi_tags=_TAGS,
+        lifespan=_lifespan,
     )
     app.state.settings = settings
     app.state.library_settings = settings.to_library_settings()
     app.state.model_invoker = model_invoker
+    app.state.gcs_client = gcs_client
     register_exception_handlers(app)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(build_inspect_router(settings))

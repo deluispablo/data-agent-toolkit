@@ -17,6 +17,11 @@ dependencies = [
     "pydantic-settings>=2.0,<3",
 ]
 
+[project.optional-dependencies]
+# POST /inspect/gcs: sample a gs:// object with ranged reads. Optional, so the
+# API imports and serves every other route without it.
+gcs = ["google-cloud-storage>=2.16,<4"]
+
 [tool.uv.sources]
 # Always the agent's current source in this repository, never a release tag.
 csv-inspector = { workspace = true }
@@ -41,6 +46,12 @@ warn_unreachable = true
 mypy_path = "src,tests"
 explicit_package_bases = true
 files = ["src", "tests", "main_demo.py"]
+
+[[tool.mypy.overrides]]
+# google-cloud-storage ships no type information: the API types what it uses
+# with the protocols in sources/gcs.py.
+module = ["google.cloud.storage", "google.cloud.storage.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

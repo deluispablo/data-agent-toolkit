@@ -59,15 +59,16 @@ variables (all optional). To use a file, copy
 | `CSV_INSPECTOR_API_CLOUD_MODEL` | library default | primary cloud model |
 | `CSV_INSPECTOR_API_CLOUD_FALLBACK_MODEL` | library default | fallback cloud model |
 | `CSV_INSPECTOR_API_GEMINI_API_KEY` | unset | Gemini Developer API key; never commit it |
-| `CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT` | unset | Vertex AI project |
+| `CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT` | unset | Vertex AI project; also the project of the Cloud Storage client (unset: inferred from the credentials) |
 | `CSV_INSPECTOR_API_GOOGLE_CLOUD_LOCATION` | unset | Vertex AI location |
 | `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request |
 | `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
 | `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` | `268435456` (256 MiB) | larger uploads get `413` |
 | `CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE` | `false` | let requests switch to `backend=api` (paid) or pick cloud models; see [Per-request overrides](#per-request-overrides) |
 
-The `api` backend needs the agent's `[cloud]` extra, which
-`uv sync --all-extras` installs.
+The `api` backend needs the agent's `[cloud]` extra, and
+`POST /inspect/gcs` the example's `[gcs]` extra; `uv sync --all-extras`
+installs both.
 
 ### Docker
 
@@ -87,7 +88,8 @@ docker run -p 8000:8000 -e CSV_INSPECTOR_API_LLM_BACKEND=api -e CSV_INSPECTOR_AP
 
 - `python:3.14-slim`, dependencies installed with `uv sync --frozen --no-dev
   --package csv-inspector-api` from `uv.lock`, plus the agent's locked
-  `[cloud]` extra (`google-genai`); uv itself stays in the build stage.
+  `[cloud]` extra (`google-genai`) and the example's `[gcs]` extra
+  (`google-cloud-storage`); uv itself stays in the build stage.
 - Runs as a non-root user (uid 10001), serves on port 8000.
 - The root [`.dockerignore`](../../.dockerignore) keeps `.git`, virtual
   environments, caches and the agent's sample fixtures out of the context.
@@ -240,9 +242,61 @@ reader, which cancels the pending wait and fails the blocked `read()` with
 an `OSError`: the worker thread returns instead of waiting for a chunk that
 will never come. The wait for one chunk is also bounded by `timeout_seconds`.
 
+### `POST /inspect/gcs`
+
+Inspect an object in Cloud Storage without downloading it. The body names
+the object, and optionally pins a generation:
+
+```bash
+curl -H 'Content-Type: application/json' -d '{"uri": "gs://my-bucket/exports/sales.csv"}' \
+  -D - "localhost:8000/inspect/gcs?timeout_seconds=120"
+```
+
+```json
+{"uri": "gs://my-bucket/exports/sales.csv", "generation": 1718000000000000}
+```
+
+- `uri` must match `^gs://[a-z0-9][a-z0-9._-]{1,61}[a-z0-9]/.+$`: a bucket
+  and an object name; anything else is a `422` before Cloud Storage is
+  called. `generation` (optional, `>= 1`) reads that version of the object
+  instead of the live one.
+- The query parameters, overrides guard and response body are those of
+  `POST /inspect`: clients need not care where the bytes came from. The
+  object's size and the generation read come back in the `X-Object-Size`
+  and `X-Object-Generation` response headers.
+- Needs the example's optional `[gcs]` extra (`google-cloud-storage`).
+  Without it the API still starts and serves every other route, and this
+  one answers `503` (`GcsNotInstalledError`) with the install hint
+  `pip install 'csv-inspector-api[gcs]'`.
+
+**Credentials.** The Cloud Storage client is built once, when the app
+starts, with [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials)
+and the project of `CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT` when set. Locally:
+
+```bash
+gcloud auth application-default login
+```
+
+If the client cannot be built at startup (no extra, no credentials), the
+API starts anyway and each `POST /inspect/gcs` tries again, so fixing the
+deployment needs no restart. Tests inject a fake client instead:
+`create_app(settings, gcs_client=...)`.
+
+**Ranged reads only.** [`sources/gcs.py`](src/csv_inspector_api/sources/gcs.py)
+opens the object with `blob.open("rb")`, a seekable `BlobReader`, and hands
+it to the library like any seekable stream; the object is never downloaded
+as a whole. The reader's chunk size is the larger sampling window rounded
+up to 256 KiB (the Cloud Storage unit, not the SDK's 40 MiB default), so
+whatever the object's size, one request costs a metadata `GET` (the size,
+learnt on the first `seek`) and one ranged `GET` per window: at most
+512 KiB read. The route checks the reader is readable and seekable, since
+the library would consume a forward-only stream instead of seeking, and
+closes it in a `finally`. The blocking reads run in the library's sampling
+worker thread, never on the event loop.
+
 ### Per-request overrides
 
-Both inspection routes take `backend`, `model` and `fallback_model` query
+All inspection routes take `backend`, `model` and `fallback_model` query
 parameters, forwarded to `ainspect_csv` for that request only:
 
 ```bash
@@ -336,6 +390,7 @@ parsing `detail`.
 |---|---|---|
 | `BackendOverrideDisabledError` (raised by the API) | 403 | drop `backend=api` or the model overrides, or ask the operator |
 | `UploadTooLargeError` (raised by the API) | 413 | send a smaller file |
+| `GcsNotInstalledError` (raised by the API) | 503 | none: install the `[gcs]` extra on the server |
 | `EmptySampleError`, `FileSampleReadError` | 422 | fix the input |
 | `InspectionTimeoutError` (checked **before** `InspectionFailedError`, its parent) | 504 | retry with a larger `timeout_seconds` or smaller windows |
 | `CredentialsNotConfiguredError`, `BackendConfigurationError` | 503 | none: the deployment is misconfigured; retrying elsewhere may help |
@@ -361,6 +416,10 @@ The API follows the [embedding guide](../../agents/csv_inspector/docs/embedding.
   memory bounded by the sampling windows (guide §2), and releases the
   reader's worker thread when the request ends, since the library cannot
   cancel a blocked read itself (guide §7).
+- **Cloud Storage object passed as a seekable stream.** `/inspect/gcs`
+  passes the SDK's `BlobReader`: the library samples it from its current
+  position and restores it, exactly as for a local file, so only the two
+  windows travel over the network (guide §2).
 - **Injected settings.** `ApiSettings.to_library_settings()` builds the
   library's `Settings` once per app; the API never calls
   `csv_inspector.load_settings()`, so the library never reads the
@@ -392,7 +451,11 @@ embeds the agent:
   64 KiB), and cancels a request mid-body to check that the blocked worker
   thread is released by the reader, not by its timeout.
 - `tests/test_overrides.py` checks that the requested models reach the fake
-  invoker and that cost-raising overrides are a 403 unless allowed, on both routes;
+  invoker and that cost-raising overrides are a 403 unless allowed;
+  `tests/test_inspect_gcs.py` reads a 4 MiB object through a fake Cloud
+  Storage client whose reader records every `read` and `seek`: only the
+  head and tail windows are read, the reader is closed, `generation` is
+  forwarded, and no `google.*` import sits at module level;
   `tests/test_request_id.py` checks the header and, with the filter on
   `caplog`'s handler, the id on the API's and the library's records.
 - `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library
@@ -401,7 +464,3 @@ embeds the agent:
   or `logging.basicConfig()` outside `main_demo.py`, and no import outside
   the library's public API.
 - Coverage floor: 90 % (`[tool.coverage.report]` in `pyproject.toml`), enforced in CI.
-
-## Roadmap
-
-- `POST /inspect/gcs`: inspect a `gs://` object with ranged reads only.

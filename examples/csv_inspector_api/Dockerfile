@@ -22,10 +22,11 @@ WORKDIR /repo
 COPY . .
 
 # Exactly the locked dependencies of the example, the agent built as a wheel
-# (not editable, so the runtime stage needs no source tree). The second sync
+# (not editable, so the runtime stage needs no source tree), with its [gcs]
+# extra (google-cloud-storage) for POST /inspect/gcs. The second sync
 # adds the agent's locked [cloud] extra (google-genai) that the api backend
 # needs, keeping what the first one installed (--inexact).
-RUN uv sync --frozen --no-dev --no-editable --package csv-inspector-api \
+RUN uv sync --frozen --no-dev --no-editable --package csv-inspector-api --extra gcs \
  && uv sync --frozen --no-dev --no-editable --package csv-inspector --extra cloud --inexact
 
 

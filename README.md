@@ -20,7 +20,7 @@ add as a dependency to your own application or API.
 Using an agent in another project:
 
 ```bash
-pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.2.0#subdirectory=agents/csv_inspector"
+pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.3.0#subdirectory=agents/csv_inspector"
 ```
 
 ```python

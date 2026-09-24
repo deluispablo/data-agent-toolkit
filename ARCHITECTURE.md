@@ -128,7 +128,8 @@ An example is **not** a distribution:
 - no `[build-system]` and no `[project.scripts]`: it is never built, so it
   has no wheel, sdist or console script;
 - no release tag, no PyPI upload, no SemVer contract and no `CHANGELOG.md`:
-  it may change in any commit;
+  it may change in any commit, and its changes are tracked through pull
+  requests only (the repository has no root `CHANGELOG.md` either);
 - no `scripts/smoke_test_installed.py`: there is no installed artefact to
   smoke-test.
 

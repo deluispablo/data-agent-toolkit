@@ -1,34 +1,71 @@
 # csv_inspector_api
 
 A small FastAPI service that embeds the
-[`csv-inspector`](../../agents/csv_inspector/README.md) agent. It is an
-**example**: executable documentation of how to put the agent behind HTTP,
-meant to be read and copied. It is never built, tagged or published (see
-[Examples](../../ARCHITECTURE.md#examples)).
+[`csv-inspector`](../../agents/csv_inspector/README.md) agent: upload a
+CSV or TSV file, get back its encoding, dialect, header row, footer lines
+and a preliminary column schema.
 
-> **Status: in progress.** `POST /inspect` and `GET /health` work; the demo
-> and the full README arrive with the rest of the milestone.
+## What this is (and is not)
+
+- **An example**: executable documentation of how to put the agent behind
+  HTTP, meant to be read and copied. It is small and over-documented on
+  purpose.
+- **Not a product.** It is never built, tagged or published, has no
+  version contract and no `CHANGELOG`: it changes through pull requests
+  only (see [Examples](../../ARCHITECTURE.md#examples)). It has no
+  authentication, rate limiting or multi-tenancy; add those in your own
+  host.
+- **Free by default.** Inspections run on a local Ollama. Nothing calls a
+  cloud API unless `CSV_INSPECTOR_API_LLM_BACKEND=api` is set.
 
 ## Run
 
-From the repository root, after `uv sync --all-packages --all-extras`:
+From the repository root, after `uv sync --all-packages --all-extras`, with
+`ollama serve` running and `qwen2.5-coder:7b` and `qwen2.5-coder:3b` pulled.
+
+**Demo.** Starts the API in-process, waits for `/health`, uploads the
+agent's [`sample.csv`](../../agents/csv_inspector/sample.csv), prints the
+result and stops:
+
+```bash
+uv run examples/csv_inspector_api/main_demo.py
+```
+
+Flags mirror the `csv-inspector` CLI: `--file`, `--backend`, `--model`,
+`--timeout`, `--log-level`, `--env-file` / `--no-env-file` (default: read
+`./.env` if it exists), plus `--port` and `--keep-running` to leave the
+server up for `curl` or <http://127.0.0.1:8000/docs>.
+
+**Server.** Serve the application factory with uvicorn:
 
 ```bash
 cd examples/csv_inspector_api
 uv run uvicorn --app-dir src csv_inspector_api.app:create_app --factory
 ```
 
-Then open <http://127.0.0.1:8000/docs>. Inspections run on a local Ollama
-by default (`ollama serve`, with `qwen2.5-coder:7b` and `qwen2.5-coder:3b`
-pulled).
+Then open <http://127.0.0.1:8000/docs>.
 
-## Configuration
+**Configuration.** The API reads only `CSV_INSPECTOR_API_*` environment
+variables (all optional). To use a file, copy
+[`.env.example`](.env.example) to `.env` and add `--env-file .env` to the
+`uvicorn` command.
 
-The API reads `CSV_INSPECTOR_API_*` environment variables; every one is
-listed with its default in [`.env.example`](.env.example). To use a file,
-copy it to `.env` and add `--env-file .env` to the `uvicorn` command.
-`ApiSettings.to_library_settings()` is the only place that builds the
-library's `Settings`: the API never calls `csv_inspector.load_settings()`.
+| variable | default | meaning |
+|---|---|---|
+| `CSV_INSPECTOR_API_LLM_BACKEND` | `local` | `local` (Ollama) or `api` (Gemini) |
+| `CSV_INSPECTOR_API_OLLAMA_MODEL` | `qwen2.5-coder:7b` | primary local model |
+| `CSV_INSPECTOR_API_OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:3b` | fallback local model |
+| `CSV_INSPECTOR_API_CLOUD_MODEL` | library default | primary cloud model |
+| `CSV_INSPECTOR_API_CLOUD_FALLBACK_MODEL` | library default | fallback cloud model |
+| `CSV_INSPECTOR_API_GEMINI_API_KEY` | unset | Gemini Developer API key; never commit it |
+| `CSV_INSPECTOR_API_GOOGLE_CLOUD_PROJECT` | unset | Vertex AI project |
+| `CSV_INSPECTOR_API_GOOGLE_CLOUD_LOCATION` | unset | Vertex AI location |
+| `CSV_INSPECTOR_API_DEFAULT_TIMEOUT_SECONDS` | `60` | time budget of a request |
+| `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
+| `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES` | `268435456` (256 MiB) | larger uploads get `413` |
+
+The `api` backend needs the agent's `[cloud]` extra, which
+`uv sync --all-extras` installs.
 
 ## Endpoints
 
@@ -60,12 +97,17 @@ Upload the file as `multipart/form-data` in the field `file`:
 curl -F file=@../../agents/csv_inspector/sample.csv "localhost:8000/inspect?timeout_seconds=120"
 ```
 
+Abridged output of a live run with `qwen2.5-coder:7b`:
+
 ```json
-{"encoding": "utf-8", "delimiter": ";", "quotechar": "\"", "escapechar": null,
+{"encoding": "utf-8", "delimiter": ";", "quotechar": "\"", "escapechar": "\\",
  "doublequote": true, "header_row_index": 2, "footer_lines": [],
  "columns": [{"name": "Fecha", "inferred_type": "date", "nullable": false,
-              "example_values": ["2024-01-15", "2024-01-16"]}, "..."],
- "confidence": 0.9, "notes": "..."}
+              "example_values": ["2024-01-15", "2024-01-16", "..."]},
+             {"name": "Cliente", "inferred_type": "string", "nullable": false,
+              "example_values": ["García, S.L.", "Muñoz Hermanos", "..."]},
+             "..."],
+ "confidence": 1.0, "notes": null, "footer_rows_to_skip": 0}
 ```
 
 The response is the library's `CSVInspectionResult`, unchanged.
@@ -116,13 +158,51 @@ another instance may be configured correctly. `ValueError` and `TypeError`
 from the library are bugs in this host, not domain failures: they are not
 handled and surface as FastAPI's plain 500.
 
-## Checks
+## How it embeds csv-inspector
+
+The API follows the [embedding guide](../../agents/csv_inspector/docs/embedding.md):
+
+- **Async call on the event loop.** The route awaits `ainspect_csv`, never
+  the blocking `inspect_csv` (guide §4).
+- **Seekable upload passed as is.** `UploadFile.file` is a spooled temporary
+  file: the library samples its head and tail and restores the position.
+  No copy, no temporary file of ours (guide §2).
+- **Injected settings.** `ApiSettings.to_library_settings()` builds the
+  library's `Settings` once per app; the API never calls
+  `csv_inspector.load_settings()`, so the library never reads the
+  environment (guide §5).
+- **One time budget per request.** `timeout_seconds` covers the primary and
+  the fallback model together, bounded by `CSV_INSPECTOR_API_MAX_TIMEOUT_SECONDS`
+  (guide §6).
+- **Exception mapping in one place.** One handler maps every
+  `CSVInspectorError` to a status and a problem body; routes catch nothing
+  (guide §6, extended in [Errors](#errors)).
+
+## Tests
 
 ```bash
 uv run --directory examples/csv_inspector_api mypy
 uv run --directory examples/csv_inspector_api pytest --cov
 ```
 
-The tests are hermetic: the app gets a fake model invoker through
-`create_app(model_invoker=...)`, and any network connection attempt fails
-the test.
+The tests are hermetic and double as a reference for testing a host that
+embeds the agent:
+
+- `create_app(settings, model_invoker=...)` takes a fake async model
+  ([`tests/fakes.py`](tests/fakes.py)) that answers, fails, stalls or
+  answers garbage. No Ollama, no credentials.
+- An `httpx.AsyncClient` over `httpx.ASGITransport` calls the app
+  in-process, and a `conftest.py` guard fails any network connection.
+- `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library
+  exception fails the suite until it is mapped to a status.
+- `tests/test_embedding_rules.py` checks the source with `ast`: no `print()`
+  or `logging.basicConfig()` outside `main_demo.py`, and no import outside
+  the library's public API.
+- Coverage floor: 90 % (`[tool.coverage.report]` in `pyproject.toml`), enforced in CI.
+
+## Roadmap
+
+- `POST /inspect/raw`: an `application/octet-stream` body streamed to the
+  library with bounded memory, rejected before it is received when too large.
+- Per-request backend and model override, request-id logging, a Dockerfile.
+- `POST /inspect/gcs`: inspect a `gs://` object with ranged reads only.

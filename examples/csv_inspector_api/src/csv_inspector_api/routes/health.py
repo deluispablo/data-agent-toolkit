@@ -59,7 +59,10 @@ async def health(
     free. With ``probe=true`` the library's own readiness check runs, the one
     every inspection runs first; a failure is a 503 through the error handler.
     It is skipped when the app runs with a custom model invoker, as the
-    library skips it then.
+    library skips it then. It makes no network call, so it does not prove
+    Ollama is reachable: for the ``local`` backend it always passes. Use
+    ``/health`` as the liveness probe and ``/health?probe=true`` as the
+    readiness or startup probe. No API key, project or location is reported.
     """
     settings: Settings = request.app.state.library_settings
     backend = settings.llm_backend

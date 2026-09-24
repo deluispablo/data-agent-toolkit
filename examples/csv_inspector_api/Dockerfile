@@ -10,7 +10,27 @@
 #
 # The local backend needs an Ollama server outside the container:
 #
-#   docker run -p 8000:8000 \n#       -e CSV_INSPECTOR_API_OLLAMA_HOST=http://host.docker.internal:11434 csv-inspector-api
+#   docker run -p 8000:8000 \
+#       -e CSV_INSPECTOR_API_OLLAMA_HOST=http://host.docker.internal:11434 csv-inspector-api
+#
+# The API's loggers have no handler in the container (uvicorn's own access
+# log is on), so request ids are not printed; to get them, pass uvicorn a
+# --log-config dictConfig whose handler has a RequestIdFilter (see
+# request_id.py). CI builds this image on every pull request, checks it is
+# under 300 MB and that GET /health answers; it is never pushed.
+#
+# Cloud Run (untested in CI): `gcloud run deploy --source .` only builds a
+# Dockerfile at the root of the uploaded source, so copy it there. From the
+# repository root, with the key in Secret Manager as gemini-api-key:
+#
+#   cp examples/csv_inspector_api/Dockerfile Dockerfile && gcloud run deploy \
+#     csv-inspector-api --source . --port 8000 \
+#     --set-env-vars CSV_INSPECTOR_API_LLM_BACKEND=api \
+#     --set-secrets CSV_INSPECTOR_API_GEMINI_API_KEY=gemini-api-key:latest \
+#     --no-allow-unauthenticated; rm Dockerfile
+#
+# The API has no authentication of its own: --no-allow-unauthenticated keeps
+# it behind Cloud Run IAM.
 
 FROM python:3.14-slim AS build
 

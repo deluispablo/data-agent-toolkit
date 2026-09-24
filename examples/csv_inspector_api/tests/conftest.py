@@ -1,4 +1,19 @@
-"""Shared fixtures: hermetic settings, no sockets, an app with a fake model, an ASGI client."""
+"""Shared fixtures: hermetic settings, no sockets, an app with a fake model, an ASGI client.
+
+The suite doubles as a reference for testing a host that embeds the agent:
+``create_app(settings, model_invoker=...)`` takes a fake async model
+(``fakes.py``) that answers, fails, stalls or answers garbage, and an
+``httpx.AsyncClient`` over ``httpx.ASGITransport`` calls the app in
+process while a guard here fails any network connection. Notable checks:
+``test_inspect_raw.py`` streams 20 MiB under ``tracemalloc`` and cancels a
+request mid-body (the reader, not its timeout, releases the worker
+thread); ``test_inspect_gcs.py`` reads through a fake Cloud Storage reader
+that records every ``read`` and ``seek`` (only the two windows are read);
+``test_gcs_errors.py`` covers the error table; ``test_errors.py`` fails when
+a new library exception has no status; ``test_embedding_rules.py`` checks
+with ``ast`` that only ``main_demo.py`` prints or configures logging and
+that only the library's public API is imported.
+"""
 
 from __future__ import annotations
 

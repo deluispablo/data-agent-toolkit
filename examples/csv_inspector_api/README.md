@@ -137,6 +137,62 @@ The response is the library's `CSVInspectionResult`, unchanged.
   `422` validation errors (`application/json`); every other error is a
   problem response, see [Errors](#errors).
 
+### `POST /inspect/raw`
+
+Send the file itself as the request body, with or without `Content-Length`
+(chunked transfer is fine):
+
+```bash
+curl --data-binary @../../agents/csv_inspector/sample.csv \
+  -H 'Content-Type: application/octet-stream' "localhost:8000/inspect/raw?timeout_seconds=120"
+```
+
+The response, query parameters and errors are those of `POST /inspect`.
+The body is streamed to the library as a **non-seekable stream**: it is
+read once, as it arrives, and only the head window, the last `tail_bytes`
+and one received chunk are held in memory. Nothing is written to disk.
+
+- `Content-Type` is not checked; send `application/octet-stream` or
+  `text/csv`, and never `multipart/form-data` (the multipart envelope would
+  be inspected as if it were the file).
+- `413` when `Content-Length` exceeds `CSV_INSPECTOR_API_MAX_UPLOAD_BYTES`,
+  before anything is read, or, without `Content-Length`, as soon as the
+  bytes received pass the limit.
+- The library reads at most 64 MiB past the head of a non-seekable stream.
+  A longer body is not read to its end: it is inspected without a tail, so
+  no footer is reported.
+- A client that stops sending for `timeout_seconds` fails the read (`422`
+  `FileSampleReadError`); a client that disconnects cancels the request and
+  releases the worker thread at once.
+
+#### `/inspect` or `/inspect/raw`?
+
+| | `POST /inspect` | `POST /inspect/raw` |
+|---|---|---|
+| body | `multipart/form-data`, field `file` | the file bytes |
+| clients | browsers, HTML forms, `curl -F` | scripts, pipes, proxies, `curl --data-binary` |
+| received before inspection | the whole upload, spooled to a temporary file past 1 MiB | nothing: the body is inspected as it streams |
+| memory and disk per request | whole upload on disk (or in memory up to 1 MiB) | `n_bytes` + `tail_bytes` + one chunk, no disk |
+| tail of a file over 64 MiB | sampled (the file is seekable) | not sampled, no footer |
+| 413 | after the upload is received | before reading (`Content-Length`) or while streaming |
+| library path | seekable stream: head and tail windows, position restored | non-seekable stream: consumed once |
+
+Use `/inspect` for interactive uploads and for files whose footer matters
+past 64 MiB; use `/inspect/raw` when the caller already has a byte stream
+and the host should hold as little of it as possible.
+
+**How the body reaches the library.** `ainspect_csv` samples its source in
+a worker thread with a blocking `read()`, while Starlette exposes the body
+as the async iterator `request.stream()`.
+[`AsyncIteratorReader`](src/csv_inspector_api/streaming.py), a small
+`io.RawIOBase`, bridges the two: each `read()` schedules the next chunk on
+the event loop with `asyncio.run_coroutine_threadsafe` and waits for it.
+Reads return at most 8 KiB, so the library's own buffers stay small too.
+When the request ends, including by cancellation, the route closes the
+reader, which cancels the pending wait and fails the blocked `read()` with
+an `OSError`: the worker thread returns instead of waiting for a chunk that
+will never come. The wait for one chunk is also bounded by `timeout_seconds`.
+
 ## Errors
 
 Every error from `csv-inspector` is answered by one exception handler
@@ -173,6 +229,11 @@ The API follows the [embedding guide](../../agents/csv_inspector/docs/embedding.
 - **Seekable upload passed as is.** `UploadFile.file` is a spooled temporary
   file: the library samples its head and tail and restores the position.
   No copy, no temporary file of ours (guide §2).
+- **Raw body passed as a non-seekable stream.** `/inspect/raw` hands the
+  library a blocking reader over the request body, consumed once with
+  memory bounded by the sampling windows (guide §2), and releases the
+  reader's worker thread when the request ends, since the library cannot
+  cancel a blocked read itself (guide §7).
 - **Injected settings.** `ApiSettings.to_library_settings()` builds the
   library's `Settings` once per app; the API never calls
   `csv_inspector.load_settings()`, so the library never reads the
@@ -199,6 +260,10 @@ embeds the agent:
   answers garbage. No Ollama, no credentials.
 - An `httpx.AsyncClient` over `httpx.ASGITransport` calls the app
   in-process, and a `conftest.py` guard fails any network connection.
+- `tests/test_inspect_raw.py` streams a generated 20 MiB body through the
+  reader under `tracemalloc` (peak after the head is decoded below twice `n_bytes` + `tail_bytes` +
+  64 KiB), and cancels a request mid-body to check that the blocked worker
+  thread is released by the reader, not by its timeout.
 - `tests/test_errors.py` iterates `csv_inspector.__all__`: a new library
   exception fails the suite until it is mapped to a status.
 - `tests/test_embedding_rules.py` checks the source with `ast`: no `print()`
@@ -208,7 +273,5 @@ embeds the agent:
 
 ## Roadmap
 
-- `POST /inspect/raw`: an `application/octet-stream` body streamed to the
-  library with bounded memory, rejected before it is received when too large.
 - Per-request backend and model override, request-id logging, a Dockerfile.
 - `POST /inspect/gcs`: inspect a `gs://` object with ranged reads only.

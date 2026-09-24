@@ -210,14 +210,18 @@ checklist in one pull request:
 ## Cloud subset
 
 Fifteen fixtures, one or two per category, none a known limitation, for
-reproducible cloud runs that fit a day's free-tier quota. Using the model as
-its own fallback makes each fixture's worst case two requests (one plus a
-429/503 retry), so `--max-calls 30` lets all fifteen run; a normal run makes
-about fifteen requests.
+reproducible cloud runs that fit a day's free-tier quota (about 20 requests
+per model per day). Using the model as its own fallback makes each
+fixture's worst case two requests (one plus a 429/503 retry). A clean
+fixture is charged one request, so with `--max-calls 18` the fifteenth
+fixture still starts (14 used plus a worst case of 2), and the spare calls
+absorb a retry or a failure; when more fixtures fail, the run stops early
+instead of spending the day's quota. Never raise `--max-calls` above 18 on
+a free-tier key.
 
 ```bash
 uv run --directory agents/csv_inspector python scripts/eval_samples.py --backend api \
-  --model MODEL --fallback-model MODEL --max-calls 30 --rpm 5 --out "runs/{model}.jsonl" \
+  --model MODEL --fallback-model MODEL --max-calls 18 --rpm 10 --out "runs/{model}.jsonl" \
   --fixture delimiter_semicolon_decimal_comma.csv \
   --fixture delimiter_tab_commas_quoted_header.tsv \
   --fixture encoding_cp1252_tail_only.csv \

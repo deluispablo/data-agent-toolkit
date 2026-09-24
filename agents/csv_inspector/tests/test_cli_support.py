@@ -6,6 +6,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,13 +18,14 @@ from csv_inspector import (
 )
 from csv_inspector._sampling import MAX_SAMPLE_BYTES
 from csv_inspector.cli import (
+    DEFAULT_CLI_TIMEOUT_SECONDS,
     add_log_level_argument,
     load_cli_settings,
     main,
     non_negative_int,
-    positive_float,
     positive_int,
     resolve_backend,
+    timeout_budget,
 )
 from fakes import install_fake_ollama, ollama_reply
 
@@ -70,17 +72,21 @@ def test_add_log_level_argument_defaults_to_info_and_restricts_choices() -> None
 # ---------------------------------------------------------------------
 
 
-@pytest.mark.parametrize(("raw", "expected"), [("0.5", 0.5), ("30", 30.0)])
-def test_positive_float_accepts_positive_numbers(raw: str, expected: float) -> None:
-    """Budgets like --timeout accept any number > 0."""
-    assert positive_float(raw) == expected
+@pytest.mark.parametrize(
+    ("raw", "expected"), [("0.5", 0.5), ("30", 30.0), ("0", None), ("0.0", None)]
+)
+def test_timeout_budget_accepts_seconds_and_zero_for_no_limit(
+    raw: str, expected: float | None
+) -> None:
+    """--timeout takes any number > 0, and 0 turns the limit off."""
+    assert timeout_budget(raw) == expected
 
 
-@pytest.mark.parametrize("raw", ["0", "-1", "nan", "soon"])
-def test_positive_float_rejects_everything_else(raw: str) -> None:
-    """Zero, negatives, NaN and non-numbers are argparse errors."""
+@pytest.mark.parametrize("raw", ["-1", "nan", "soon"])
+def test_timeout_budget_rejects_everything_else(raw: str) -> None:
+    """Negatives, NaN and non-numbers are argparse errors."""
     with pytest.raises(argparse.ArgumentTypeError):
-        positive_float(raw)
+        timeout_budget(raw)
 
 
 def test_cli_reads_dotenv_in_the_working_directory_by_default(tmp_path: Path) -> None:
@@ -175,3 +181,79 @@ def test_cli_rejects_sample_budgets_above_the_maximum(tmp_path: Path, option: st
         main([str(target), option, str(MAX_SAMPLE_BYTES + 1), "--no-env-file"])
 
     assert excinfo.value.code == 2
+
+
+_CLI_ANSWER = json.dumps(
+    {
+        "encoding": "utf-8",
+        "delimiter": ";",
+        "header_row_index": 0,
+        "columns": [{"name": "a", "inferred_type": "string"}],
+        "confidence": 0.9,
+    }
+)
+
+
+def test_cli_passes_the_fallback_model(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """--fallback-model is the model tried after --model fails."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a;b\n1;2\n")
+
+    def chat(**kwargs: Any) -> Any:
+        if kwargs["model"] == "first":
+            raise RuntimeError("model unavailable")
+        return ollama_reply(_CLI_ANSWER)
+
+    fake = install_fake_ollama(monkeypatch, chat)
+
+    main([str(target), "--model", "first", "--fallback-model", "second", "--no-env-file"])
+
+    assert [request["model"] for request in fake.requests] == ["first", "second"]
+    assert json.loads(capsys.readouterr().out)["delimiter"] == ";"
+
+
+def test_cli_applies_a_default_timeout(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """Without --timeout the Ollama client is still bounded by the CLI default."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a;b\n1;2\n")
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(_CLI_ANSWER))
+
+    main([str(target), "--no-env-file", "--log-level", "ERROR"])
+
+    capsys.readouterr()
+    assert 0 < fake.client_kwargs[0]["timeout"] <= DEFAULT_CLI_TIMEOUT_SECONDS
+
+
+def test_cli_timeout_zero_disables_the_limit(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
+) -> None:
+    """--timeout 0 leaves the Ollama client without a timeout."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a;b\n1;2\n")
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(_CLI_ANSWER))
+
+    main([str(target), "--timeout", "0", "--no-env-file", "--log-level", "ERROR"])
+
+    capsys.readouterr()
+    assert fake.client_kwargs[0].get("timeout") is None
+
+
+def test_cli_explains_how_to_change_the_timeout(
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path,
+) -> None:
+    """Running out of time exits 1 with a hint about --timeout."""
+    target = tmp_path / "data.csv"
+    target.write_bytes(b"a;b\n1;2\n")
+    install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(_CLI_ANSWER), delay_seconds=0.5)
+
+    with pytest.raises(SystemExit) as excinfo:
+        main([str(target), "--timeout", "0.05", "--no-env-file"])
+
+    assert excinfo.value.code == 1
+    assert "--timeout 0" in caplog.text

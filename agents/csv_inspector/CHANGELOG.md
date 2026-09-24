@@ -23,6 +23,15 @@ listed under **Changed (breaking)**.
 
 ### Added
 
+- CLI option `--fallback-model`, the model tried after `--model` fails
+  (default: the backend's configured fallback). The "Inspecting ..." log
+  line now names both models
+  ([#39](https://github.com/deluispablo/data-agent-toolkit/issues/39)).
+- The CLI now has a default `--timeout` of 300 seconds, so a stalled Ollama
+  ends in an `InspectionTimeoutError` message instead of a hang;
+  `--timeout 0` removes the limit. The library default stays `None`
+  ([#39](https://github.com/deluispablo/data-agent-toolkit/issues/39)).
+
 - New guide, `docs/using-the-result.md`, on turning a result into reader
   options for the stdlib `csv` module, pandas and PySpark, with encoding
   names for Spark and BigQuery. The stdlib recipe is run by the test suite

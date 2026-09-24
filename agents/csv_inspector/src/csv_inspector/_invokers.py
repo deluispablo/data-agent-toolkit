@@ -8,8 +8,11 @@ only ``google-genai`` (``[cloud]`` extra).
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import math
+import random
+import time
 from collections.abc import Awaitable, Callable
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, Protocol
@@ -238,9 +241,40 @@ async def ainvoke_ollama_model(
 # ---------------------------------------------------------------------
 
 
+# One retry of the same request for these transient statuses: 429
+# RESOURCE_EXHAUSTED (rate limit) and 503 UNAVAILABLE (high demand). The
+# fallback model stays the strategy for persistent failures.
+_TRANSIENT_STATUS_CODES = frozenset({429, 503})
+_RETRY_DELAY_SECONDS = 1.0
+_RETRY_JITTER = 0.2
+# A Retry-After longer than this means a quota, not a blip: fall back instead.
+_MAX_RETRY_AFTER_SECONDS = 10.0
+# The retried request needs at least this much of the model's budget left.
+_MIN_RETRY_BUDGET_SECONDS = 1.0
+
+
 def _to_milliseconds(timeout_seconds: float) -> int:
     """Convert seconds to the whole milliseconds ``google-genai`` expects (at least 1)."""
     return max(1, math.ceil(timeout_seconds * 1000))
+
+
+def _transient_status(exc: Exception) -> int | None:
+    """Return the HTTP status of a transient ``google-genai`` error, else ``None``."""
+    code = getattr(exc, "code", None)
+    return code if code in _TRANSIENT_STATUS_CODES else None
+
+
+def _retry_after_seconds(exc: Exception) -> float | None:
+    """Read a numeric ``Retry-After`` header from the error's HTTP response, if any."""
+    headers = getattr(getattr(exc, "response", None), "headers", None)
+    value = headers.get("Retry-After") if headers is not None else None
+    if value is None:
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError):
+        return None
+    return seconds if seconds >= 0 else None
 
 
 class _CloudCall:
@@ -260,7 +294,10 @@ class _CloudCall:
                 f"The 'google-genai' package is required for the 'api' backend. {CLOUD_EXTRA_HINT}"
             ) from exc
         self._genai = genai
+        self._types = types
         self._auth_errors = google_auth_exceptions
+        self._timeout_seconds = timeout_seconds
+        self._started = time.monotonic()
         self.config = types.GenerateContentConfig(
             system_instruction=SYSTEM_PROMPT,
             temperature=0.0,
@@ -280,14 +317,56 @@ class _CloudCall:
             }
         )
         if timeout_seconds is not None:
-            # google-genai takes the request timeout in MILLISECONDS.
-            self._client_kwargs["http_options"] = types.HttpOptions(
-                timeout=_to_milliseconds(timeout_seconds)
-            )
+            self._set_request_timeout(timeout_seconds)
+
+    def _set_request_timeout(self, timeout_seconds: float) -> None:
+        """Set the request timeout of the clients created from now on."""
+        # google-genai takes the request timeout in MILLISECONDS.
+        self._client_kwargs["http_options"] = self._types.HttpOptions(
+            timeout=_to_milliseconds(timeout_seconds)
+        )
 
     def client(self) -> GenaiClient:
         """Create the ``google-genai`` client for this call."""
         return self._genai.Client(**self._client_kwargs)
+
+    def retry_delay(self, model: str, exc: Exception) -> float | None:
+        """Decide whether a failed request is retried once, and after how long.
+
+        Only a 429 or a 503 is retried. The wait is the ``Retry-After``
+        header when present (a longer one than ``_MAX_RETRY_AFTER_SECONDS``
+        means a quota: no retry), else about one second with jitter. The
+        retry is skipped when the wait would leave the model's time budget
+        less than ``_MIN_RETRY_BUDGET_SECONDS``; otherwise the retried
+        request's timeout is cut to what remains of the budget.
+
+        Args:
+            model: The model that failed, for the log line.
+            exc: The exception the request raised.
+
+        Returns:
+            The seconds to wait before the one retry, or ``None`` to give up.
+        """
+        status = _transient_status(exc)
+        if status is None:
+            return None
+        retry_after = _retry_after_seconds(exc)
+        if retry_after is None:
+            jitter = random.uniform(1 - _RETRY_JITTER, 1 + _RETRY_JITTER)
+            delay = _RETRY_DELAY_SECONDS * jitter
+        elif retry_after <= _MAX_RETRY_AFTER_SECONDS:
+            delay = retry_after
+        else:
+            return None
+        if self._timeout_seconds is not None:
+            remaining = self._timeout_seconds - (time.monotonic() - self._started) - delay
+            if remaining < _MIN_RETRY_BUDGET_SECONDS:
+                return None
+            self._set_request_timeout(remaining)
+        logger.warning(
+            "Cloud model '%s' answered %d; retrying once in %.1f s.", model, status, delay
+        )
+        return delay
 
     def error(self, model: str, exc: Exception) -> ModelInvocationError:
         """Map a cloud failure to a domain error whose text never contains the key."""
@@ -360,15 +439,22 @@ def invoke_cloud_model(
     """
     call = _CloudCall(settings, timeout_seconds)
     logger.debug("Calling cloud model '%s' via %s.", model, call.credentials.describe())
-    try:
-        with call.client() as client:
-            response = client.models.generate_content(
-                model=model, contents=prompt, config=call.config
-            )
-    except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
-        # Re-raised "from None" on purpose: the original exception (and its
-        # traceback) could carry the API key, so only a redacted message is kept.
-        raise call.error(model, exc) from None
+    retried = False
+    while True:
+        try:
+            with call.client() as client:
+                response = client.models.generate_content(
+                    model=model, contents=prompt, config=call.config
+                )
+            break
+        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
+            delay = None if retried else call.retry_delay(model, exc)
+            if delay is None:
+                # Re-raised "from None" on purpose: the original exception (and its
+                # traceback) could carry the API key, so only a redacted message is kept.
+                raise call.error(model, exc) from None
+        retried = True
+        time.sleep(delay)
     return _cloud_text(response, model)
 
 
@@ -399,15 +485,22 @@ async def ainvoke_cloud_model(
     """
     call = _CloudCall(settings, timeout_seconds)
     logger.debug("Calling cloud model '%s' via %s (async).", model, call.credentials.describe())
-    try:
-        with call.client() as client:
-            async with client.aio as aio:
-                response = await aio.models.generate_content(
-                    model=model, contents=prompt, config=call.config
-                )
-    except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
-        # Re-raised "from None" on purpose; see invoke_cloud_model.
-        raise call.error(model, exc) from None
+    retried = False
+    while True:
+        try:
+            with call.client() as client:
+                async with client.aio as aio:
+                    response = await aio.models.generate_content(
+                        model=model, contents=prompt, config=call.config
+                    )
+            break
+        except Exception as exc:  # noqa: BLE001 - varied SDK/transport errors; see below.
+            delay = None if retried else call.retry_delay(model, exc)
+            if delay is None:
+                # Re-raised "from None" on purpose; see invoke_cloud_model.
+                raise call.error(model, exc) from None
+        retried = True
+        await asyncio.sleep(delay)
     return _cloud_text(response, model)
 
 

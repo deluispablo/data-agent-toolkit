@@ -15,6 +15,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, ClassVar
@@ -34,7 +35,7 @@ from csv_inspector import (
     inspect_csv,
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL, resolve_settings
-from csv_inspector._invokers import invoke_cloud_model
+from csv_inspector._invokers import ainvoke_cloud_model, invoke_cloud_model
 from fakes import install_fake_ollama, ollama_reply
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
@@ -68,6 +69,8 @@ class _RecordingClient:
     instances: ClassVar[list[_RecordingClient]] = []
     response_text: ClassVar[str | None] = VALID_RESULT_JSON
     error: ClassVar[Exception | None] = None
+    # Raised by the first requests, one each, before ``error``/the response.
+    errors: ClassVar[list[Exception]] = []
     response: ClassVar[Any] = None
 
     def __init__(self, **kwargs: Any) -> None:
@@ -75,10 +78,13 @@ class _RecordingClient:
         self.requests: list[dict[str, Any]] = []
         self.closed = False
         self.models = SimpleNamespace(generate_content=self._generate_content)
+        self.aio = _RecordingAsyncClient(self)
         type(self).instances.append(self)
 
     def _generate_content(self, **kwargs: Any) -> Any:
         self.requests.append(kwargs)
+        if type(self).errors:
+            raise type(self).errors.pop(0)
         error = type(self).error
         if error is not None:
             raise error
@@ -93,6 +99,23 @@ class _RecordingClient:
         self.closed = True
 
 
+class _RecordingAsyncClient:
+    """Stand-in for ``client.aio``, delegating to the sync recorder."""
+
+    def __init__(self, client: _RecordingClient) -> None:
+        self.models = SimpleNamespace(generate_content=self._generate_content)
+        self._client = client
+
+    async def _generate_content(self, **kwargs: Any) -> Any:
+        return self._client._generate_content(**kwargs)
+
+    async def __aenter__(self) -> _RecordingAsyncClient:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        pass
+
+
 @pytest.fixture
 def recording_client(monkeypatch: pytest.MonkeyPatch) -> type[_RecordingClient]:
     """Replace ``google.genai.Client`` with :class:`_RecordingClient`."""
@@ -100,6 +123,7 @@ def recording_client(monkeypatch: pytest.MonkeyPatch) -> type[_RecordingClient]:
     _RecordingClient.instances = []
     _RecordingClient.response_text = VALID_RESULT_JSON
     _RecordingClient.error = None
+    _RecordingClient.errors = []
     _RecordingClient.response = None
     monkeypatch.setattr(genai, "Client", _RecordingClient)
     return _RecordingClient
@@ -316,6 +340,153 @@ def test_cloud_invoker_errors_never_carry_the_api_key(
     assert exc_info.value.__cause__ is None
     assert exc_info.value.__suppress_context__
     assert FAKE_KEY not in caplog.text
+
+
+def _api_error(code: int, retry_after: str | None = None) -> Exception:
+    """Build a real ``google-genai`` API error with an HTTP status (and Retry-After)."""
+    import httpx  # noqa: PLC0415
+    from google.genai import errors  # noqa: PLC0415
+
+    headers = {} if retry_after is None else {"Retry-After": retry_after}
+    error_class = errors.ServerError if code >= 500 else errors.ClientError
+    return error_class(
+        code,
+        {"error": {"code": code, "message": "transient", "status": "UNAVAILABLE"}},
+        httpx.Response(code, headers=headers),
+    )
+
+
+@pytest.fixture
+def sleeps(monkeypatch: pytest.MonkeyPatch) -> list[float]:
+    """Record the invokers' retry waits instead of sleeping."""
+    waits: list[float] = []
+
+    async def fake_async_sleep(seconds: float) -> None:
+        waits.append(seconds)
+
+    # The invokers call time.sleep / asyncio.sleep through their modules.
+    monkeypatch.setattr(time, "sleep", waits.append)
+    monkeypatch.setattr(asyncio, "sleep", fake_async_sleep)
+    return waits
+
+
+@needs_cloud_extra
+@pytest.mark.parametrize("code", [429, 503])
+def test_cloud_invoker_retries_a_transient_error_once(
+    monkeypatch: pytest.MonkeyPatch,
+    recording_client: type[_RecordingClient],
+    sleeps: list[float],
+    code: int,
+) -> None:
+    """A 429/503 is retried once on the same model, about a second later (issue #98)."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(code)]
+
+    assert invoke_cloud_model("prompt", "gemini-x") == VALID_RESULT_JSON
+
+    assert [len(client.requests) for client in recording_client.instances] == [1, 1]
+    (wait,) = sleeps
+    assert 0.8 <= wait <= 1.2
+
+
+@needs_cloud_extra
+def test_cloud_invoker_retries_only_once(
+    monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient], sleeps: list[float]
+) -> None:
+    """Two 503s in a row: ModelInvocationError after exactly two requests."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(503), _api_error(503)]
+
+    with pytest.raises(ModelInvocationError, match="503"):
+        invoke_cloud_model("prompt", "gemini-x")
+
+    assert sum(len(client.requests) for client in recording_client.instances) == 2
+    assert len(sleeps) == 1
+
+
+@needs_cloud_extra
+@pytest.mark.parametrize("code", [400, 404, 500])
+def test_cloud_invoker_does_not_retry_other_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    recording_client: type[_RecordingClient],
+    sleeps: list[float],
+    code: int,
+) -> None:
+    """Anything but 429/503 fails at once: the fallback model handles it."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(code)]
+
+    with pytest.raises(ModelInvocationError):
+        invoke_cloud_model("prompt", "gemini-x")
+
+    assert len(recording_client.instances) == 1
+    assert sleeps == []
+
+
+@needs_cloud_extra
+def test_cloud_invoker_honours_a_short_retry_after(
+    monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient], sleeps: list[float]
+) -> None:
+    """Retry-After sets the wait; a long one means a quota, so there is no retry."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(429, retry_after="3")]
+    invoke_cloud_model("prompt", "gemini-x")
+    assert sleeps == [3.0]
+
+    recording_client.errors = [_api_error(429, retry_after="60")]
+    with pytest.raises(ModelInvocationError):
+        invoke_cloud_model("prompt", "gemini-x")
+    assert sleeps == [3.0]
+
+
+@needs_cloud_extra
+def test_cloud_retry_never_outlives_the_time_budget(
+    monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient], sleeps: list[float]
+) -> None:
+    """A retry that would not fit the budget is skipped; one that fits gets the rest."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(503, retry_after="2")]
+    with pytest.raises(ModelInvocationError):
+        invoke_cloud_model("prompt", "gemini-x", timeout_seconds=2.5)
+    assert sleeps == []
+
+    recording_client.instances = []
+    recording_client.errors = [_api_error(503, retry_after="2")]
+    invoke_cloud_model("prompt", "gemini-x", timeout_seconds=10)
+    first, retried = (
+        client.init_kwargs["http_options"].timeout for client in recording_client.instances
+    )
+    assert first == 10_000
+    assert 7_000 <= retried <= 8_000
+
+
+@needs_cloud_extra
+def test_async_cloud_invoker_retries_a_transient_error_once(
+    monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient], sleeps: list[float]
+) -> None:
+    """The async invoker retries a 503 once too, with asyncio.sleep."""
+    monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
+    recording_client.errors = [_api_error(503)]
+
+    assert asyncio.run(ainvoke_cloud_model("prompt", "gemini-x")) == VALID_RESULT_JSON
+
+    assert len(recording_client.instances) == 2
+    assert len(sleeps) == 1
+
+
+@needs_cloud_extra
+def test_a_transient_error_does_not_reach_the_fallback_model(
+    recording_client: type[_RecordingClient], sleeps: list[float]
+) -> None:
+    """inspect_csv: the retried primary answers, so the fallback is never called."""
+    recording_client.errors = [_api_error(503)]
+    settings = Settings(gemini_api_key=SecretStr(FAKE_KEY), cloud_model="primary")
+
+    result = inspect_csv(SAMPLE_CSV_PATH, backend=LLMBackend.API, settings=settings)
+
+    assert result.delimiter
+    models = [r["model"] for c in recording_client.instances for r in c.requests]
+    assert models == ["primary", "primary"]
 
 
 @needs_cloud_extra

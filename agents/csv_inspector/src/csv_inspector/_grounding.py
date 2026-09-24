@@ -11,6 +11,7 @@ import csv
 import itertools
 import logging
 import re
+from collections import Counter
 
 from ._models import CSVInspectionResult
 from ._sampling import _canonical_codec_name
@@ -36,6 +37,11 @@ _LINE_BREAK = re.compile(r"\r\n|\r|\n")
 # reports these only when it sees one, and reading the file with any other
 # codec leaves a U+FEFF glued to the first column name.
 _BOM_CODECS = frozenset({"utf-8-sig", "utf-16", "utf-32"})
+
+# The delimiters tried when the model's one never occurs in the head.
+_CANDIDATE_DELIMITERS = ",;\t|"
+# How many lines must split into the same number of fields to pick a candidate.
+_MIN_AGREEING_LINES = 2
 
 
 def _split_lines(text: str) -> list[str]:
@@ -200,6 +206,47 @@ def _ground_encoding(reported: str, detected: str) -> str:
     return reported if reported_codec is not None else detected
 
 
+def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
+    """Pick the delimiter to report: the model's, unless it never occurs.
+
+    Small models sometimes answer ``,`` for a tab-separated file. A
+    delimiter that occurs in no line of the head is wrong for any file with
+    more than one column, so one of the usual delimiters is picked instead:
+    the one that splits the most lines into the same number (2 or more) of
+    fields. Preamble and footer lines do not block this, unlike
+    ``csv.Sniffer``, which needs nearly every line to agree. A delimiter
+    that occurs is never changed, and the model's answer is kept when no
+    candidate wins outright (e.g. a one-column file).
+
+    Args:
+        result: The model's validated result.
+        head_sample: The decoded head sample.
+
+    Returns:
+        The reported delimiter or the chosen candidate.
+    """
+    if result.delimiter in head_sample:
+        return result.delimiter
+    lines = _split_lines(head_sample.lstrip("﻿"))
+    scores: dict[str, int] = {}
+    for candidate in _CANDIDATE_DELIMITERS:
+        if candidate in (result.quotechar, result.escapechar):
+            continue
+        widths = [
+            len(fields)
+            for line in lines
+            if (fields := _split_fields(line, candidate, result.quotechar)) is not None
+            and len(fields) > 1
+        ]
+        if widths:
+            scores[candidate] = Counter(widths).most_common(1)[0][1]
+    best = max(scores.values(), default=0)
+    winners = [candidate for candidate, score in scores.items() if score == best]
+    if best < _MIN_AGREEING_LINES or len(winners) != 1:
+        return result.delimiter
+    return winners[0]
+
+
 def ground_in_samples(
     result: CSVInspectionResult,
     head_sample: str,
@@ -215,9 +262,12 @@ def ground_in_samples(
     deterministically from the real samples, using the model's own answer
     as the key: the header row (and the column names as actually written)
     is located from the inferred columns, and the footer is re-read
-    verbatim from the end of the file. The reported encoding is checked
-    against the detected one (see :func:`_ground_encoding`). Anything that
-    cannot be anchored is left exactly as the model reported it.
+    verbatim from the end of the file. A delimiter that never occurs in the
+    head is replaced (see :func:`_ground_delimiter`), and the reported
+    encoding is checked against the detected one (see
+    :func:`_ground_encoding`). A header that cannot be anchored is left as
+    the model reported it. A footer that cannot be anchored is dropped when
+    the end of the file was sampled, since it is not there.
 
     Args:
         result: The model's validated result.
@@ -232,11 +282,17 @@ def ground_in_samples(
             or ``None`` to leave the reported encoding unchecked.
 
     Returns:
-        The result with ``header_row_index``, column names,
+        The result with ``delimiter``, ``header_row_index``, column names,
         ``footer_lines`` and ``encoding`` grounded in the samples; the same
         object when nothing changed.
     """
     updates: dict[str, object] = {}
+
+    delimiter = _ground_delimiter(result, head_sample)
+    if delimiter != result.delimiter:
+        updates["delimiter"] = delimiter
+        # Header and footer grounding split fields with the grounded delimiter.
+        result = result.model_copy(update={"delimiter": delimiter})
 
     header = _locate_header_row(result, head_sample)
     if header is not None:
@@ -258,6 +314,14 @@ def ground_in_samples(
         footer_lines = _locate_footer_lines(
             result.footer_lines, end_of_file, result.delimiter, result.quotechar
         )
+        if footer_lines is None and any(line.strip() for line in result.footer_lines):
+            # The real end of the file was seen and the reported footer is
+            # not there. Keeping it would make readers drop real data rows.
+            logger.warning(
+                "Discarding footer lines that do not occur at the end of the file: %s",
+                result.footer_lines,
+            )
+            footer_lines = []
         if footer_lines is not None and footer_lines != result.footer_lines:
             updates["footer_lines"] = footer_lines
 

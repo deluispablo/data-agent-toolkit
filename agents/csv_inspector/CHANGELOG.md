@@ -45,6 +45,12 @@ listed under **Changed (breaking)**.
   like `tail_bytes=0` (the end is unsampled, so no footer is reported),
   instead of being read to the end in unbounded time
   ([#17](https://github.com/deluispablo/data-agent-toolkit/issues/17)).
+- The delimiter is now grounded in the head sample. When the model reports
+  one that never occurs there (small models answer `,` for tab-separated
+  files), the usual delimiter (`,`, `;`, tab, `|`) that splits the most
+  lines into the same number of fields is used instead. A delimiter that
+  occurs is never changed
+  ([#53](https://github.com/deluispablo/data-agent-toolkit/issues/53)).
 
 ### Fixed
 
@@ -61,6 +67,10 @@ listed under **Changed (breaking)**.
   The floor is now `ollama>=0.6.2`, and CI tests the lowest allowed version
   of every direct dependency
   ([#49](https://github.com/deluispablo/data-agent-toolkit/issues/49)).
+- A reported footer that does not occur at the sampled end of the file was
+  kept as reported, so `footer_rows_to_skip` made readers silently drop real
+  data rows. It is now discarded (`footer_lines == []`) with a warning
+  ([#52](https://github.com/deluispablo/data-agent-toolkit/issues/52)).
 - Ollama requests did not cap the reply length, so a model stuck repeating
   itself (for example an endless `example_values` list) generated until the
   timeout, or forever with no timeout. The reply is now capped at the 1024

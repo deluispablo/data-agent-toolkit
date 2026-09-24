@@ -1,4 +1,4 @@
-"""``POST /inspect`` and ``POST /inspect/raw``: inspect a CSV/TSV file.
+"""``POST /inspect``, ``/inspect/raw`` and ``/inspect/gcs``: inspect a CSV/TSV file.
 
 No ``from __future__ import annotations`` here: FastAPI evaluates the route's
 annotations, and the ``Query`` bounds refer to the factory's ``settings``,
@@ -19,10 +19,17 @@ from csv_inspector import (
     Settings,
     ainspect_csv,
 )
-from fastapi import APIRouter, Depends, File, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 
 from ..errors import BackendOverrideDisabledError, UploadTooLargeError, problem_responses
 from ..settings import ApiSettings
+from ..sources.gcs import (
+    GcsClient,
+    GcsInspectRequest,
+    chunk_size_for,
+    create_client,
+    open_gcs_object,
+)
 from ..streaming import AsyncIteratorReader
 
 logger = logging.getLogger("csv_inspector_api.inspect")
@@ -133,12 +140,44 @@ def _too_large(size: int, settings: ApiSettings) -> UploadTooLargeError:
     return UploadTooLargeError(msg)
 
 
+async def _gcs_client(request: Request) -> GcsClient:
+    """The app's Cloud Storage client.
+
+    Built at startup; when that failed (the ``[gcs]`` extra is missing, no
+    credentials), each request tries again, so a fixed deployment recovers,
+    and the failure is answered by its error handler.
+
+    Args:
+        request: The current request; its app holds the client.
+
+    Returns:
+        The client.
+    """
+    client: GcsClient | None = request.app.state.gcs_client
+    if client is None:
+        project = request.app.state.settings.google_cloud_project
+        # Finding credentials may query the metadata server: off the event loop.
+        client = await asyncio.to_thread(create_client, project)
+        request.app.state.gcs_client = client
+    return client
+
+
+_OBJECT_HEADERS = {
+    "X-Object-Size": {
+        "description": "Size of the object, in bytes.",
+        "schema": {"type": "integer"},
+    },
+    "X-Object-Generation": {
+        "description": "Generation of the object that was read.",
+        "schema": {"type": "integer"},
+    },
+}
 _RAW_BODY_SCHEMA = {"type": "string", "format": "binary"}
 _OVERRIDE_OFF = "cloud calls cost money, and CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE is off"
 
 
 def build_inspect_router(settings: ApiSettings) -> APIRouter:
-    """Build the router of ``POST /inspect`` and ``POST /inspect/raw``.
+    """Build the router of ``POST /inspect``, ``/inspect/raw`` and ``/inspect/gcs``.
 
     The time budget bounds come from ``settings``, so the router is built per
     application and the OpenAPI schema shows the deployment's real limits.
@@ -301,5 +340,46 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             # Releases the worker thread if it still waits for a chunk: the
             # request was cancelled (client gone) or failed before the end.
             reader.close()
+
+    @router.post(
+        "/inspect/gcs",
+        response_model=CSVInspectionResult,
+        summary="Inspect a Cloud Storage object with ranged reads",
+        responses={
+            200: {**responses[200], "headers": _OBJECT_HEADERS},
+            **problem_responses(403, 422, 502, 503, 504),
+        },
+    )
+    async def inspect_gcs(
+        request: Request,
+        response: Response,
+        body: GcsInspectRequest,
+        params: Annotated[InspectParams, Depends(inspect_params)],
+    ) -> CSVInspectionResult:
+        """Infer the same as ``POST /inspect`` for a ``gs://`` object, never downloading it.
+
+        The object is read like a local file: one metadata request, then one
+        ranged read per sampled window, whatever its size. The body of the
+        answer is the one of ``POST /inspect``; the object's size and the
+        generation read are in the ``X-Object-Size`` and
+        ``X-Object-Generation`` headers.
+        """
+        client = await _gcs_client(request)
+        chunk_size = chunk_size_for(params.n_bytes, params.tail_bytes)
+        gcs_object = open_gcs_object(
+            body.uri, client=client, generation=body.generation, chunk_size=chunk_size
+        )
+        try:
+            # The library samples the seekable reader in its worker thread, so
+            # the blocking ranged reads never run on the event loop.
+            result = await _inspect(request, gcs_object.reader, params, label=repr(body.uri))
+        finally:
+            gcs_object.reader.close()
+        blob = gcs_object.blob
+        if blob.size is not None:
+            response.headers["X-Object-Size"] = str(blob.size)
+        if blob.generation is not None:
+            response.headers["X-Object-Generation"] = str(blob.generation)
+        return result
 
     return router

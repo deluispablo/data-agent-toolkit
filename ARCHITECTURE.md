@@ -114,7 +114,10 @@ packaging job. Ruff and the lockfile check already cover them through the
 **Lint & lockfile** job. The examples jobs run on every pull request, not
 only on changes under `examples/`, because an example tests the current
 source of the agent it embeds. With no example, the jobs are skipped
-instead of failing on an empty matrix.
+instead of failing on an empty matrix. One more job, **Docker image
+(csv_inspector_api)**, builds that example's image from the repository root,
+checks its size and that `GET /health` answers from a running container; it
+never pushes to a registry.
 
 ## Examples
 
@@ -160,7 +163,8 @@ and no network.
 **CI.** Examples get a lighter job set than agents: type-check and tests on
 a single Python version on Linux, and no lowest-dependencies or packaging
 jobs, since nothing is shipped. Lint and the lockfile check cover them
-through the root jobs.
+through the root jobs. An example with a `Dockerfile` gets a build-and-smoke
+job, never a push.
 
 ## Policies
 

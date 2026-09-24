@@ -241,3 +241,34 @@ jobs:
       - run: uv run --directory "examples/${{ matrix.example.name }}" pytest --cov
       - name: Coverage summary
         run: uv run --directory "examples/${{ matrix.example.name }}" coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"
+
+  examples-docker:
+    # Build the example's image and check it answers /health: no push, no
+    # registry. Only the csv_inspector_api example has a Dockerfile.
+    name: Docker image (csv_inspector_api)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build
+        run: docker build -f examples/csv_inspector_api/Dockerfile -t csv-inspector-api .
+      - name: Size below 300 MB
+        run: |
+          size=$(docker image inspect csv-inspector-api --format '{{.Size}}')
+          echo "Image size: $((size / 1000000)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+          test "$size" -lt 300000000
+      - name: Starts and answers /health
+        run: |
+          docker run -d --name api -p 8000:8000 csv-inspector-api
+          start=$(date +%s%N)
+          for _ in $(seq 1 100); do
+            if curl -fsS localhost:8000/health; then
+              echo
+              echo "Ready in $(( ($(date +%s%N) - start) / 1000000 )) ms" | tee -a "$GITHUB_STEP_SUMMARY"
+              docker exec api id -u | grep -qv '^0$'
+              exit 0
+            fi
+            sleep 0.1
+          done
+          docker logs api
+          exit 1

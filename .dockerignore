@@ -1,0 +1,18 @@
+# Build context of examples/*/Dockerfile: the repository root. Keep it to
+# what `uv sync --frozen` needs: the workspace pyproject.toml files, uv.lock
+# and the sources.
+.git
+.github
+.venv
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.coverage
+**/.coverage.*
+**/htmlcov
+**/dist
+**/.env
+**/samples/

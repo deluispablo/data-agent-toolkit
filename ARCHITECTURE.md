@@ -105,6 +105,17 @@ jobs:
   every extra (`pip check` included). It then runs the agent's
   `scripts/smoke_test_installed.py` from outside the repository against both.
 
+The examples are discovered the same way, from `examples/*/pyproject.toml`,
+and each one gets two lighter jobs: **Type-check example** (`mypy`) and
+**Tests example** (`pytest --cov` with the example's `fail_under`, plus a
+coverage summary). Both run on Python 3.14 on Linux only. Examples are not
+shipped, so there is no Windows leg, no lowest-dependencies job and no
+packaging job. Ruff and the lockfile check already cover them through the
+**Lint & lockfile** job. The examples jobs run on every pull request, not
+only on changes under `examples/`, because an example tests the current
+source of the agent it embeds. With no example, the jobs are skipped
+instead of failing on an empty matrix.
+
 ## Examples
 
 An example under `examples/<name>/` is a small, runnable host that embeds an

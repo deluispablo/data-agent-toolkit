@@ -37,6 +37,29 @@ jobs:
           print(f"agents={json.dumps(agents)}")
           EOF
 
+  examples:
+    # Every examples/<name>/pyproject.toml is an example: executable
+    # documentation, never built or released, so it gets a lighter job set
+    # than an agent (type-check and tests on one Python, no packaging).
+    name: Discover examples
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      examples: ${{ steps.discover.outputs.examples }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: discover
+        run: |
+          python3 - >> "$GITHUB_OUTPUT" <<'EOF'
+          import json, pathlib
+
+          examples = [
+              {"name": pyproject.parent.name}
+              for pyproject in sorted(pathlib.Path("examples").glob("*/pyproject.toml"))
+          ]
+          print(f"examples={json.dumps(examples)}")
+          EOF
+
   lint:
     name: Lint & lockfile
     runs-on: ubuntu-latest
@@ -174,3 +197,47 @@ jobs:
           cp "$GITHUB_WORKSPACE/agents/$AGENT/scripts/smoke_test_installed.py" .
           "$RUNNER_TEMP/wheel-venv/bin/python" smoke_test_installed.py
           "$RUNNER_TEMP/sdist-venv/bin/python" smoke_test_installed.py
+
+  examples-typecheck:
+    name: Type-check example (${{ matrix.example.name }})
+    needs: examples
+    # An empty matrix is an error in GitHub Actions: skip when there is no example.
+    if: needs.examples.outputs.examples != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        example: ${{ fromJSON(needs.examples.outputs.examples) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --all-packages --all-extras
+      - run: uv run --directory "examples/${{ matrix.example.name }}" mypy
+
+  examples-test:
+    # Examples are not shipped: one Python on Linux is enough. They run on
+    # every pull request, since they test the agents' current source.
+    name: Tests example (${{ matrix.example.name }})
+    needs: examples
+    if: needs.examples.outputs.examples != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        example: ${{ fromJSON(needs.examples.outputs.examples) }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - run: uv sync --locked --all-packages --all-extras
+      # Coverage floor: [tool.coverage.report] fail_under in the example's pyproject.toml.
+      - run: uv run --directory "examples/${{ matrix.example.name }}" pytest --cov
+      - name: Coverage summary
+        run: uv run --directory "examples/${{ matrix.example.name }}" coverage report --format=markdown >> "$GITHUB_STEP_SUMMARY"

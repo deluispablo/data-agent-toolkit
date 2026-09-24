@@ -47,12 +47,16 @@ def _split_lines(text: str) -> list[str]:
 
 
 def _split_fields(line: str, delimiter: str, quotechar: str) -> list[str] | None:
-    """Split one line into stripped fields, or ``None`` if it cannot be parsed."""
+    """Split one line into fields as written, or ``None`` if it cannot be parsed.
+
+    Surrounding spaces are kept, as ``csv`` and pandas keep them by default;
+    callers strip the fields where they only compare values.
+    """
     try:
         fields = next(csv.reader([line], delimiter=delimiter, quotechar=quotechar))
     except (csv.Error, StopIteration):
         return None
-    return [field.strip() for field in fields]
+    return fields
 
 
 def _locate_header_row(
@@ -89,7 +93,7 @@ def _locate_header_row(
     ]
 
     for index, fields in enumerate(rows):
-        if fields == expected:
+        if fields is not None and [field.strip() for field in fields] == expected:
             return index, fields
 
     width = len(expected)
@@ -100,7 +104,7 @@ def _locate_header_row(
             fields is not None
             and next_fields is not None
             and len(fields) == len(next_fields) == width
-            and set(fields) & named
+            and {field.strip() for field in fields} & named
         ):
             return index, fields
     return None
@@ -166,7 +170,7 @@ def _extends_footer(line: str, delimiter: str, quotechar: str) -> bool:
     fields = _split_fields(stripped, delimiter, quotechar)
     if not fields:
         return False
-    label, *others = fields
+    label, *others = (field.strip() for field in fields)
     if _BARE_TOTALS_LABEL.fullmatch(label):
         return True
     filled = sum(1 for field in others if field)

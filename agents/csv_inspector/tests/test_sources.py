@@ -20,7 +20,12 @@ from csv_inspector import (
     FileSampleReadError,
     inspect_csv,
 )
-from csv_inspector._sampling import STREAM_CHUNK_BYTES, describe_source, sample_source
+from csv_inspector._sampling import (
+    STREAM_CHUNK_BYTES,
+    CSVSource,
+    describe_source,
+    sample_source,
+)
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
 SAMPLES_DIR = AGENT_DIR / "samples"
@@ -320,6 +325,58 @@ def test_samples_report_whether_they_reach_the_end_of_the_source(
     samples = sample_source(data, n_bytes, tail_bytes)
 
     assert samples.covers_whole_file is expected
+
+
+_EXACT_SIZE = b"a;b\n" + b"1;2\n" * 14 + b"TOTAL;3\n"
+
+
+@pytest.mark.parametrize(
+    "make_source",
+    [
+        pytest.param(lambda path: path, id="path"),
+        pytest.param(lambda path: path.read_bytes(), id="bytes"),
+        pytest.param(lambda path: io.BytesIO(path.read_bytes()), id="seekable-stream"),
+    ],
+)
+def test_a_source_of_exactly_n_bytes_is_fully_covered_without_a_tail(
+    tmp_path: Path, make_source: Callable[[Path], CSVSource]
+) -> None:
+    """With ``tail_bytes=0``, a known size tells a full head from a truncated one."""
+    target = tmp_path / "exact.csv"
+    target.write_bytes(_EXACT_SIZE)
+
+    samples = sample_source(make_source(target), len(_EXACT_SIZE), 0)
+
+    assert samples.covers_whole_file is True
+
+
+def test_a_non_seekable_source_of_exactly_n_bytes_is_still_assumed_truncated() -> None:
+    """A non-seekable stream has no known size, so a full head may not be the end."""
+    samples = sample_source(NonSeekableStream(_EXACT_SIZE), len(_EXACT_SIZE), 0)
+
+    assert samples.covers_whole_file is False
+
+
+def test_non_utf8_bytes_past_an_ascii_head_set_the_encoding() -> None:
+    """A cp1252 name in the tail is not decoded as UTF-8 just because the head is ASCII."""
+    data = b"id;name\n" + b"1;abc\n" * 1000 + "2;Muñoz\n".encode("cp1252")
+
+    samples = sample_source(data, 4096, 4096)
+
+    assert samples.encoding.lower().replace("-", "") not in {"utf8", "ascii"}
+    assert samples.tail_text is not None
+    assert "�" not in samples.tail_text
+    assert data[4096:].decode(samples.encoding) == samples.tail_text
+
+
+@pytest.mark.parametrize("tail_bytes", [4096, 4097, 4098])
+def test_a_utf8_tail_starting_mid_character_keeps_utf8(tail_bytes: int) -> None:
+    """A tail window cut inside a multi-byte character is still valid UTF-8."""
+    data = b"x;y\n" * 1100 + "1;ñ\n".encode() * 2000
+
+    samples = sample_source(data, 4096, tail_bytes)
+
+    assert samples.encoding == "utf-8"
 
 
 # ---------------------------------------------------------------------

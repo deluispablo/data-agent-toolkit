@@ -22,7 +22,7 @@ jobs:
     outputs:
       agents: ${{ steps.discover.outputs.agents }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - id: discover
         # The runner's system Python (3.11+) has tomllib.
         run: |
@@ -42,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
           enable-cache: true
@@ -62,8 +62,8 @@ jobs:
       matrix:
         agent: ${{ fromJSON(needs.agents.outputs.agents) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.14"
           enable-cache: true
@@ -89,8 +89,8 @@ jobs:
           - { os: windows-latest, python-version: "3.12" }
           - { os: windows-latest, python-version: "3.13" }
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
           enable-cache: true
@@ -118,8 +118,8 @@ jobs:
       AGENT: ${{ matrix.agent.name }}
       EXTRAS: ${{ matrix.agent.extras }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python-version }}
       - name: Build sdist and wheel

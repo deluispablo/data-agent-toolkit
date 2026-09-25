@@ -172,9 +172,13 @@ Around the package:
   Hand-written cases live in `generate_samples.py`; combinations of quirks
   are specs in `samples/matrix.py`, rendered into `gen_*.csv` files.
 - `tests/`: `conftest.py` clears the settings variables and runs each test
-  in an empty directory; `fakes.py` fakes every backend. The files are
-  split by concern: pipeline, prompt, parsing and grounding
-  (`test_csv_inspector.py`); sources; time budget and async; backends;
+  in an empty directory; `fakes.py` fakes every backend; `payloads.py`
+  holds the answers shared by several files. The files are split by
+  concern: byte reads (`test_sampling.py`); the pipeline
+  (`test_pipeline.py`); the prompt (`test_prompt.py`, `test_prompt_budget.py`);
+  parsing and the answer models (`test_parsing.py`); grounding of the
+  header, footer and dialect (`test_grounding_{header,footer,dialect}.py`);
+  sources; time budget and async; backends;
   configuration; CLI; the embedding contract (`__all__`, no `print`, a
   `NullHandler`); the fixture catalog; the eval scoring; and the
   `docs/using-the-result.md` recipe, executed from the Markdown.

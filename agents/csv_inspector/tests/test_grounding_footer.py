@@ -14,6 +14,7 @@ from csv_inspector import (
 from csv_inspector._grounding import (
     _extends_footer,
     _locate_footer_lines,
+    _ParsedSample,
     ground_in_samples,
 )
 from csv_inspector._models import _ModelAnswer
@@ -426,12 +427,12 @@ def test_locate_footer_lines_reads_the_footer_from_one_anchor(
     anchor: str, expected: list[str] | None
 ) -> None:
     """One anchor line is enough: the whole footer is read from the file."""
-    assert _locate_footer_lines(anchor, _MARKED_LEDGER, ";", '"') == expected
+    assert _locate_footer_lines(anchor, _ParsedSample.parse(_MARKED_LEDGER, ";", '"')) == expected
 
 
 def test_locate_footer_lines_finds_nothing_after_the_last_data_row() -> None:
     """A blank anchor over a file that ends with a data row anchors nothing."""
-    assert _locate_footer_lines("", "a;b\n1;x\n2;y\n", ";", '"') is None
+    assert _locate_footer_lines("", _ParsedSample.parse("a;b\n1;x\n2;y\n", ";", '"')) is None
 
 
 def test_no_footer_line_with_the_end_sampled_gives_no_footer(

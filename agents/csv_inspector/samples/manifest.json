@@ -614,7 +614,7 @@
     "known_limitation": true,
     "generated": false,
     "expected_error": null,
-    "notes": "Guards _grounding._split_lines: grounding splits the head on every line break, so the record reads as two short rows."
+    "notes": "Guards _grounding._ParsedSample.parse: grounding splits the head on every line break, so the record reads as two short rows."
   },
   "quoting_newline_in_tail_window.csv": {
     "category": "quoting",
@@ -638,7 +638,7 @@
     "known_limitation": true,
     "generated": false,
     "expected_error": null,
-    "notes": "Guards _grounding._split_lines on the tail: the second half of the record looks like a short trailing line."
+    "notes": "Guards _grounding._ParsedSample.parse on the tail: the second half of the record looks like a short trailing line."
   },
   "footer_longer_than_tail_window.csv": {
     "category": "header_footer",
@@ -817,7 +817,7 @@
     "known_limitation": false,
     "generated": false,
     "expected_error": null,
-    "notes": "Guards _grounding._agreement_score: fields are split with the quotechar, so quoted pipes do not change the field count."
+    "notes": "Guards _grounding._modal_width: fields are split with the quotechar, so quoted pipes do not change the field count."
   },
   "encoding_cp1252_tail_only.csv": {
     "category": "encoding",

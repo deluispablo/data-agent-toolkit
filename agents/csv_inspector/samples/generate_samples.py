@@ -812,7 +812,7 @@ CASES: list[SampleCase] = [
             "footer_lines": [],
         },
         known_limitation=True,
-        notes="Guards _grounding._split_lines: grounding splits the head on every line break, "
+        notes="Guards _grounding._ParsedSample.parse: grounding splits the head on every line break, "
         "so the record reads as two short rows.",
     ),
     SampleCase(
@@ -832,7 +832,7 @@ CASES: list[SampleCase] = [
             "footer_lines": [],
         },
         known_limitation=True,
-        notes="Guards _grounding._split_lines on the tail: the second half of the record "
+        notes="Guards _grounding._ParsedSample.parse on the tail: the second half of the record "
         "looks like a short trailing line.",
     ),
     SampleCase(
@@ -982,7 +982,7 @@ CASES: list[SampleCase] = [
             "footer_rows_to_skip": 0,
             "footer_lines": [],
         },
-        notes="Guards _grounding._agreement_score: fields are split with the quotechar, so "
+        notes="Guards _grounding._modal_width: fields are split with the quotechar, so "
         "quoted pipes do not change the field count.",
     ),
     SampleCase(

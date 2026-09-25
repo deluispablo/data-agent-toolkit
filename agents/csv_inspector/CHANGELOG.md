@@ -16,6 +16,20 @@ listed under **Changed (breaking)**.
   The summary records `replay_of`, and `compare_runs.py` labels a replayed
   column `(replay)`. See "Replaying a run" in `docs/evaluation.md`.
 
+### Changed
+
+- The prompt and grounding receive at most the first 15 lines of the head
+  window and the last 10 of the tail window (`MAX_HEAD_LINES`,
+  `MAX_TAIL_LINES`, module constants, not parameters). The byte windows
+  still bound what is read; the lines now bound the tokens. A file of more
+  than 25 lines that fits in the head window is sent as its first 15 and
+  last 10 lines, the tail note saying the lines between are not shown, and
+  its footer is still read at the real end. On the catalog, prompt tokens
+  fall from 2,639 to 1,522 on average (-42 %) on `qwen2.5-coder:7b`, with
+  accuracy at 99.7 % and no errored inspection. `PROMPT_VERSION` is
+  `2026.09-n`; the usage log line reports `lines_omitted`
+  ([#134](https://github.com/deluispablo/data-agent-toolkit/issues/134)).
+
 ### Fixed
 
 - A file whose quoted fields hold no quote (`"Washer, zinc"`, the most

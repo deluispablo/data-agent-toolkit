@@ -49,6 +49,12 @@ already hold; you never need to write a temporary file.
 Text-mode streams (`open(path)` without `"b"`, `io.StringIO`) are rejected
 with `TypeError`: pass bytes so the library can detect the encoding itself.
 
+The windows bound what is read; the prompt then keeps only the first 15
+lines of the head and the last 10 of the tail (a file of up to 25 lines is
+sent whole). These line bounds are fixed: a larger `n_bytes` helps only
+when lines are longer than the window, such as a file with hundreds of
+columns.
+
 If your host lets callers choose the sample windows, validate them against
 the library's own limits instead of copying the numbers, so an upgrade can
 never desynchronize the two. The same goes for a custom model seam: type it

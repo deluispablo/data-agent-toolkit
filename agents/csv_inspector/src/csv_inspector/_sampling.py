@@ -34,6 +34,15 @@ DEFAULT_TAIL_BYTES: int = 4096
 MAX_SAMPLE_BYTES: int = 16384
 """Upper bound for each sample window, so the prompt fits a local model's context."""
 
+# The bytes read bound memory; these bound the tokens. The model needs a
+# handful of complete rows, not 4 KiB of a narrow file (about 120 rows), so
+# the text handed to the prompt and to grounding keeps at most this many
+# lines of each window. Chosen with the evaluation harness on qwen2.5-coder:7b
+# (issue #134, 2026-09-25): the smallest pair within 0.5 pt of the 0.4.0
+# accuracy with no errored inspection; see docs/evaluation.md "Line bounds".
+MAX_HEAD_LINES: int = 15
+MAX_TAIL_LINES: int = 10
+
 
 def _validate_byte_budget(
     name: str, value: int, *, minimum: int, maximum: int | None = None
@@ -190,7 +199,11 @@ class Samples:
             source: the head covers it all, or a tail was sampled. ``False``
             when the head was truncated and tail sampling is disabled, or a
             non-seekable stream ran past :data:`MAX_FORWARD_SCAN_BYTES`, in
-            which case the end of the source was never seen.
+            which case the end of the source was never seen. The line
+            bounds never change it.
+        lines_omitted: How many decoded lines the line bounds
+            (:data:`MAX_HEAD_LINES`, :data:`MAX_TAIL_LINES`) left out of
+            the texts; 0 when nothing was cut.
     """
 
     head_text: str
@@ -198,6 +211,7 @@ class Samples:
     encoding: str
     description: str
     covers_whole_file: bool = True
+    lines_omitted: int = 0
 
 
 class _Reader(Protocol):
@@ -428,6 +442,48 @@ def _trim_to_last_line_break(text: str) -> str:
     return text[:end] if end else text
 
 
+def _lines(text: str) -> list[str]:
+    """Split ``text`` into lines, each keeping its line break (the last may have none)."""
+    lines: list[str] = []
+    start = 0
+    for match in LINE_BREAK.finditer(text):
+        lines.append(text[start : match.end()])
+        start = match.end()
+    if start < len(text):
+        lines.append(text[start:])
+    return lines
+
+
+def _bound_lines(
+    head_text: str, tail_text: str | None, covers_whole_file: bool
+) -> tuple[str, str | None, int]:
+    """Keep at most :data:`MAX_HEAD_LINES` head lines and :data:`MAX_TAIL_LINES` tail lines.
+
+    The head keeps its first lines. A sampled tail keeps its last lines, so
+    it still ends at the real end of the source, and loses its first,
+    possibly cut, line whenever it is trimmed. When the head covers the
+    whole source (no tail) and holds more lines than both bounds together,
+    a tail is synthesized from its last :data:`MAX_TAIL_LINES` lines: the
+    prompt then shows a head and a tail, and grounding looks for the footer
+    at the real end. A source within the bounds is kept whole.
+
+    Returns:
+        The bounded head and tail texts, and how many lines were left out.
+    """
+    head = _lines(head_text)
+    if tail_text is None and covers_whole_file:
+        if len(head) <= MAX_HEAD_LINES + MAX_TAIL_LINES:
+            return head_text, None, 0
+        omitted = len(head) - MAX_HEAD_LINES - MAX_TAIL_LINES
+        return "".join(head[:MAX_HEAD_LINES]), "".join(head[-MAX_TAIL_LINES:]), omitted
+    omitted = max(len(head) - MAX_HEAD_LINES, 0)
+    if tail_text is not None:
+        tail = _lines(tail_text)
+        omitted += max(len(tail) - MAX_TAIL_LINES, 0)
+        tail_text = "".join(tail[-MAX_TAIL_LINES:])
+    return "".join(head[:MAX_HEAD_LINES]), tail_text, omitted
+
+
 def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     """Read and decode the bounded head and tail samples of ``source``.
 
@@ -438,7 +494,9 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     runs on for more than :data:`MAX_FORWARD_SCAN_BYTES` past the head,
     reading stops there and the tail is skipped (``covers_whole_file`` is
     then ``False``). The tail never overlaps the head and is skipped when
-    the head already covers the whole source. No single read exceeds
+    the head already covers the whole source. The decoded texts are then
+    bounded in lines (see :func:`_bound_lines`); encoding detection uses
+    the whole windows. No single read exceeds
     ``max(n_bytes, tail_bytes)`` for files, or :data:`STREAM_CHUNK_BYTES`
     for streams.
 
@@ -499,10 +557,12 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
 
     if len(head_raw) == n_bytes and (tail_text is not None or not covers_whole_file):
         head_text = _trim_to_last_line_break(head_text)
+    head_text, tail_text, lines_omitted = _bound_lines(head_text, tail_text, covers_whole_file)
     return Samples(
         head_text=head_text,
         tail_text=tail_text,
         encoding=encoding,
         description=description,
         covers_whole_file=covers_whole_file,
+        lines_omitted=lines_omitted,
     )

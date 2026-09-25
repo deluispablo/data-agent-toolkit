@@ -350,7 +350,7 @@ class _Run:
         )
         logger.info(
             "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
-            "attempts=%d retries=%d prompt_version=%s",
+            "attempts=%d retries=%d prompt_version=%s lines_omitted=%d",
             usage.model,
             usage.prompt_tokens,
             usage.completion_tokens,
@@ -358,6 +358,7 @@ class _Run:
             usage.attempts,
             usage.retries,
             usage.prompt_version,
+            samples.lines_omitted,
         )
         grounded = ground_in_samples(
             answer,

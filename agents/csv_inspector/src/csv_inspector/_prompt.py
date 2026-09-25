@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-m"
+PROMPT_VERSION = "2026.09-n"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -102,8 +102,9 @@ def build_prompt(
         tail_sample: The decoded text sample from the end of the source
             file, or ``None`` when the head sample already covers the whole
             file (in which case a separate tail section is omitted to save
-            tokens). When present, this sample is a blind byte-suffix and
-            may start mid-line or mid-character.
+            tokens). When present, the lines between the two samples are
+            not sent (a byte window further down, or lines the line bounds
+            left out), and its first line may be cut.
         covers_whole_file: Whether the samples reach the real end of the
             file. Only consulted without a tail sample: ``False`` means the
             head was truncated and the end of the file was never sampled,
@@ -118,7 +119,7 @@ def build_prompt(
     """
     if tail_sample is not None:
         tail_section = f"""
---- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---
+--- TAIL SAMPLE START (end of the file; lines in between not shown; may start mid-line) ---
 {tail_sample}
 --- TAIL SAMPLE END ---
 

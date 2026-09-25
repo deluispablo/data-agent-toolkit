@@ -395,6 +395,63 @@ What the passes taught:
   `footer_first_line` at 300 characters, but a list of names cannot be
   capped without a per-file bound; #138 re-sizes the reply cap.
 
+## Line bounds (#134)
+
+The byte windows (4 KiB each) bound memory; `MAX_HEAD_LINES` and
+`MAX_TAIL_LINES` in `_sampling.py` bound the lines of each window that
+reach the prompt and grounding. On 0.4.0 the samples were about 1,940 of
+the 2,639 prompt tokens. The pair was chosen on `qwen2.5-coder:7b` on
+2026-09-25: the quick subset for every pair, then the full catalog for the
+best ones, keeping **the smallest pair within 0.5 pt of the 0.4.0 accuracy
+with no errored inspection**.
+
+Quick subset, `--repeat 2` (21 fixtures; replaying the #158 run on the
+same fixtures gives 99.3 % at 3,100 prompt tokens without bounds):
+
+| head x tail | 5 | 10 | 15 |
+|---|---|---|---|
+| 10 | 98.4 %, 1,064 tok | 100 %, 1,208 tok | 100 %, 1,284 tok |
+| 20 | 98.4 %, 1,222 tok | 100 %, 1,366 tok | 100 %, 1,442 tok |
+| 30 | 97.4 %, 1,381 tok | 100 %, 1,524 tok | 100 %, 1,600 tok |
+| 50 | 98.4 %, 1,664 tok | 100 %, 1,808 tok | 100 %, 1,884 tok |
+
+Five tail lines miss the second line of a multi-line footer
+(`footer_end_marker.csv`). Full catalog, `--repeat 3`, against the run of
+`main` after #158 (`runs/qwen2.5-coder-7b-m602.jsonl`, no bounds):
+
+| | no bounds | 10 x 10 | 10 x 15 | **15 x 10** |
+|---|---|---|---|---|
+| prompt tokens (mean) | 2,639 | 1,441 (-45 %) | 1,522 (-42 %) | **1,522 (-42 %)** |
+| completion tokens (mean) | 146 | 146 | 146 | 146 |
+| latency p50 / p95 | 1.56 s / 6.62 s | 1.49 s / 6.57 s | 1.47 s / 8.33 s | 1.48 s / 8.46 s |
+| errored lines | 0 | 3 | 3 | **0** |
+| accuracy | 99.8 % | 100.0 % | 100.0 % | **99.7 %** |
+
+Per fixture size (prompt tokens, accuracy):
+
+| size | lines | no bounds | 15 x 10 |
+|---|---|---|---|
+| < 4 KiB | 135 | 1,071, 100 % | 938, 100 % |
+| 4-16 KiB | 87 | 4,759, 99.5 % | 2,114, 99.2 % |
+| >= 16 KiB | 18 | 3,888, 100 % | 2,944, 100 % |
+
+Small files gain little (the template dominates); files of 4 KiB and more
+lose more than half their prompt. Wide files (40 columns, 200 columns) keep
+their byte-bound size: fewer lines than the bounds fit in 4 KiB.
+
+The errored lines of 10 x 10 and 10 x 15 are one fixture,
+`gen_preamble_5_footer.csv` (tab-delimited, totals row `TOTAL\t\t…\t\t\t`):
+both models copy the footer line and keep repeating `\t` until Ollama
+aborts with "token repeat limit reached". Whether it happens depends on
+the exact prompt, not on how many lines it holds (with one repeat: 12 x 10
+fails, 15 x 10 passes, 15 x 15 fails, 20 x 15 passes); the 0.4.0 prompt
+passed it. Telling the model to leave out trailing empty fields made it
+worse, so the prompt keeps "verbatim". 15 x 10 passed it on every repeat
+(4 of 4); its one new miss is the totals footer of
+`gen_encoding_utf8_bom_crlf.csv`, which the model answers as absent on all
+3 repeats. The loop is a risk on any tab file whose footer has trailing
+empty fields; #138 caps the reply so it fails faster.
+
 ## Publishing a baseline
 
 A baseline is a full local run (`--repeat 3`) plus the cloud subset,

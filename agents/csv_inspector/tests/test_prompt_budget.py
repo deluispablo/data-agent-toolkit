@@ -17,7 +17,8 @@ import pytest
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
 # The template with empty samples: 2353 characters on PROMPT_VERSION
-# 2026.09-m, plus 10 %. Lower it when the template shrinks (#133).
+# 2026.09-n (unchanged from 2026.09-m: #134 changed only the tail branch),
+# plus 10 %. Lower it when the template shrinks (#133).
 PROMPT_TEMPLATE_MAX_CHARS = 2589
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
@@ -80,7 +81,7 @@ _GOLDEN_WITH_TAIL = (
     "\n"
     "--- HEAD SAMPLE END ---\n"
     "\n"
-    "--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---\n"
+    "--- TAIL SAMPLE START (end of the file; lines in between not shown; may start mid-line) ---\n"
     "15,890.00\n"
     "TOTAL,2140.50\n"
     "\n"

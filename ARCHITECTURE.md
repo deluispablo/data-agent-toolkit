@@ -169,7 +169,8 @@ Around the package:
   |---|---|
   | `scoring.py` | A result against the manifest (encoding aliases, stripped footers, column recall), votes and verdicts over repeats. Standard library only. |
   | `replay.py` | Reading a `--keep-raw` run, and the `model_invoker` that answers with its recorded texts. Standard library only. |
-  | `evaluation.py` | `FileEvaluation`, the one representation of a run-file line (`to_record` / `from_record`), and `evaluate_file`. It may import private names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts still reach `Usage`. |
+  | `recording.py` | The one seam into the library's built-in invoker: `recording_invoker(on_call)` wraps `_inspect.builtin_invoker` so token counts still reach `Usage`; used by `--keep-raw` and `capture_walkthrough.py`. |
+  | `evaluation.py` | `FileEvaluation`, the one representation of a run-file line (`to_record` / `from_record`), and `evaluate_file`. |
   | `guards.py` | `SUBSETS`, fixture selection, worst-case call counts, `CallBudget` (`--max-calls`) and `RateLimiter` (`--rpm`). |
   | `runs.py` | The run file (`run_info`, `RunWriter`, `summarize_file`, `HARNESS_VERSION`), the summary, the guarded loop over the fixtures. |
   | `report.py` | Every rendering: the per-run report and the multi-run table. Standard library only, so `compare_runs.py` runs without the package installed. |

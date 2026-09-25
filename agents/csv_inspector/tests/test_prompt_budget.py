@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 3540 characters on PROMPT_VERSION
-# 2026.09-a, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 3894
+# The template with empty samples: 3291 characters on PROMPT_VERSION
+# 2026.09-b, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 3620
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -87,16 +87,8 @@ _GOLDEN_WITH_TAIL = (
     '  "has_header": <true if a row holds the column names, false if the first row is already data>,\n'
     '  "header_row_index": <0-based index of the column-name row, or null if has_header is false>,\n'
     '  "footer_lines": ["<every footer line after the last data row, in file order>", "..."],\n'
-    '  "columns": [\n'
-    "    {\n"
-    '      "name": "<name copied character for character from the header row; column_N if none>",\n'
-    '      "inferred_type": "<string|integer|float|date|datetime|boolean>",\n'
-    '      "nullable": <true|false>,\n'
-    '      "example_values": ["<at most 3 raw values copied from this column>"]\n'
-    "    }\n"
-    "  ],\n"
-    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>,\n'
-    '  "notes": "<relevant observations, or null>"\n'
+    '  "columns": ["<name copied character for character from the header row; column_N if none>", "..."],\n'
+    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>\n'
     "}\n"
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -139,16 +131,8 @@ _GOLDEN_TRUNCATED_HEAD = (
     '  "has_header": <true if a row holds the column names, false if the first row is already data>,\n'
     '  "header_row_index": <0-based index of the column-name row, or null if has_header is false>,\n'
     '  "footer_lines": ["<every footer line after the last data row, in file order>", "..."],\n'
-    '  "columns": [\n'
-    "    {\n"
-    '      "name": "<name copied character for character from the header row; column_N if none>",\n'
-    '      "inferred_type": "<string|integer|float|date|datetime|boolean>",\n'
-    '      "nullable": <true|false>,\n'
-    '      "example_values": ["<at most 3 raw values copied from this column>"]\n'
-    "    }\n"
-    "  ],\n"
-    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>,\n'
-    '  "notes": "<relevant observations, or null>"\n'
+    '  "columns": ["<name copied character for character from the header row; column_N if none>", "..."],\n'
+    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>\n'
     "}\n"
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -191,16 +175,8 @@ _GOLDEN_WHOLE_FILE = (
     '  "has_header": <true if a row holds the column names, false if the first row is already data>,\n'
     '  "header_row_index": <0-based index of the column-name row, or null if has_header is false>,\n'
     '  "footer_lines": ["<every footer line after the last data row, in file order>", "..."],\n'
-    '  "columns": [\n'
-    "    {\n"
-    '      "name": "<name copied character for character from the header row; column_N if none>",\n'
-    '      "inferred_type": "<string|integer|float|date|datetime|boolean>",\n'
-    '      "nullable": <true|false>,\n'
-    '      "example_values": ["<at most 3 raw values copied from this column>"]\n'
-    "    }\n"
-    "  ],\n"
-    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>,\n'
-    '  "notes": "<relevant observations, or null>"\n'
+    '  "columns": ["<name copied character for character from the header row; column_N if none>", "..."],\n'
+    '  "confidence": <number between 0.0 and 1.0 indicating your confidence>\n'
     "}\n"
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'

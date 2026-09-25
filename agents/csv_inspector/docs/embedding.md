@@ -279,12 +279,19 @@ logging.getLogger("csv_inspector").setLevel(logging.WARNING)
 
 To meter cost per request, log or export `result.usage` yourself (it is
 not in the serialized result); the API example returns the model and token
-counts as `X-Inspection-*` response headers:
+counts as `X-Inspection-*` response headers. Its type, `Usage`, is public,
+so host code can annotate it:
 
 ```python
-result = inspect_csv(path)
-if result.usage is not None:
-    metrics.record(result.usage.model, result.usage.prompt_tokens, result.usage.completion_tokens)
+from csv_inspector import Usage, inspect_csv
+
+
+def record_usage(usage: Usage | None) -> None:
+    if usage is not None:
+        metrics.record(usage.model, usage.prompt_tokens, usage.completion_tokens)
+
+
+record_usage(inspect_csv(path).usage)
 ```
 
 Records describe sources by path or size (e.g. `<52311 bytes in memory>`)

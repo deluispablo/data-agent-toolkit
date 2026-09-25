@@ -367,10 +367,7 @@ def _compare(
             continue
 
         expected_value = expected[field_name]
-        if field_name == "columns":
-            actual_value = [column.name for column in result.columns]
-        else:
-            actual_value = getattr(result, field_name)
+        actual_value = getattr(result, field_name)
         if field_name == "encoding":
             is_match = _matches_encoding(str(expected_value), str(actual_value))
         elif field_name == "footer_lines":
@@ -573,7 +570,7 @@ def evaluate_file(
     evaluation.mismatched_fields = mismatched
     evaluation.skipped_fields = skipped
     evaluation.columns_recall, evaluation.columns_count_match = _column_diagnostics(
-        entry["expected"].get("columns"), [column.name for column in result.columns]
+        entry["expected"].get("columns"), result.columns
     )
     return evaluation
 

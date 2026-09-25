@@ -51,13 +51,7 @@ async def test_inspects_the_sample(
     body = response.json()
     assert body["delimiter"] == ";"
     assert body["header_row_index"] == 2
-    assert [c["name"] for c in body["columns"]] == [
-        "Fecha",
-        "Cliente",
-        "Descripción",
-        "Importe",
-        "Observaciones",
-    ]
+    assert body["columns"] == ["Fecha", "Cliente", "Descripción", "Importe", "Observaciones"]
     assert body == csv_inspector.CSVInspectionResult.model_validate(body).model_dump(mode="json")
     assert [model for _, model in invoker.calls] == ["qwen2.5-coder:7b"]
     (record,) = caplog.records

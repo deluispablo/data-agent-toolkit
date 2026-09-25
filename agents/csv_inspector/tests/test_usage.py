@@ -21,7 +21,7 @@ ANSWER = json.dumps(
         "encoding": "utf-8",
         "delimiter": ";",
         "header_row_index": 2,
-        "columns": [{"name": "Fecha", "inferred_type": "date"}],
+        "columns": ["Fecha"],
         "confidence": 0.9,
     }
 )

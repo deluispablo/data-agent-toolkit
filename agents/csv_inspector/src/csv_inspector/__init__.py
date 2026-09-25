@@ -1,7 +1,7 @@
 r"""csv_inspector: LLM-assisted inspection of large, messy CSV/TSV sources.
 
-Infers the encoding, dialect, header row, footer lines and a preliminary
-column schema of a delimited source from small, bounded head/tail samples,
+Infers the encoding, dialect, header row, footer lines and column names
+of a delimited source from small, bounded head/tail samples,
 using a local Ollama model by default or Google Gemini as an opt-in.
 
 The names exported here (see ``__all__``) are the **public, stable API**.
@@ -37,7 +37,7 @@ from ._exceptions import (
 )
 from ._inspect import ainspect_csv, inspect_csv
 from ._invokers import AsyncModelInvoker, ModelInvoker
-from ._models import ColumnSchema, ColumnType, CSVInspectionResult
+from ._models import CSVInspectionResult, Usage
 from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, MAX_SAMPLE_BYTES, CSVSource
 
 try:
@@ -57,8 +57,6 @@ __all__ = [
     "CSVInspectionResult",
     "CSVInspectorError",
     "CSVSource",
-    "ColumnSchema",
-    "ColumnType",
     "CredentialsNotConfiguredError",
     "EmptySampleError",
     "FileSampleReadError",
@@ -71,6 +69,7 @@ __all__ = [
     "ResponseParsingError",
     "SchemaValidationError",
     "Settings",
+    "Usage",
     "__version__",
     "ainspect_csv",
     "ensure_backend_ready",

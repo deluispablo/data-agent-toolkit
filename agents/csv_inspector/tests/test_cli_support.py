@@ -142,7 +142,7 @@ def test_cli_main_prints_the_result_and_passes_the_timeout(
             "encoding": "utf-8",
             "delimiter": ";",
             "header_row_index": 0,
-            "columns": [{"name": "a", "inferred_type": "string"}],
+            "columns": ["a"],
             "confidence": 0.9,
         }
     )
@@ -171,7 +171,7 @@ _CLI_ANSWER = json.dumps(
         "encoding": "utf-8",
         "delimiter": ";",
         "header_row_index": 0,
-        "columns": [{"name": "a", "inferred_type": "string"}],
+        "columns": ["a"],
         "confidence": 0.9,
     }
 )
@@ -205,8 +205,8 @@ def test_cli_prints_the_same_json_as_before(
     target.write_text("Año;Descripción\n2024;Señal\n", encoding="utf-8")
     answer = json.loads(_CLI_ANSWER) | {
         "columns": [
-            {"name": "Año", "inferred_type": "integer"},
-            {"name": "Descripción", "inferred_type": "string"},
+            "Año",
+            "Descripción",
         ]
     }
     install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(json.dumps(answer)))

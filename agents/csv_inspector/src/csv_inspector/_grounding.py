@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 from ._encoding import LINE_BREAK, canonical_codec_name
-from ._models import ColumnSchema, CSVInspectionResult
+from ._models import CSVInspectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def _locate_header_row(
         (e.g. a header-less file, or a dialect Python's ``csv`` module
         rejects).
     """
-    expected = [column.name.strip() for column in result.columns]
+    expected = [name.strip() for name in result.columns]
     if not expected:
         return None
     rows = [
@@ -170,8 +170,8 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     empty field matching any shape) with at least half of the fields
     non-text in both rows. A row-0 field equal to one of the model's
     column names (case-insensitive) always keeps the header. Only the
-    sample is read, never the model's example values; only the first line
-    is tested, so a header-less file with preamble lines is not described.
+    sample is read; only the first line is tested, so a header-less file
+    with preamble lines is not described.
     """
     lines = _split_lines(head_sample.lstrip("\ufeff"))
     if len(lines) < _MIN_AGREEING_LINES:
@@ -180,7 +180,7 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     second = _split_fields(lines[1], result.delimiter, result.quotechar)
     if not first or second is None or not len(first) == len(second) == len(result.columns):
         return False
-    names = {column.name.strip().casefold() for column in result.columns} - {""}
+    names = {name.strip().casefold() for name in result.columns} - {""}
     if any(field.strip().casefold() in names for field in first):
         return False
     first_shape = [_field_shape(field) for field in first]
@@ -213,40 +213,16 @@ def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, o
         return {
             "has_header": False,
             "header_row_index": None,
-            "columns": [
-                column.model_copy(update={"name": f"column_{number}"})
-                for number, column in enumerate(result.columns, start=1)
-            ],
+            "columns": [f"column_{number}" for number in range(1, len(result.columns) + 1)],
         }
     updates: dict[str, object] = {}
     header_row_index, names = header
     if header_row_index != result.header_row_index:
         updates["header_row_index"] = header_row_index
-    if names != [column.name for column in result.columns]:
-        updates["columns"] = _columns_named(result.columns, names)
+    # The header's fields as written, blank names the model left out included.
+    if names != result.columns:
+        updates["columns"] = names
     return updates
-
-
-def _columns_named(columns: list[ColumnSchema], names: list[str]) -> list[ColumnSchema]:
-    """Rename the inferred columns to the header's names as written.
-
-    When the header has more names than inferred columns, the extra names
-    are the blank ones the model left out (see :func:`_locate_header_row`):
-    each gets a new nullable ``string`` column, and the inferred columns
-    keep their order over the non-blank names.
-    """
-    if len(names) == len(columns):
-        return [
-            column.model_copy(update={"name": name})
-            for column, name in zip(columns, names, strict=True)
-        ]
-    inferred = iter(columns)
-    return [
-        next(inferred).model_copy(update={"name": name})
-        if name.strip()
-        else ColumnSchema(name=name, inferred_type="string")
-        for name in names
-    ]
 
 
 def _locate_footer_lines(
@@ -490,10 +466,10 @@ def ground_in_samples(
     row 0 that cannot be anchored becomes "no header" when the first row
     has the same field shapes (integer, decimal, date, empty or text) as the
     second: header-less detection is a shape test on the sample, not on the
-    model's example values (see :func:`_first_row_is_data`). Any other
-    header that cannot be anchored is left as the model reported it. A
-    footer that cannot be anchored is dropped when the end of the file was
-    sampled, since it is not there.
+    model's answer (see :func:`_first_row_is_data`). Any other header that
+    cannot be anchored is left as the model reported it. A footer that
+    cannot be anchored is dropped when the end of the file was sampled,
+    since it is not there.
 
     Args:
         result: The model's validated result.

@@ -40,8 +40,6 @@ EXPECTED_PUBLIC_API = {
     "CSVInspectionResult",
     "CSVInspectorError",
     "CSVSource",
-    "ColumnSchema",
-    "ColumnType",
     "CredentialsNotConfiguredError",
     "EmptySampleError",
     "FileSampleReadError",
@@ -54,6 +52,7 @@ EXPECTED_PUBLIC_API = {
     "ResponseParsingError",
     "SchemaValidationError",
     "Settings",
+    "Usage",
     "__version__",
     "ainspect_csv",
     "ensure_backend_ready",
@@ -179,7 +178,7 @@ def test_importing_and_using_the_library_leaves_the_root_logger_alone(tmp_path: 
         "import json, logging\n"
         "from csv_inspector import inspect_csv\n"
         "answer = json.dumps({'encoding': 'utf-8', 'delimiter': ';', 'header_row_index': 0,\n"
-        "                     'columns': [], 'confidence': 1.0})\n"
+        "                     'columns': ['a', 'b'], 'confidence': 1.0})\n"
         "inspect_csv(b'a;b\\n1;2\\n', model='m', fallback_model='m',\n"
         "            model_invoker=lambda p, m: answer)\n"
         "print(len(logging.getLogger().handlers), logging.getLogger().level)\n"
@@ -237,7 +236,7 @@ def test_concurrent_inspections_from_threads_are_independent() -> None:
                 "encoding": "utf-8",
                 "delimiter": delimiter,
                 "header_row_index": 0,
-                "columns": [{"name": "a", "inferred_type": "string"}],
+                "columns": ["a"],
                 "confidence": 0.9,
             }
         )
@@ -329,7 +328,7 @@ _ANSWER = json.dumps(
         "encoding": "utf-8",
         "delimiter": ";",
         "header_row_index": 0,
-        "columns": [{"name": "a", "inferred_type": "string"}],
+        "columns": ["a"],
         "confidence": 0.9,
     }
 )

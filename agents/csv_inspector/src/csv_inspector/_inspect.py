@@ -404,7 +404,7 @@ def inspect_csv(
     up to ``tail_bytes`` more from its end (tail), never loading it in full.
     Asks an LLM (local Ollama by default, or Google Gemini with
     ``backend=LLMBackend.API``) to infer the encoding, delimiter, quoting,
-    header row, footer lines and a preliminary column schema, then grounds
+    header row, footer lines and column names, then grounds
     the answer in the sampled text and returns it validated.
 
     Blocking: in an asyncio application use :func:`ainspect_csv`, or run

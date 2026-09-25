@@ -80,22 +80,8 @@ _EXAMPLE_RESULT = {
     "has_header": True,
     "header_row_index": 2,
     "footer_lines": [],
-    "columns": [
-        {
-            "name": "Fecha",
-            "inferred_type": "date",
-            "nullable": False,
-            "example_values": ["2024-01-15", "2024-01-16"],
-        },
-        {
-            "name": "Importe",
-            "inferred_type": "float",
-            "nullable": False,
-            "example_values": ["1250.50", "890.00"],
-        },
-    ],
+    "columns": ["Fecha", "Importe"],
     "confidence": 0.9,
-    "notes": "Two preamble lines precede the header row.",
 }
 
 
@@ -338,7 +324,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         file: Annotated[UploadFile, File(description="The CSV/TSV file, in any encoding.")],
         params: Annotated[InspectParams, Depends(inspect_params)],
     ) -> CSVInspectionResult:
-        """Infer the encoding, dialect, header, footer and column schema of the upload.
+        """Infer the encoding, dialect, header, footer and column names of the upload.
 
         Only a bounded head and tail of the file are read and sent to the model.
         The content type of the upload is not checked: browsers and tools send

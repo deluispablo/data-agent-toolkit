@@ -22,15 +22,13 @@ import logging
 import sys
 from pathlib import Path
 from types import SimpleNamespace
-from typing import IO, Any, get_args
+from typing import IO, Any
 
 import pytest
 from pydantic import SecretStr, ValidationError
 
 from csv_inspector import (
     BackendConfigurationError,
-    ColumnSchema,
-    ColumnType,
     CSVInspectionResult,
     EmptySampleError,
     FileSampleReadError,
@@ -56,7 +54,7 @@ from csv_inspector._sampling import (
     read_sample_bytes,
     read_tail_bytes,
 )
-from fakes import install_fake_ollama
+from fakes import install_fake_ollama, ollama_reply
 from generate_samples import CASES, SampleCase, derive_columns
 from matrix import MATRIX, render
 
@@ -70,22 +68,8 @@ VALID_RESULT_PAYLOAD: dict[str, object] = {
     "doublequote": True,
     "header_row_index": 2,
     "footer_lines": [],
-    "columns": [
-        {
-            "name": "Fecha",
-            "inferred_type": "date",
-            "nullable": False,
-            "example_values": ["2024-01-15", "2024-01-16"],
-        },
-        {
-            "name": "Importe",
-            "inferred_type": "float",
-            "nullable": False,
-            "example_values": ["1250.50", "890.00"],
-        },
-    ],
+    "columns": ["Fecha", "Importe"],
     "confidence": 0.95,
-    "notes": None,
 }
 
 
@@ -469,17 +453,14 @@ def test_a_header_less_fixture_keeps_its_positional_columns() -> None:
         "delimiter": ",",
         "has_header": False,
         "header_row_index": None,
-        "columns": [
-            {"name": f"column_{n}", "inferred_type": kind}
-            for n, kind in enumerate(["date", "string", "float"], start=1)
-        ],
+        "columns": ["column_1", "column_2", "column_3"],
     }
 
     result = inspect_csv(fixture, model_invoker=lambda prompt, model: json.dumps(answer))
 
     assert result.has_header is False
     assert result.header_row_index is None
-    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
+    assert result.columns == ["column_1", "column_2", "column_3"]
     assert '"has_header"' in build_prompt("a,b\n", "utf-8")
 
 
@@ -490,17 +471,13 @@ def test_grounding_detects_a_first_row_shaped_like_data() -> None:
         **VALID_RESULT_PAYLOAD,
         "delimiter": ",",
         "header_row_index": 0,
-        "columns": [
-            {"name": "date", "inferred_type": "date"},
-            {"name": "name", "inferred_type": "string"},
-            {"name": "amount", "inferred_type": "float"},
-        ],
+        "columns": ["date", "name", "amount"],
     }
 
     result = inspect_csv(fixture, model_invoker=lambda prompt, model: json.dumps(answer))
 
     assert (result.has_header, result.header_row_index) == (False, None)
-    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
+    assert result.columns == ["column_1", "column_2", "column_3"]
 
 
 def test_grounding_keeps_a_header_whose_names_are_not_examples(tmp_path: Path) -> None:
@@ -512,9 +489,9 @@ def test_grounding_keeps_a_header_whose_names_are_not_examples(tmp_path: Path) -
         "delimiter": ",",
         "header_row_index": 0,
         "columns": [
-            {"name": "date", "inferred_type": "date", "example_values": ["2024-01-15"]},
-            {"name": "client", "inferred_type": "string", "example_values": ["Acme"]},
-            {"name": "amount", "inferred_type": "float", "example_values": ["10"]},
+            "date",
+            "client",
+            "amount",
         ],
     }
 
@@ -558,7 +535,7 @@ def _ground_case(case: SampleCase, names: list[str]) -> CSVInspectionResult:
         "encoding": encoding,
         "delimiter": case.expected["delimiter"],
         "header_row_index": 0,
-        "columns": [{"name": name, "inferred_type": "string"} for name in names],
+        "columns": list(names),
     }
     head = case.raw_bytes.decode(encoding)
     return ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
@@ -580,7 +557,7 @@ def test_grounding_reports_no_header_for_header_less_fixtures(case: SampleCase) 
     result = _ground_case(case, [f"invented_{n}" for n in range(width)])
 
     assert (result.has_header, result.header_row_index) == (False, None)
-    assert [column.name for column in result.columns] == derive_columns(case)
+    assert result.columns == derive_columns(case)
 
 
 def test_grounding_keeps_an_all_text_header_it_cannot_anchor() -> None:
@@ -606,7 +583,7 @@ def test_grounding_keeps_a_header_of_years(names: list[str]) -> None:
     result = _ground_case(case, names)
 
     assert (result.has_header, result.header_row_index) == (True, 0)
-    assert [column.name for column in result.columns] == names
+    assert result.columns == names
 
 
 def test_grounding_keeps_a_header_named_by_the_model_in_another_case() -> None:
@@ -616,8 +593,8 @@ def test_grounding_keeps_a_header_named_by_the_model_in_another_case() -> None:
         "delimiter": ",",
         "header_row_index": 0,
         "columns": [
-            {"name": "fecha", "inferred_type": "string"},
-            {"name": "concepto", "inferred_type": "string"},
+            "fecha",
+            "concepto",
         ],
     }
     head = "Fecha,Cliente\nAcme,Beta\nGamma,Delta\n"
@@ -643,9 +620,7 @@ def test_first_row_is_data_needs_a_second_row_of_the_same_shape(head: str, is_da
         **VALID_RESULT_PAYLOAD,
         "delimiter": ",",
         "header_row_index": 0,
-        "columns": [
-            {"name": name, "inferred_type": "string"} for name in ("date", "client", "amount")
-        ],
+        "columns": ["date", "client", "amount"],
     }
     result = CSVInspectionResult.model_validate(answer)
 
@@ -1061,11 +1036,7 @@ def _sloppy_answer(**overrides: object) -> ModelInvoker:
     payload = {
         **VALID_RESULT_PAYLOAD,
         "header_row_index": 0,
-        "columns": [
-            {"name": "Fecha", "inferred_type": "date"},
-            {"name": "Proveedor", "inferred_type": "string"},
-            {"name": "Monto", "inferred_type": "float"},
-        ],
+        "columns": ["Fecha", "Proveedor", "Monto"],
         "footer_lines": ["TOTAL;;60.00"],
         **overrides,
     }
@@ -1084,21 +1055,18 @@ def test_grounding_recovers_header_row_and_literal_column_names(tmp_path: Path) 
     result = inspect_csv(target, model_invoker=_sloppy_answer())
 
     assert result.header_row_index == 2
-    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
-    assert [column.inferred_type for column in result.columns] == ["date", "string", "float"]
+    assert result.columns == ["Fecha", "Cliente", "Importe"]
 
 
 def test_grounded_column_names_keep_padding_like_csv_reader(tmp_path: Path) -> None:
     """Names match what csv/pandas read: surrounding spaces are kept, not stripped."""
     target = tmp_path / "padded.csv"
     target.write_text("Fecha; Cliente ;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
-    columns = [
-        {"name": name, "inferred_type": "string"} for name in ("Fecha", "Cliente", "Importe")
-    ]
+    columns = ["Fecha", "Cliente", "Importe"]
 
     result = inspect_csv(target, model_invoker=_sloppy_answer(columns=columns, footer_lines=[]))
 
-    assert [column.name for column in result.columns] == ["Fecha", " Cliente ", "Importe"]
+    assert result.columns == ["Fecha", " Cliente ", "Importe"]
 
 
 def test_grounding_recovers_skipped_footer_lines_verbatim(tmp_path: Path) -> None:
@@ -1118,22 +1086,14 @@ def test_grounding_reads_the_footer_from_the_tail_of_a_large_file() -> None:
     totals_row = fixture.read_text(encoding="utf-8").splitlines()[-2]
 
     # Mirrors what qwen2.5-coder:7b actually returned for this fixture.
-    columns = [
-        {"name": name, "inferred_type": "string"}
-        for name in ("Fecha", "Proveedor", "Descripción", "Monto")
-    ]
+    columns = ["Fecha", "Proveedor", "Descripción", "Monto"]
 
     result = inspect_csv(
         fixture, model_invoker=_sloppy_answer(columns=columns, footer_lines=[totals_row])
     )
 
     assert result.header_row_index == 2
-    assert [column.name for column in result.columns] == [
-        "Fecha",
-        "Cliente",
-        "Concepto",
-        "Importe",
-    ]
+    assert result.columns == ["Fecha", "Cliente", "Concepto", "Importe"]
     assert result.footer_lines == ["", totals_row, "--- Fin del informe ---"]
 
 
@@ -1146,9 +1106,9 @@ def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
     target = tmp_path / "no_header.csv"
     target.write_text("2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8")
     columns = [
-        {"name": "col_1", "inferred_type": "date"},
-        {"name": "col_2", "inferred_type": "string"},
-        {"name": "col_3", "inferred_type": "float"},
+        "col_1",
+        "col_2",
+        "col_3",
     ]
 
     result = inspect_csv(
@@ -1156,7 +1116,7 @@ def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
     )
 
     assert (result.has_header, result.header_row_index) == (False, None)
-    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
+    assert result.columns == ["column_1", "column_2", "column_3"]
     assert result.footer_lines == []
 
 
@@ -1217,7 +1177,7 @@ def test_grounding_replaces_a_delimiter_that_never_occurs(tmp_path: Path) -> Non
 
     assert result.delimiter == "\t"
     # Header grounding ran with the grounded delimiter.
-    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+    assert result.columns == ["Fecha", "Cliente", "Importe"]
     assert result.header_row_index == 2
 
 
@@ -1251,7 +1211,7 @@ def test_grounding_replaces_a_delimiter_that_occurs_only_inside_a_value(
     result = inspect_csv(target, model_invoker=_sloppy_answer(delimiter=",", header_row_index=0))
 
     assert result.delimiter == "\t"
-    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+    assert result.columns == ["Fecha", "Cliente", "Importe"]
 
 
 def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> None:
@@ -1271,7 +1231,7 @@ def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> 
     )
 
     assert result.delimiter == "\t"
-    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+    assert result.columns == ["Fecha", "Cliente", "Importe"]
 
 
 def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Path) -> None:
@@ -1310,75 +1270,89 @@ def test_grounding_keeps_the_reported_delimiter_when_candidates_tie(tmp_path: Pa
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(
-            delimiter="|", footer_lines=[], columns=[{"name": "a", "inferred_type": "string"}]
-        ),
+        model_invoker=_sloppy_answer(delimiter="|", footer_lines=[], columns=["a"]),
     )
 
     assert result.delimiter == "|"
 
 
-def test_numeric_example_values_are_accepted_as_text() -> None:
-    """JSON numbers or nulls in example_values must not fail the whole inspection."""
-    payload = {
-        **VALID_RESULT_PAYLOAD,
-        "columns": [
-            {"name": "Importe", "inferred_type": "float", "example_values": [1447.44, 3, None]}
-        ],
-    }
+def test_column_names_are_stripped_and_blank_and_duplicate_names_kept() -> None:
+    """Surrounding whitespace goes; an empty name and a repeated name stay (issue #129)."""
+    payload = {**VALID_RESULT_PAYLOAD, "columns": ["", " id ", "id", "\tvalue"]}
 
     result = CSVInspectionResult.model_validate(payload)
 
-    assert result.columns[0].example_values == ["1447.44", "3", ""]
+    assert result.columns == ["", "id", "id", "value"]
 
 
 @pytest.mark.parametrize(
-    ("answered", "expected"),
-    [
-        ("integer", "integer"),
-        ("DateTime", "datetime"),
-        (" Boolean ", "boolean"),
-        ("int", "integer"),
-        ("BIGINT", "integer"),
-        ("int64", "integer"),
-        ("number", "float"),
-        ("decimal", "float"),
-        ("double", "float"),
-        ("numeric", "float"),
-        ("text", "string"),
-        ("str", "string"),
-        ("varchar", "string"),
-        ("bool", "boolean"),
-        ("timestamp", "datetime"),
-        ("currency", "string"),
-        ("", "string"),
-    ],
+    "columns",
+    [[], "Fecha", [{"name": "Fecha", "inferred_type": "date"}], [1, 2], None],
+    ids=["empty", "string", "objects", "numbers", "null"],
 )
-def test_inferred_type_is_normalized_to_the_vocabulary(answered: str, expected: str) -> None:
-    """Aliases map onto the closed vocabulary; unknown words fall back to string."""
-    column = ColumnSchema(name="c", inferred_type=answered)
-
-    assert column.inferred_type == expected
-
-
-def test_non_string_inferred_type_fails_validation() -> None:
-    """Only strings are normalized; any other JSON value is a malformed answer."""
+def test_columns_must_be_a_non_empty_list_of_names(columns: object) -> None:
+    """Anything but a non-empty list of strings is a malformed answer (issue #129)."""
     with pytest.raises(ValidationError):
-        ColumnSchema(name="c", inferred_type=3)
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "columns": columns})
 
 
-def test_json_schema_lists_the_type_vocabulary() -> None:
-    """The schema sent to Gemini constrains inferred_type to the vocabulary."""
+def test_json_schema_is_flat_with_no_column_objects_notes_or_usage() -> None:
+    """The schema sent to Gemini lists names only: no $defs, notes or usage (issue #129)."""
     schema = CSVInspectionResult.model_json_schema()
 
-    assert schema["$defs"]["ColumnSchema"]["properties"]["inferred_type"]["enum"] == list(
-        get_args(ColumnType)
+    assert "$defs" not in schema
+    assert "ColumnSchema" not in json.dumps(schema)
+    assert "notes" not in schema["properties"]
+    assert "usage" not in schema["properties"]
+    assert schema["properties"]["columns"]["items"] == {"type": "string"}
+    assert "columns" in schema["required"]
+
+
+def test_prompt_asks_for_column_names_only() -> None:
+    """The prompt asks for a list of names, with no types, examples or notes (issue #129)."""
+    prompt = build_prompt("a\n1\n", "utf-8")
+
+    assert '"columns": ["<name copied character for character' in prompt
+    for removed in ("inferred_type", "nullable", "example_values", '"notes"', "boolean"):
+        assert removed not in prompt
+
+
+def test_a_forty_column_answer_validates_and_grounds(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A wide file's answer fits the Ollama reply cap and is grounded (issues #129, #147).
+
+    On 0.3.0 the per-column objects of a 40-column file ran past
+    ``num_predict`` and every inspection failed with truncated JSON.
+    """
+    names = [f"Campo {number}" for number in range(1, 41)]
+    row = ";".join(str(number) for number in range(40))
+    target = tmp_path / "wide.csv"
+    target.write_text(
+        "# Export ERP\n" + ";".join(names) + "\n" + f"{row}\n" * 5 + "\nTOTAL;;\n",
+        encoding="utf-8",
     )
+    answer = json.dumps(
+        {
+            **VALID_RESULT_PAYLOAD,
+            "header_row_index": 0,
+            "columns": [
+                name.replace("Campo", "Field") if number % 2 else name
+                for number, name in enumerate(names)
+            ],
+            "footer_lines": ["TOTAL;;"],
+        }
+    )
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(answer))
 
+    result = inspect_csv(target, settings=Settings(), model="big", fallback_model="small")
 
-def test_prompt_lists_the_type_vocabulary() -> None:
-    """The prompt asks for exactly the types the model accepts."""
-    assert "string|integer|float|date|datetime|boolean" in build_prompt("a\n1\n", "utf-8")
+    assert [request["model"] for request in fake.requests] == ["big"]
+    # Even at a pessimistic 3 characters per token, the answer fits the cap.
+    assert len(answer) / 3 < fake.requests[0]["options"]["num_predict"]
+    assert result.header_row_index == 1
+    assert result.columns == names
+    assert result.footer_lines == ["", "TOTAL;;"]
 
 
 def test_grounding_recovers_an_unreported_totals_row_above_the_footer(tmp_path: Path) -> None:
@@ -1478,9 +1452,7 @@ def test_grounding_keeps_a_data_row_named_like_a_totals_label_out_of_the_footer(
         "--- Fin del informe ---\n",
         encoding="utf-8",
     )
-    columns = [
-        {"name": name, "inferred_type": "string"} for name in ("Empresa", "Fecha", "Importe")
-    ]
+    columns = ["Empresa", "Fecha", "Importe"]
 
     result = inspect_csv(
         target,
@@ -1604,11 +1576,7 @@ def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     """A blank name the model left out is restored from the header row (issue #153)."""
     target = tmp_path / "indexed.csv"
     target.write_text(",id,id,value\n0,1,2,a\n1,3,4,b\n", encoding="utf-8")
-    columns = [
-        {"name": "id", "inferred_type": "integer"},
-        {"name": "id", "inferred_type": "integer"},
-        {"name": "value", "inferred_type": "string"},
-    ]
+    columns = ["id", "id", "value"]
 
     result = inspect_csv(
         target,
@@ -1618,13 +1586,7 @@ def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     )
 
     assert result.header_row_index == 0
-    assert [column.name for column in result.columns] == ["", "id", "id", "value"]
-    assert [column.inferred_type for column in result.columns] == [
-        "string",
-        "integer",
-        "integer",
-        "string",
-    ]
+    assert result.columns == ["", "id", "id", "value"]
 
 
 @pytest.mark.parametrize(
@@ -1640,7 +1602,7 @@ def test_grounding_of_totals_shaped_last_rows_in_the_catalog(
 ) -> None:
     """Totals-shaped data rows are dropped and real totals rows kept (issue #153)."""
     lines = (SAMPLE_CSV_PATH.parent / "samples" / fixture).read_text(encoding="utf-8").splitlines()
-    columns = [{"name": name, "inferred_type": "string"} for name in lines[0].split(",")]
+    columns = lines[0].split(",")
 
     result = inspect_csv(
         SAMPLE_CSV_PATH.parent / "samples" / fixture,
@@ -1685,7 +1647,7 @@ def test_header_fallback_ignores_empty_names(tmp_path: Path) -> None:
     """
     target = tmp_path / "index.csv"
     target.write_text("# Export\n,1,\n,2,3\n,a,b\n0,4,5\n1,6,7\n", encoding="utf-8")
-    columns = [{"name": name, "inferred_type": "string"} for name in ("", "x", "b")]
+    columns = ["", "x", "b"]
 
     result = inspect_csv(
         target,
@@ -1695,7 +1657,7 @@ def test_header_fallback_ignores_empty_names(tmp_path: Path) -> None:
     )
 
     assert result.header_row_index == 3
-    assert [column.name for column in result.columns] == ["", "a", "b"]
+    assert result.columns == ["", "a", "b"]
 
 
 @pytest.mark.parametrize(
@@ -1825,7 +1787,7 @@ def test_grounding_keeps_a_bom_encoding_and_rejects_unknown_codecs(
     result = inspect_csv(target, model_invoker=_sloppy_answer(encoding=reported))
 
     assert result.encoding == expected
-    assert result.columns[0].name == "Fecha"
+    assert result.columns[0] == "Fecha"
 
 
 def test_a_failed_attempt_log_never_shows_the_configured_api_key(

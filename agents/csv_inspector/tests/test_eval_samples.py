@@ -14,7 +14,6 @@ import pytest
 
 import eval_samples
 from csv_inspector import (
-    ColumnSchema,
     CSVInspectionResult,
     InspectionFailedError,
     InspectionTimeoutError,
@@ -149,14 +148,19 @@ def test_evaluate_file_reports_a_timed_out_fixture_as_errored(
 
 
 def _result_with_columns(*names: str) -> CSVInspectionResult:
-    """Build a minimal inspection result reporting ``names`` as its columns."""
-    return CSVInspectionResult(
+    """Build a minimal inspection result reporting ``names`` as its columns.
+
+    The names are set as written, surrounding spaces included, like grounding
+    does after validation (the validator strips a model's names).
+    """
+    result = CSVInspectionResult(
         encoding="utf-8",
         delimiter=",",
         header_row_index=0,
-        columns=[ColumnSchema(name=name, inferred_type="string") for name in names],
+        columns=list(names),
         confidence=0.9,
     )
+    return result.model_copy(update={"columns": list(names)})
 
 
 def _evaluate_with(

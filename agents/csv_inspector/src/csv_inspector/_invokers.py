@@ -183,7 +183,7 @@ def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
         ],
         "format": "json",
         # num_predict caps the reply at the budget num_ctx reserves for it.
-        # Without it a model stuck repeating (e.g. an endless example_values
+        # Without it a model stuck repeating (e.g. an endless footer_lines
         # list) generates until the timeout, or forever when there is none;
         # a capped reply is truncated JSON, which fails parsing and moves on
         # to the fallback model.

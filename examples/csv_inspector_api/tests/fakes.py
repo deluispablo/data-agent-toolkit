@@ -27,15 +27,8 @@ SAMPLE_ANSWER = json.dumps(
         "doublequote": True,
         "header_row_index": 2,
         "footer_lines": [],
-        "columns": [
-            {"name": "Fecha", "inferred_type": "date", "nullable": False},
-            {"name": "Cliente", "inferred_type": "string", "nullable": False},
-            {"name": "Descripción", "inferred_type": "string", "nullable": False},
-            {"name": "Importe", "inferred_type": "float", "nullable": False},
-            {"name": "Observaciones", "inferred_type": "string", "nullable": True},
-        ],
+        "columns": ["Fecha", "Cliente", "Descripción", "Importe", "Observaciones"],
         "confidence": 0.9,
-        "notes": "Two preamble lines before the header.",
     }
 )
 """A valid model answer for :data:`SAMPLE_CSV`."""

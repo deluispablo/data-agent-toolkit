@@ -46,7 +46,20 @@ The libraries themselves never read a `.env` file implicitly.
 
 ## Checks
 
-These are the checks CI runs. `pre-commit` runs ruff, mypy and the
+> **GitHub Actions is paused (since 2026-09-25).** The repository is
+> private on the free plan, and its monthly Actions quota ran out: the CI
+> workflow was disabled by hand (`gh workflow disable CI`; it shows as
+> `disabled_manually` in `gh workflow list --all`). Until it is enabled
+> again, no pull request gets CI: run every check in this section locally
+> before opening a PR and again before merging, and state in the PR body
+> that CI is paused and the checks ran locally. The packaging job (wheel +
+> sdist, install with pip, smoke test) has to be reproduced by hand for a
+> release (see [Releases](#releases)). Only the maintainer re-enables the
+> workflow (`gh workflow enable CI`), and when that happens the workflow
+> should first be trimmed (one run per PR instead of PR + push, fewer
+> Python versions on Linux, Windows and Docker only on demand).
+
+These are the checks CI runs when it is enabled. `pre-commit` runs ruff, mypy and the
 lockfile check on each commit.
 
 ```bash

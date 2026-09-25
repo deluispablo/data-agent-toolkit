@@ -492,6 +492,84 @@ If a demo file's result changes too (a prompt, grounding or default-model
 change), regenerate the README's hero, terminal recording and walkthrough: see
 "Development" in the README.
 
+## Baseline 0.5.0
+
+The reference for M7 ([#140](https://github.com/deluispablo/data-agent-toolkit/issues/140)).
+Measured on 2026-09-25 with the library of `main` after M6 (the M6-05 runs;
+`main` differs from that branch only in the API example and docs), on the
+same machine as the earlier baselines.
+
+| | |
+|---|---|
+| Harness version | 2 |
+| `PROMPT_VERSION` | `2026.09-n` |
+| Catalog | 80 fixtures (44 hand-written, 36 matrix), 6 known limitations; `escapechar`/`doublequote` scored on 45 (#158) |
+| Local runs | `runs/qwen2.5-coder-7b-050.jsonl` and `runs/qwen2.5-coder-3b-050.jsonl`: each model as primary, default fallback `qwen2.5-coder:3b`, `n_bytes` 4096, `tail_bytes` 4096, timeout 300 s, `--repeat 3 --keep-raw` (240 inspections each) |
+| Cloud run | `runs/gemini-flash-lite-latest-050.jsonl`: `gemini-flash-lite-latest` as its own fallback, `--subset cloud --max-calls 18 --rpm 10` |
+
+Commands: as for [0.4.0](#baseline-040), with `-050` in the file names.
+
+### Headline, 0.3.0 against 0.4.0 and 0.5.0
+
+| metric | 7b, 0.3.0 | 7b, 0.4.0 | **7b, 0.5.0** | 3b, 0.5.0 | cloud, 0.4.0 | **cloud, 0.5.0** |
+|---|---|---|---|---|---|---|
+| prompt version | 2026.09-a | 2026.09-m | 2026.09-n | 2026.09-n | 2026.09-m | 2026.09-n |
+| fixtures x repeat | 80 x 3 | 80 x 3 | 80 x 3 | 80 x 3 | 15 x 1 | 15 x 1 |
+| prompt tokens (mean) | 2,834 | 2,639 | **1,522** (-42 %) | 1,531 | 1,806 | **968** (-46 %) |
+| completion tokens (mean) | 389 | 146 | **144** | 170 | 119 | **114** |
+| latency p50 | 5.04 s | 1.58 s | **1.49 s** | 0.92 s | 1.12 s | 19.77 s |
+| latency p95 | 20.89 s | 6.52 s | **4.69 s** | 3.75 s | 1.39 s | 28.32 s |
+| model calls | 282 | 243 | 243 | 237 | 15 | 15 |
+| errored lines | 27 | 0 | **3** | 21 | 0 | 0 |
+| **accuracy** | **92.8 %** | **99.7 %** | **100.0 %** | **98.4 %** | **100.0 %** | **100.0 %** |
+| majority-vote accuracy | 92.8 % | 99.6 % | 100.0 % | 98.4 % | 100.0 % | 100.0 % |
+
+Accuracy excludes errored lines. The cloud latency is the service's on the
+day measured: every call was a single attempt with no retry.
+
+| category | 7b, 0.4.0 | 7b, 0.5.0 | 3b, 0.5.0 |
+|---|---|---|---|
+| `combo`, `data_format`, `delimiter`, `encoding`, `quoting`, `structural` | 100 % | 100 % | 100 % |
+| `header_footer` | 99.2 % | 100 % | 94.9 % |
+
+| field | 7b, 0.4.0 | 7b, 0.5.0 | 3b, 0.5.0 |
+|---|---|---|---|
+| `encoding`, `delimiter`, `quotechar`, `escapechar`, `doublequote`, `has_header` | 100 % | 100 % | 100 % |
+| `header_row_index` | 100 % | 100 % | 98.4 % |
+| `footer_lines`, `footer_rows_to_skip` | 98.8 % | 100 % | 93.9 % |
+| `columns` (exact list) | 100 % | 100 % | 98.5 % |
+| `expected_error` | 100 % | 100 % | 100 % |
+
+### What moved the numbers
+
+| Change | Issue | Effect |
+|---|---|---|
+| Harness `--replay` | #166 | grounding changes measured in a second, no model |
+| `escapechar=None` for quoted fields without escaped quotes; quote escaping scored on 45 fixtures | #158 | no verdict change (0.4.0 already answered `null`); aggregate +0.1 pt from more compared fields |
+| Samples bounded to 15 head and 10 tail lines | #134 | prompt tokens -42 % (4-16 KiB files: 4,759 -> 2,114); see [Line bounds](#line-bounds-134) |
+| Reply cap from the head's field count, three `num_ctx` windows | #138 | latency p95 6.71 s -> 4.69 s (7b), 7.06 s -> 3.75 s (3b): looping answers stop at ~450 tokens |
+
+### Failure modes
+
+- **7b**: `gen_preamble_5_footer.csv` errors on all 3 repeats: both models
+  repeat `\t` inside `footer_first_line` (its totals row ends in empty tab
+  fields) until Ollama aborts with "token repeat limit reached". It passed
+  on 0.4.0 and depends on tiny prompt and numeric differences
+  ([#181](https://github.com/deluispablo/data-agent-toolkit/issues/181)).
+  The other misses are the known limitations.
+- **3b as primary**: 21 errored lines, mostly the looping answers of 0.4.0
+  (now cut at the reply cap) plus the tab-footer loop; footers are the
+  weakest field (93.9 %). With the default configuration 3b answers only
+  after a 7b failure.
+- No 429 or 503 on the cloud run; no retries anywhere.
+
+### Cloud cost
+
+`gemini-flash-lite-latest` on the cloud subset: 14,514 prompt and 1,710
+completion tokens for 15 inspections, about **$0.0086** at the list price
+used before ($0.30 input and $2.50 output per million tokens): **$0.00058
+per inspection, about $0.58 per 1,000 files** (0.4.0: $0.84).
+
 ## Baseline 0.4.0
 
 The reference every M6 pull request compares against

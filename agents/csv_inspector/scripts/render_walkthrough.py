@@ -45,9 +45,20 @@ Lines = list[tuple[str, str]]  # (text, css class)
 
 
 def clip(line: str, width: int) -> str:
-    """Return ``line`` without carriage returns, cut to ``width`` characters with ``…``."""
+    """Return ``line`` without carriage returns, cut to ``width`` drawn characters with ``…``.
+
+    A tab counts as three characters, the width ``text()`` draws it at (`` → ``).
+    """
     line = line.replace("\r", "")
-    return line if len(line) <= width else line[: width - 1] + "…"
+    drawn = [3 if char == "\t" else 1 for char in line]
+    if sum(drawn) <= width:
+        return line
+    used = 0
+    for end, size in enumerate(drawn):
+        if used + size > width - 1:
+            return line[:end] + "…"
+        used += size
+    return line  # unreachable: the sum exceeded width
 
 
 def _fmt(value: object) -> str:

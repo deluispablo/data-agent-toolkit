@@ -165,3 +165,14 @@ def test_details_without_grounding_changes_says_nothing_changed() -> None:
     data["grounding"] = []
 
     assert "Nothing: the model's answer matched the bytes." in details_blocks(data)[3]
+
+
+def test_clip_counts_a_tab_as_the_three_characters_it_is_drawn_as() -> None:
+    """A line of tabs is cut so that its drawn width, not its length, fits."""
+    line = "SKU\tItem\tQty\tUnit price\tUpdated\tX\tY"  # 35 characters, 47 drawn
+
+    clipped = clip(line, 35)
+
+    assert clipped.endswith("…")
+    assert len(clipped.replace("\t", " → ")) <= 35
+    assert clip("a\tb", 5) == "a\tb"

@@ -13,6 +13,7 @@ from capture_walkthrough import (
     DEMO_FILE,
     HEAD_BYTES,
     TAIL_BYTES,
+    _kept_call,
     capture,
     grounding_diff,
     write_capture,
@@ -125,3 +126,26 @@ def test_write_capture_writes_utf8_json_with_lf(tmp_path: Path) -> None:
     raw = path.read_bytes()
     assert b"\r\n" not in raw.replace(b"\\r\\n", b"")
     assert json.loads(raw.decode("utf-8")) == {"text": "Amount (€)\r\n"}
+
+
+def test_capture_reports_the_kept_prompt_tokens_not_the_sum_of_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """After a failed primary, the prompt shown is the fallback's, with its own token count."""
+    replies = _replies("not json", json.dumps(ANSWER))
+    install_fake_ollama(monkeypatch, lambda **kwargs: next(replies))
+
+    data = capture(DEMO_FILE, HEAD_BYTES, TAIL_BYTES, Settings())
+
+    assert data["prompt"]["tokens"] == 950
+    assert data["usage"]["prompt_tokens"] == 1900  # usage keeps the totals
+
+
+def test_kept_call_is_the_last_call_of_the_model_that_answered() -> None:
+    """A late call from an abandoned primary does not replace the fallback's answer."""
+    calls = [
+        {"model": "fallback", "prompt": "p", "answer": "kept", "prompt_tokens": 1},
+        {"model": "primary", "prompt": "p", "answer": "late", "prompt_tokens": 1},
+    ]
+
+    assert _kept_call(calls, "fallback")["answer"] == "kept"

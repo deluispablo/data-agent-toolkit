@@ -60,11 +60,12 @@ _SEAM = "builtin_invoker"
 
 
 @contextmanager
-def _recording_calls(calls: list[dict[str, str]]) -> Iterator[None]:
+def _recording_calls(calls: list[dict[str, Any]]) -> Iterator[None]:
     """Record the prompt and raw answer of every built-in model call in the block.
 
     Args:
-        calls: The list ``{"model", "prompt", "answer"}`` entries are appended to.
+        calls: The list ``{"model", "prompt", "answer", "prompt_tokens"}`` entries are
+            appended to.
     """
     original: Callable[[LLMBackend, Settings], _SyncCall] = getattr(_inspect, _SEAM)
 
@@ -73,7 +74,14 @@ def _recording_calls(calls: list[dict[str, str]]) -> Iterator[None]:
 
         def recording(prompt: str, model: str, timeout: float | None) -> InvokerResponse:
             response = call(prompt, model, timeout)
-            calls.append({"model": model, "prompt": prompt, "answer": response.text})
+            calls.append(
+                {
+                    "model": model,
+                    "prompt": prompt,
+                    "answer": response.text,
+                    "prompt_tokens": response.prompt_tokens,
+                }
+            )
             return response
 
         return recording
@@ -83,6 +91,22 @@ def _recording_calls(calls: list[dict[str, str]]) -> Iterator[None]:
         yield
     finally:
         setattr(_inspect, _SEAM, original)
+
+
+def _kept_call(calls: list[dict[str, Any]], model: str) -> dict[str, Any]:
+    """Return the last recorded call of ``model``, the one whose answer was kept.
+
+    Matching by model, not taking the last call, keeps a late answer from an
+    abandoned (timed-out) primary from replacing the fallback's.
+
+    Args:
+        calls: The recorded calls, in completion order.
+        model: The model ``result.usage`` names.
+
+    Returns:
+        The kept call.
+    """
+    return next(call for call in reversed(calls) if call["model"] == model)
 
 
 def grounding_diff(answer: dict[str, Any], result: dict[str, Any]) -> list[dict[str, Any]]:
@@ -124,7 +148,7 @@ def capture(source: Path, head_bytes: int, tail_bytes: int, settings: Settings) 
     Returns:
         The walkthrough data, ready for :func:`write_capture`.
     """
-    calls: list[dict[str, str]] = []
+    calls: list[dict[str, Any]] = []
     with _recording_calls(calls):
         result = inspect_csv(
             source,
@@ -133,15 +157,15 @@ def capture(source: Path, head_bytes: int, tail_bytes: int, settings: Settings) 
             tail_bytes=tail_bytes,
             timeout_seconds=TIMEOUT_SECONDS,
         )
-    kept = calls[-1]  # the answer inspect_csv kept: the fallback's when the primary failed
+    usage = result.usage
+    assert usage is not None  # every successful inspection records its usage
+    kept = _kept_call(calls, usage.model)
     samples = sample_source(source, head_bytes, tail_bytes)
     size = source.stat().st_size
     head = min(head_bytes, size)
     tail = 0 if samples.tail_text is None else min(tail_bytes, size - head)
     answer = parse_and_validate(kept["answer"], kept["model"]).model_dump(mode="json")
     final = result.model_dump(mode="json")
-    usage = result.usage
-    assert usage is not None  # every successful inspection records its usage
     return {
         "file": {"name": source.name, "size_bytes": size},
         "samples": {
@@ -155,7 +179,7 @@ def capture(source: Path, head_bytes: int, tail_bytes: int, settings: Settings) 
         "prompt": {
             "text": kept["prompt"],
             "version": usage.prompt_version,
-            "tokens": usage.prompt_tokens,
+            "tokens": kept["prompt_tokens"],  # this prompt's; usage sums every attempt
         },
         "answer": {"model": kept["model"], "text": kept["answer"], "fields": answer},
         "grounding": grounding_diff(answer, final),

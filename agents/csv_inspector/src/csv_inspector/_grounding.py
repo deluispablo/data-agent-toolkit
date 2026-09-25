@@ -37,6 +37,8 @@ _BOM_CODECS = frozenset({"utf-8-sig", "utf-16", "utf-32"})
 _CANDIDATE_DELIMITERS = ",;\t|"
 # How many lines must split into the same number of fields to pick a candidate.
 _MIN_AGREEING_LINES = 2
+# How many times the model's score a single candidate must reach to replace it.
+_DOMINANCE_RATIO = 2
 
 # Field shapes compared by the header-less test (see _field_shape).
 _INTEGER = re.compile(r"[+-]?\d+")
@@ -324,11 +326,14 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     same way: the number of head lines it splits into the same number (2
     or more) of fields. Preamble and footer lines do not block this,
     unlike ``csv.Sniffer``, which needs nearly every line to agree. The
-    model's delimiter is replaced only when it scores below
-    ``_MIN_AGREEING_LINES`` (a delimiter that never occurs scores 0) and
-    exactly one usual delimiter scores at least that and more than it.
-    Otherwise it is kept: ties, one-column files and exotic delimiters
-    stay as reported.
+    model's delimiter (one that never occurs scores 0) is replaced only
+    when exactly one usual delimiter scores the most, at least
+    ``_MIN_AGREEING_LINES``, and at least ``_DOMINANCE_RATIO`` (2) times
+    the model's score. A delimiter that splits half the lines the winner
+    does therefore stays. On the sample fixtures, a wrong ``,`` scored 4
+    to 13 times less than the tab (#151), while no other candidate ever
+    reached the right delimiter's score. Otherwise it is kept: ties,
+    one-column files and exotic delimiters stay as reported.
 
     Args:
         result: The model's validated result.
@@ -343,8 +348,6 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
         if result.delimiter in head_sample
         else 0
     )
-    if reported >= _MIN_AGREEING_LINES:
-        return result.delimiter
     scores = {
         candidate: _agreement_score(lines, candidate, result.quotechar)
         for candidate in _CANDIDATE_DELIMITERS
@@ -352,7 +355,7 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     }
     best = max(scores.values(), default=0)
     winners = [candidate for candidate, score in scores.items() if score == best]
-    if best < _MIN_AGREEING_LINES or best <= reported or len(winners) != 1:
+    if best < max(_MIN_AGREEING_LINES, _DOMINANCE_RATIO * reported) or len(winners) != 1:
         return result.delimiter
     logger.info(
         "Replacing delimiter %r (%d agreeing lines) with %r (%d agreeing lines).",

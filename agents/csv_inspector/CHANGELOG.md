@@ -102,6 +102,17 @@ listed under **Changed (breaking)**.
   `has_header=false` and positional names, as before
   ([#131](https://github.com/deluispablo/data-agent-toolkit/issues/131)).
 
+### Fixed
+
+- Delimiter grounding replaces the model's delimiter when another usual
+  delimiter clearly dominates it, not only when it splits fewer than two
+  head lines: a `,` answered for a tab-separated file whose values hold
+  commas (`"Fernández, Asociados"`, `1,50`) is now replaced by the tab
+  when exactly one candidate splits at least twice as many head lines into
+  the same number of fields. Ties, one-column files and exotic delimiters
+  still keep the model's answer
+  ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
+
 ### Documentation
 
 - New `docs/evaluation.md`: the before/after ritual for changes that can

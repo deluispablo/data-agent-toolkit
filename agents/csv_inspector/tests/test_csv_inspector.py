@@ -1254,6 +1254,45 @@ def test_grounding_replaces_a_delimiter_that_occurs_only_inside_a_value(
     assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
 
 
+def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> None:
+    """A ``,`` that splits a few TSV rows evenly still loses to the tab (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
+        if day % 4 == 0
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 21)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+    )
+
+    assert result.delimiter == "\t"
+    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+
+
+def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Path) -> None:
+    """A ``,`` splitting more than half as many rows as the tab stays (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
+        if day % 2 == 0 or day % 3 == 0
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 21)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+    )
+
+    assert result.delimiter == ","
+
+
 def test_grounding_keeps_a_reported_delimiter_that_splits_the_rows(tmp_path: Path) -> None:
     """``;`` that really separates the fields stays, even with commas in values (#97)."""
     target = tmp_path / "ledger.csv"

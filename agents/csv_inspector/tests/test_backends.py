@@ -42,7 +42,7 @@ from csv_inspector._invokers import (
     invoke_cloud_model,
     invoke_ollama_model,
 )
-from csv_inspector._prompt import _strip_schema, response_schema
+from csv_inspector._prompt import _strip_annotations, response_schema
 from fakes import install_fake_ollama, ollama_reply
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
@@ -680,17 +680,14 @@ def test_response_schema_is_small_flat_and_bounded() -> None:
     assert response_schema() is schema
 
 
-def test_response_schema_inlines_definitions() -> None:
-    """A ``$ref`` to ``$defs`` is replaced by the stripped definition."""
-    defs: dict[str, Any] = {"Inner": {"title": "Inner", "type": "string", "description": "x"}}
+def test_schema_annotations_are_dropped_but_property_names_kept() -> None:
+    """A property named like an annotation keyword survives; annotations do not."""
     schema = {
-        "$defs": defs,
-        "properties": {"title": {"$ref": "#/$defs/Inner"}, "n": {"default": 1, "type": "integer"}},
+        "title": "T",
+        "properties": {"title": {"type": "string", "description": "x"}, "n": {"default": 1}},
     }
 
-    assert _strip_schema(schema, defs) == {
-        "properties": {"title": {"type": "string"}, "n": {"type": "integer"}}
-    }
+    assert _strip_annotations(schema) == {"properties": {"title": {"type": "string"}, "n": {}}}
 
 
 @pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])

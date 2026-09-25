@@ -206,28 +206,26 @@ def _ollama_request(prompt: str, model: str, *, schema: bool = True) -> dict[str
     }
 
 
-def _rejects_schema_format(ollama: ModuleType, exc: Exception) -> bool:
-    """Whether ``exc`` is an Ollama server refusing a JSON Schema ``format``.
+def _retry_without_schema(ollama: ModuleType, model: str, exc: Exception) -> bool:
+    """Whether to retry a failed request in plain JSON mode; warns when it does.
 
     Servers older than Ollama 0.5 answer HTTP 400 with an error about
-    ``format`` when it is a schema instead of ``"json"``.
+    ``format`` when it is a JSON Schema instead of ``"json"``. Any other
+    error is not retried.
     """
-    response_error = getattr(ollama, "ResponseError", ())
-    return (
-        isinstance(exc, response_error)
+    rejected = (
+        isinstance(exc, getattr(ollama, "ResponseError", ()))
         and getattr(exc, "status_code", None) == _HTTP_BAD_REQUEST
         and "format" in str(exc).lower()
     )
-
-
-def _log_schema_fallback(model: str, exc: Exception) -> None:
-    """Warn that the server refused the schema and the request is retried in JSON mode."""
-    logger.warning(
-        "Ollama rejected the response schema for model '%s' (%s); retrying with "
-        "format='json'. Upgrade the Ollama server (0.5 or later) for structured outputs.",
-        model,
-        exc,
-    )
+    if rejected:
+        logger.warning(
+            "Ollama rejected the response schema for model '%s' (%s); retrying with "
+            "format='json'. Upgrade the Ollama server (0.5 or later) for structured outputs.",
+            model,
+            exc,
+        )
+    return rejected
 
 
 def _ollama_error(model: str, exc: Exception) -> ModelInvocationError:
@@ -265,9 +263,8 @@ def _invoke_ollama(
             try:
                 response = client.chat(**_ollama_request(prompt, model))
             except Exception as exc:
-                if not _rejects_schema_format(ollama, exc):
+                if not _retry_without_schema(ollama, model, exc):
                     raise
-                _log_schema_fallback(model, exc)
                 response = client.chat(**_ollama_request(prompt, model, schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
@@ -284,9 +281,8 @@ async def _ainvoke_ollama(
             try:
                 response = await client.chat(**_ollama_request(prompt, model))
             except Exception as exc:
-                if not _rejects_schema_format(ollama, exc):
+                if not _retry_without_schema(ollama, model, exc):
                     raise
-                _log_schema_fallback(model, exc)
                 response = await client.chat(**_ollama_request(prompt, model, schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
@@ -354,6 +350,8 @@ _RETRY_DELAY_SECONDS = 1.0
 _RETRY_JITTER = 0.2
 # A Retry-After longer than this means a quota, not a blip: fall back instead.
 _MAX_RETRY_AFTER_SECONDS = 10.0
+# Logged once per retried cloud request; the eval harness counts these.
+_RETRY_WARNING = "Cloud model '%s' answered %d; retrying once in %.1f s."
 # The retried request needs at least this much of the model's budget left.
 _MIN_RETRY_BUDGET_SECONDS = 1.0
 
@@ -466,9 +464,7 @@ class _CloudCall:
             if remaining < _MIN_RETRY_BUDGET_SECONDS:
                 return None
             self._set_request_timeout(remaining)
-        logger.warning(
-            "Cloud model '%s' answered %d; retrying once in %.1f s.", model, status, delay
-        )
+        logger.warning(_RETRY_WARNING, model, status, delay)
         return delay
 
     def error(self, model: str, exc: Exception) -> ModelInvocationError:

@@ -118,10 +118,14 @@ received, when `413` applies, the 64 MiB scan limit) are in the
 | query parameter | default | bounds |
 |---|---|---|
 | `n_bytes` | 4096 | 512–16384 |
-| `tail_bytes` | 4096 | 0–16384 |
+| `tail_bytes` | 4096 | 0–16384; `0` is the no-footer mode (below) |
 | `timeout_seconds` | `DEFAULT_TIMEOUT_SECONDS` | 1–`MAX_TIMEOUT_SECONDS` |
 | `backend` | configured | `local`, or `api` when allowed or already configured |
 | `model`, `fallback_model` | configured | name token, 1–200 chars; on `api` only when allowed |
+
+`?tail_bytes=0` skips the tail read: for loaders that never have footers,
+one read instead of two and no tail tokens; `footer_lines` is then always
+`[]` (see the library README, "How it works").
 
 > **Cost warning.** `backend=api` sends the sample to Gemini, billed to the
 > deployment's credentials, and a model override on a cloud call can pick

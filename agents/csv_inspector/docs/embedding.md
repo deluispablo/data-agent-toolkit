@@ -55,6 +55,14 @@ sent whole). These line bounds are fixed: a larger `n_bytes` helps only
 when lines are longer than the window, such as a file with hundreds of
 columns.
 
+If your loader never has footers, pass `tail_bytes=0` (`--tail-bytes 0`
+on the CLI, `?tail_bytes=0` on the example API): one read instead of two,
+no tail tokens in the prompt, and `footer_lines` is always `[]`. On a file
+larger than the head window, `covers_whole_file` is then `False`: the end
+was never seen, so no footer can be reported. The head keeps its line
+bound. Measured cost and accuracy of this mode are in
+[evaluation.md](evaluation.md#cost-levers).
+
 If your host lets callers choose the sample windows, validate them against
 the library's own limits instead of copying the numbers, so an upgrade can
 never desynchronize the two. The same goes for a custom model seam: type it

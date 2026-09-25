@@ -452,6 +452,31 @@ worse, so the prompt keeps "verbatim". 15 x 10 passed it on every repeat
 3 repeats. The loop is a risk on any tab file whose footer has trailing
 empty fields; #138 caps the reply so it fails faster.
 
+## Cost levers
+
+Measured on `qwen2.5-coder:7b` on 2026-09-25, `--repeat 3`, prompt tokens
+(mean) and accuracy per category ([#136](https://github.com/deluispablo/data-agent-toolkit/issues/136)):
+
+| category | no line bounds (0.4.0 sampling) | line bounds 15 x 10 | line bounds + `--tail-bytes 0` |
+|---|---|---|---|
+| `structural` (14 fixtures) | 2,048, 100 % | 1,645, 100 % | 1,170, 96.6 % |
+| `delimiter` (8 fixtures) | 801, 100 % | 801, 100 % | 801, 100 % |
+| whole catalog | 2,639, 99.8 % | 1,522, 99.7 % | (not run) |
+
+- **Line bounds** (#134, always on): see [Line bounds](#line-bounds-134).
+- **`tail_bytes=0`**, the no-footer mode: one read instead of two and no
+  tail in the prompt; `footer_lines` is always `[]` and, on a file larger
+  than the head window, `covers_whole_file` is `False`. The `delimiter`
+  fixtures all fit in the head window, so nothing changes there. On
+  `structural` the prompt shrinks by another 29 %; the two misses are
+  `gen_large_ledger.csv` and `gen_large_wide.csv`, whose totals footer
+  this mode cannot see by design. Use it only when your files never have
+  footers.
+
+Run files: `runs/tail0-structural.jsonl`, `runs/tail0-delimiter.jsonl`
+(`--category C --tail-bytes 0 --repeat 3 --keep-raw`), against the
+full-catalog 15 x 10 run of [Line bounds](#line-bounds-134).
+
 ## Publishing a baseline
 
 A baseline is a full local run (`--repeat 3`) plus the cloud subset,

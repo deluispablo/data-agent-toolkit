@@ -46,6 +46,11 @@ listed under **Changed (breaking)**.
 
 ### Documentation
 
+- `tail_bytes=0` is documented as the no-footer mode (README "How it
+  works", `docs/embedding.md`, the API example README): one read instead of
+  two, no tail tokens, `footer_lines` always `[]`. `docs/evaluation.md`
+  "Cost levers" measures it
+  ([#136](https://github.com/deluispablo/data-agent-toolkit/issues/136)).
 - The README is reorganized to show what the library does before how it
   does it: an animated picture of an inspection, the problem it solves, a
   recording of a real session, the 0.4.0 accuracy baseline at a glance, a

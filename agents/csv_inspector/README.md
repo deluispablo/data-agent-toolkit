@@ -206,6 +206,14 @@ the last 10 of the tail reach the prompt and grounding (`MAX_HEAD_LINES`,
 whole; a longer one that fits in the head window is sent as its first 15
 and last 10 lines, so the footer is still read at the real end.
 
+If your loader never has footers, pass `tail_bytes=0` (`--tail-bytes 0`
+on the CLI, `?tail_bytes=0` on the example API): one read instead of two,
+no tail tokens in the prompt, and `footer_lines` is always `[]`. On a file
+larger than the head window, `covers_whole_file` is then `False`: the end
+was never seen, so no footer can be reported. The head keeps its line
+bound. Measured cost and accuracy of this mode are in
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#cost-levers).
+
 <details>
 <summary>The samples, as decoded</summary>
 

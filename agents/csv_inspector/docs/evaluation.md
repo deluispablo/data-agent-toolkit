@@ -305,22 +305,30 @@ The first cloud results are in [Baseline 0.3.0](#baseline-030) (item 6).
 The 0.4.0 prompt was cut pass by pass from `2026.09-f` (after #129, #130,
 #132), one commit per pass. Characters are the instruction template with
 a tail section and empty samples (`build_prompt("", "utf-8",
-tail_sample="")`). Tokens are measured with the command in #133 on
-`qwen2.5-coder:7b` (system prompt and chat wrapping included); the columns
-marked *pending* are filled in when the runs are made.
+tail_sample="")`). Tokens are that template's `prompt_tokens` on
+`qwen2.5-coder:7b`, system prompt and chat wrapping included (the command
+in #133). The quick subset ran on `qwen2.5-coder:7b` with `--repeat 2`;
+"errored" counts inspections that failed validation.
 
-| Pass | `PROMPT_VERSION` | Change | Characters | Tokens | Quick subset (`--repeat 2`) |
+| Pass | `PROMPT_VERSION` | Change | Characters | Tokens | Quick subset |
 |---|---|---|---|---|---|
-| 0 | `2026.09-f` | after #129, #130, #132 | 3,274 | pending | pending (full catalog: 100.0 % on 7b) |
-| A | `2026.09-g` | "Keep in mind" list dropped; delimiter note kept | 2,980 | pending | pending |
-| B | `2026.09-h` | header and footer rules as bullets, one example per footer kind | 2,314 | pending | pending |
-| C | `2026.09-i` | role sentence dropped | 2,247 | pending | pending |
-| D | `2026.09-j` | one-line encoding hint, shorter tail note | 2,082 | pending | pending |
+| 0 | `2026.09-f` | after #129, #130, #132 | 3,274 | 852 | 100.0 %, 0 errored |
+| A | `2026.09-g` | "Keep in mind" list dropped; delimiter note kept | 2,980 | 791 | 100.0 %, 2 errored (`single_column.csv`: delimiter `"\n"`) |
+| B | `2026.09-h` | header and footer rules as bullets, one example per footer kind | 2,314 | 638 | 99.2 %, 4 errored (+ `header_none_data_only.csv`: `has_header` true with a null index) |
+| C | `2026.09-i` | role sentence dropped | 2,247 | 618 | 96.7 %, 4 errored (a multi-line footer anchor) |
+| D | `2026.09-j` | one-line encoding hint, shorter tail note | 2,082 | 586 | **90.2 %**: without "read footer lines ONLY from its last lines" the model answers no footer on six files |
+| D2 | `2026.09-k` | D with that clause restored (kept) | 2,126 | **595** | 97.4 %, 0 errored; **100.0 %** once its answers are re-grounded with the final grounding |
 
-At the 0.3.0 calibration (899 template tokens for 3,540 characters, about
-3.9 characters per token), pass D is about 530 template tokens plus 27 for
-the system prompt and chat wrapping: under the 600-token target, to be
-confirmed by the measurement.
+What the passes taught: the sentences that could go carried nothing the
+7b model used, except the tail note's footer rule (restored in D2). The
+errors and misses of passes A to C were small-model slips that the prompt
+had been papering over (a line break as delimiter, `has_header` true with a
+null index, a multi-line footer anchor, a `'` quote character that never
+occurs, invented names for a header-less file, every line of a one-column
+file listed as a column). They are now read by validation and grounding
+instead, so they no longer depend on the prompt's wording. Re-grounding
+the recorded answers of passes C and D2 with the final code gives 100.0 %
+on the quick subset.
 
 ## Baseline 0.3.0
 

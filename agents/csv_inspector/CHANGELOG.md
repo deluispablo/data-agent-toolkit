@@ -89,7 +89,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-j` today), and the
+  version of the prompt the models were sent (`2026.09-k` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -127,8 +127,9 @@ pipelines consume.
 - The prompt is rewritten for the lean contract: the "Keep in mind" list,
   the role sentence and the prose around the header and footer rules are
   gone, leaving bullet rules with one example per footer kind. The
-  instruction template with a tail section shrinks from 3,274 to 2,082
-  characters (`PROMPT_VERSION` `2026.09-j`); pass-by-pass numbers are in
+  instruction template with a tail section shrinks from 3,274 to 2,126
+  characters, 852 to 595 tokens on `qwen2.5-coder:7b` (`PROMPT_VERSION`
+  `2026.09-k`); pass-by-pass numbers are in
   `docs/evaluation.md`
   ([#133](https://github.com/deluispablo/data-agent-toolkit/issues/133)).
 - The model is asked for the first footer line only

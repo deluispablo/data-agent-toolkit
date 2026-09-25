@@ -105,14 +105,17 @@ header-less files, structural oddities). Baseline 0.3.0, measured on
 
 Each fixture scores the share of its fields that match the ground truth;
 accuracy is the mean over fixtures, known limitations and failed
-inspections excluded. On 0.3.0, `encoding`, `quotechar` and `escapechar`
-were always right; the weakest fields were the footer (`footer_lines`,
-77.1 %) and header-less detection (`has_header`, 75.0 %), and very wide
-files (the catalog's 40-column ones) failed on the local models. The
-grounding fixes and the lean contract of the next release target exactly
-those misses, and wide files no longer fail
-([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)); its
-baseline will replace these figures.
+inspections excluded. On 0.3.0, `encoding` and `quotechar` were always
+right; the weakest fields were the footer (`footer_lines`, 77.1 %) and
+header-less detection (`has_header`, 75.0 %), and very wide files (the
+catalog's 40-column ones) failed on the local models. The grounding fixes
+and the lean contract of the next release target exactly those misses,
+and wide files no longer fail
+([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
+The catalog scores `escapechar` and `doublequote` on too few fixtures to
+trust their figures yet
+([#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)). The
+next release's baseline will replace these figures.
 Method, per-field scores, machine and every miss:
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-030).
 

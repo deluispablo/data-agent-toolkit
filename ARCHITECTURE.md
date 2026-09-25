@@ -19,8 +19,9 @@ data-agent-toolkit/
 │       ├── docs/                   # Guides shipped in the sdist (e.g. embedding.md)
 │       ├── scripts/
 │       │   ├── smoke_test_installed.py  # Post-install smoke test, run by CI
-│       │   ├── eval_samples.py          # Manual live-model evaluation harness (JSONL runs)
-│       │   └── compare_runs.py          # Markdown comparison of two or more eval runs
+│       │   ├── eval_samples.py          # Entry point of the live-model evaluation harness
+│       │   ├── compare_runs.py          # Entry point of the multi-run Markdown comparison
+│       │   └── eval_harness/            # The harness package (scoring, runs, replay, report, cli)
 │       ├── samples/                # Generated edge-case fixtures + ground-truth manifest
 │       ├── main_demo.py            # Demo: the CLI on the bundled sample.csv
 │       ├── sample.csv
@@ -151,19 +152,30 @@ Modules prefixed with `_` are internal.
 
 Around the package:
 
-- `scripts/eval_samples.py`: the manual accuracy harness (a live model
-  against every `samples/manifest.json` case, per-field scores). `--out`
-  streams a JSONL run (a `run` line, per-fixture verdicts, `Usage`,
-  latency, a summary line; `--summarize` recovers an interrupted one),
-  `--repeat` measures drift, `--subset quick|cloud` selects the documented
-  lists, and quota guards (`--max-calls`, `--rpm`, `--dry-run`, ...)
-  protect cloud quotas. `--replay` re-scores a `--keep-raw` run's recorded
-  answers on the current code, with no model. It may import private
-  names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts
-  still reach `Usage`. Not run by pytest or CI.
-- `scripts/compare_runs.py`: stdlib-only Markdown table of two or more
-  runs, plus the fixtures whose verdict changed. The ritual, flags, quota
-  notes and known limitations are in
+- `scripts/eval_samples.py` and `scripts/compare_runs.py`: the entry
+  points of the manual accuracy harness, the package
+  `scripts/eval_harness/`. It runs a live model against every
+  `samples/manifest.json` case and scores each field. `--out` streams a
+  JSONL run (a `run` line, per-fixture verdicts, `Usage`, latency, a summary
+  line; `--summarize` recovers an interrupted one), `--repeat` measures
+  drift, `--subset quick|cloud` selects the documented lists, and quota
+  guards (`--max-calls`, `--rpm`, `--dry-run`, ...) protect cloud quotas.
+  `--replay` re-scores a `--keep-raw` run's recorded answers on the current
+  code, with no model. `compare_runs.py` prints a Markdown table of two or
+  more runs, plus the fixtures whose verdict changed. Not run by pytest or
+  CI. The modules, from the ground up:
+
+  | Module | Responsibility |
+  |---|---|
+  | `scoring.py` | A result against the manifest (encoding aliases, stripped footers, column recall), votes and verdicts over repeats. Standard library only. |
+  | `replay.py` | Reading a `--keep-raw` run, and the `model_invoker` that answers with its recorded texts. Standard library only. |
+  | `evaluation.py` | `FileEvaluation`, the one representation of a run-file line (`to_record` / `from_record`), and `evaluate_file`. It may import private names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts still reach `Usage`. |
+  | `guards.py` | `SUBSETS`, fixture selection, worst-case call counts, `CallBudget` (`--max-calls`) and `RateLimiter` (`--rpm`). |
+  | `runs.py` | The run file (`run_info`, `RunWriter`, `summarize_file`, `HARNESS_VERSION`), the summary, the guarded loop over the fixtures. |
+  | `report.py` | Every rendering: the per-run report and the multi-run table. Standard library only, so `compare_runs.py` runs without the package installed. |
+  | `cli.py` | The flags and `main`, which hands over to `run_live`, `run_dry`, `run_replay` or `run_summarize`. |
+
+  The ritual, flags, quota notes and known limitations are in
   [`agents/csv_inspector/docs/evaluation.md`](agents/csv_inspector/docs/evaluation.md).
 - `scripts/smoke_test_installed.py`: run by CI against the installed wheel
   and sdist, from outside the repository.
@@ -180,7 +192,8 @@ Around the package:
   header, footer and dialect (`test_grounding_{header,footer,dialect}.py`);
   sources; time budget and async; backends;
   configuration; CLI; the embedding contract (`__all__`, no `print`, a
-  `NullHandler`); the fixture catalog; the eval scoring; and the
+  `NullHandler`); the fixture catalog; the harness (`tests/harness/`, one file per
+  module, with `harness_support.py`); and the
   `docs/using-the-result.md` recipe, executed from the Markdown.
 - `docs/embedding.md` (host guide) and `docs/using-the-result.md` (reader
   options) ship in the sdist.

@@ -14,7 +14,7 @@ Guide for Claude Code in this repo. Caveman style on purpose. Keep under 5 KB: l
 - Read only files task need. Module map + design decisions: `ARCHITECTURE.md` (single source; do not copy here).
 - Short terminal output: `-q`, `--tb=short`, `| head`, `rg -l`, `git diff --stat`.
 - Show only changed code blocks. Never rewrite whole file.
-- File over 300 lines: partial read (`offset`/`limit`, targeted grep). Biggest test: `tests/test_eval_samples.py` ~1200 lines.
+- File over 300 lines: partial read (`offset`/`limit`, targeted grep). Biggest test: `tests/test_backends.py` ~840 lines.
 - `agents/csv_inspector/samples/`: never read, grep, list unless strictly needed. Exclude from search (`--glob '!**/samples/**'`). Need fixture fact: read one case in `generate_samples.py`. Edit generator, never fixtures (`*.csv`/`*.tsv` byte-exact, `-text` in `.gitattributes`).
 - `uv.lock` (~2000 lines): never read. Regenerate with `uv lock`.
 

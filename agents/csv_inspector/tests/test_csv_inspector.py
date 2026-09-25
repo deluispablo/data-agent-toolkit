@@ -345,17 +345,17 @@ def test_build_prompt_gives_concrete_footer_rules(tail_sample: str | None) -> No
         head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample=tail_sample
     )
 
-    assert "FOOTER (end of the file)" in prompt
+    assert "FOOTER:" in prompt
     for example in ("TOTAL,,4241.25", "--- Fin del informe ---", "Generado el 2024-01-20"):
         assert example in prompt
-    assert "Footer lines are never part of the header preamble" in prompt
+    assert "footer lines are never preamble" in prompt
 
 
 def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
     """With a tail sample, the head's (mid-file) last line must not be read as a footer."""
     prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample="9,9\n")
 
-    assert "check the last lines of the TAIL sample" in prompt
+    assert "FOOTER: in the last lines of the TAIL sample" in prompt
     assert "read footer lines ONLY from its last lines" in prompt
 
 

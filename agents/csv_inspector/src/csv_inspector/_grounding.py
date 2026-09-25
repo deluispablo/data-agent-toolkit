@@ -517,6 +517,18 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     return winners[0]
 
 
+def _has_quoted_field(text: str, delimiter: str, quote: str) -> bool:
+    """Whether a line of ``text`` holds a field enclosed in ``quote``.
+
+    The field opens right after a delimiter or at a line start and closes
+    right before a delimiter or the line end, with no quote between.
+    """
+    edge = re.escape(delimiter)
+    quoted = re.escape(quote)
+    pattern = rf"(?:^|{edge}){quoted}[^{quoted}\r\n]+{quoted}(?={edge}|\r|$)"
+    return re.search(pattern, text, re.MULTILINE) is not None
+
+
 def _ground_quote_escaping(result: CSVInspectionResult, text: str) -> dict[str, object]:
     r"""Return the ``escapechar``/``doublequote`` pair the samples show, when it differs.
 
@@ -526,7 +538,10 @@ def _ground_quote_escaping(result: CSVInspectionResult, text: str) -> dict[str, 
     backslash (``\"``) means ``escapechar="\\"``, ``doublequote=False``;
     a doubled quote right after a field character (``abc""``, not the empty
     field ``,"",``) means ``escapechar=None``, ``doublequote=True``. With
-    both, or neither, the answer stays.
+    both, the answer stays. With neither, a quoted field (``,"a, b",``)
+    means nothing is escaped: ``escapechar=None``, ``doublequote`` as
+    answered (a reader never meets a doubled quote). A sample with no
+    quoted field keeps the answer, which a reader never uses.
 
     Args:
         result: The answer, with the delimiter already grounded.
@@ -543,6 +558,8 @@ def _ground_quote_escaping(result: CSVInspectionResult, text: str) -> dict[str, 
         grounded: tuple[str | None, bool] = ("\\", False)
     elif doubled and not backslashed:
         grounded = (None, True)
+    elif not backslashed and _has_quoted_field(text, result.delimiter, quote):
+        grounded = (None, result.doublequote)
     else:
         return {}
     if grounded == (result.escapechar, result.doublequote):

@@ -45,6 +45,7 @@ from csv_inspector._grounding import (
     _extends_footer,
     _field_shape,
     _first_row_is_data,
+    _has_quoted_field,
     _locate_footer_lines,
     ground_in_samples,
 )
@@ -1691,12 +1692,33 @@ def test_grounding_replaces_a_delimiter_dominated_one_and_a_half_times(tmp_path:
 
 
 @pytest.mark.parametrize(
+    ("text", "delimiter", "quote", "found"),
+    [
+        ('Id\tNombre\r\n1\t"Arandela, zinc"\r\n', "\t", '"', True),
+        ('"Id"|"Nombre"\n', "|", '"', True),
+        ("Id;Nombre\n1;'O Grove'\n", ";", "'", True),
+        ('Id,Nota\n1,dice "hola" ya\n', ",", '"', False),
+        ('Id,Nota\n1,"abre\n2,cierra"\n', ",", '"', False),
+        ("Id,Nota\n1,sin comillas\n", ",", '"', False),
+    ],
+)
+def test_a_quoted_field_opens_and_closes_at_field_edges(
+    text: str, delimiter: str, quote: str, found: bool
+) -> None:
+    """Only a whole field in quotes counts, whatever the delimiter, quote or line break."""
+    assert _has_quoted_field(text, delimiter, quote) is found
+
+
+@pytest.mark.parametrize(
     ("note", "answered", "expected"),
     [
         ('"dijo \\"hola\\" ya"', (None, True), ("\\", False)),
         ('"fin \\"hola\\""', (None, True), ("\\", False)),
         ('"dijo ""hola"" ya"', ("\\", False), (None, True)),
-        ('"sin comillas"', ("\\", False), ("\\", False)),
+        ('"sin comillas"', ("\\", False), (None, False)),
+        ('"Arandela, zinc"', ("\\", True), (None, True)),
+        ("sin comillas", ("\\", False), ("\\", False)),
+        ('dice "hola"', ("\\", True), ("\\", True)),
         ('"mezcla \\"a\\" y ""b"""', (None, True), (None, True)),
     ],
 )
@@ -1706,7 +1728,11 @@ def test_grounding_reads_quote_escaping_from_the_samples(
     answered: tuple[str | None, bool],
     expected: tuple[str | None, bool],
 ) -> None:
-    """One escaping convention in the samples overrides the answer; none or both keep it."""
+    """One escaping convention in the samples overrides the answer; both keep it.
+
+    With neither, a quoted field means no escape character (issue #158); an
+    unquoted sample, or a quote inside an unquoted field, keeps the answer.
+    """
     target = tmp_path / "notes.csv"
     target.write_text(
         f"Fecha,Cliente,Nota\n2024-01-01,Acme,{note}\n2024-01-02,Beta,x\n", encoding="utf-8"

@@ -200,6 +200,9 @@ _RESULT_FIELDS: tuple[str, ...] = (
 # inspection raised that exception class.
 _EXPECTED_ERROR = "expected_error"
 _COMPARABLE_FIELDS: tuple[str, ...] = (*_RESULT_FIELDS, _EXPECTED_ERROR)
+# An expected ``null`` is normally "not scored" (``header_row_index`` of a
+# header-less file); for these fields it is the answer to score.
+_NULL_SCORED_FIELDS = frozenset({"escapechar"})
 
 
 @dataclass
@@ -350,6 +353,9 @@ def _compare(
 ) -> tuple[list[str], list[tuple[str, Any, Any]], list[str]]:
     """Compare a model result against the manifest's expected fields.
 
+    A field missing from ``expected``, or ``null`` there, is skipped, except
+    an ``escapechar`` of ``null``, which is scored (no escape character).
+
     Args:
         expected: The manifest's ``expected`` mapping for one fixture.
         result: The validated inspection result returned by the model.
@@ -364,7 +370,9 @@ def _compare(
     skipped: list[str] = []
 
     for field_name in _RESULT_FIELDS:
-        if field_name not in expected or expected[field_name] is None:
+        if field_name not in expected or (
+            expected[field_name] is None and field_name not in _NULL_SCORED_FIELDS
+        ):
             skipped.append(field_name)
             continue
 

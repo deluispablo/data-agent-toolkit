@@ -1183,3 +1183,18 @@ def test_replay_skips_and_counts_fixtures_the_run_does_not_hold(
     assert summary["replay_skipped"] == 1
     assert summary["fixtures_run"] == 2
     assert "Skipping 1 selected fixture(s)" in caplog.text
+
+
+def test_a_null_escapechar_is_scored_while_other_nulls_are_skipped(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """``escapechar: null`` is an answer to check (issue #158); a null header row is not."""
+    result = _result_with_columns("a").model_copy(update={"escapechar": "\\"})
+
+    evaluation = _evaluate_with(
+        monkeypatch, result, {"escapechar": None, "header_row_index": None, "delimiter": ","}
+    )
+
+    assert evaluation.mismatched_fields == [("escapechar", None, "\\")]
+    assert evaluation.matched_fields == ["delimiter"]
+    assert "header_row_index" in evaluation.skipped_fields

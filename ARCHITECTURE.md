@@ -282,9 +282,11 @@ One line per notable design choice, with the issue that records it.
   ([#53](https://github.com/deluispablo/data-agent-toolkit/issues/53),
   [#97](https://github.com/deluispablo/data-agent-toolkit/issues/97)).
 - **Quote escaping is read from the samples** when they show one
-  convention (`\"` or a doubled quote inside a value); the model's answer
-  decides only when they show both or neither
-  ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
+  convention (`\"` or a doubled quote inside a value), and quoted fields
+  with neither mean no escape character; the model's answer decides only
+  when they show both, or no quoted field
+  ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130),
+  [#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)).
 - **The model's delimiter yields only to a clear winner**: exactly one
   usual candidate agreeing on at least 2 head lines and at least 1.5 times
   as many as the model's answer; a wrong `,` on the tab fixtures lost by

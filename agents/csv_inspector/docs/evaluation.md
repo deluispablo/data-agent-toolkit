@@ -300,6 +300,28 @@ uv run --directory agents/csv_inspector python scripts/eval_samples.py --backend
 
 The first cloud results are in [Baseline 0.3.0](#baseline-030) (item 6).
 
+## Prompt passes (#133)
+
+The 0.4.0 prompt was cut pass by pass from `2026.09-f` (after #129, #130,
+#132), one commit per pass. Characters are the instruction template with
+a tail section and empty samples (`build_prompt("", "utf-8",
+tail_sample="")`). Tokens are measured with the command in #133 on
+`qwen2.5-coder:7b` (system prompt and chat wrapping included); the columns
+marked *pending* are filled in when the runs are made.
+
+| Pass | `PROMPT_VERSION` | Change | Characters | Tokens | Quick subset (`--repeat 2`) |
+|---|---|---|---|---|---|
+| 0 | `2026.09-f` | after #129, #130, #132 | 3,274 | pending | pending (full catalog: 100.0 % on 7b) |
+| A | `2026.09-g` | "Keep in mind" list dropped; delimiter note kept | 2,980 | pending | pending |
+| B | `2026.09-h` | header and footer rules as bullets, one example per footer kind | 2,314 | pending | pending |
+| C | `2026.09-i` | role sentence dropped | 2,247 | pending | pending |
+| D | `2026.09-j` | one-line encoding hint, shorter tail note | 2,082 | pending | pending |
+
+At the 0.3.0 calibration (899 template tokens for 3,540 characters, about
+3.9 characters per token), pass D is about 530 template tokens plus 27 for
+the system prompt and chat wrapping: under the 600-token target, to be
+confirmed by the measurement.
+
 ## Baseline 0.3.0
 
 The reference every M5/M6 pull request compares against

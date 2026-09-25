@@ -7,11 +7,6 @@ inspection result without ad-hoc parsing.
 
 from __future__ import annotations
 
-import json
-from collections.abc import Mapping
-from types import MappingProxyType
-from typing import Literal, get_args
-
 from pydantic import (
     BaseModel,
     ConfigDict,
@@ -29,82 +24,6 @@ _NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
 
 # Characters that end a row: csv and pandas reject them as dialect characters.
 _LINE_BREAKS = frozenset({"\r", "\n"})
-
-ColumnType = Literal["string", "integer", "float", "date", "datetime", "boolean"]
-"""The closed vocabulary of ``ColumnSchema.inferred_type`` values."""
-
-# How models spell a type outside the vocabulary. Lookup is case-insensitive.
-_COLUMN_TYPE_ALIASES: Mapping[str, ColumnType] = MappingProxyType(
-    {
-        "int": "integer",
-        "bigint": "integer",
-        "int64": "integer",
-        "number": "float",
-        "decimal": "float",
-        "double": "float",
-        "numeric": "float",
-        "text": "string",
-        "str": "string",
-        "varchar": "string",
-        "bool": "boolean",
-        "timestamp": "datetime",
-    }
-)
-
-
-class ColumnSchema(BaseModel):
-    """Preliminary schema inferred for a single CSV column.
-
-    Attributes:
-        name: The column name as it appears in the header row, or a
-            positional name (``column_1``, ``column_2``, ...) when the
-            file has no header row.
-        inferred_type: The inferred logical type, one of ``string``,
-            ``integer``, ``float``, ``date``, ``datetime`` or ``boolean``.
-        nullable: Whether the column is expected to contain missing values.
-        example_values: A small sample of raw values observed for this column.
-    """
-
-    model_config = ConfigDict(frozen=True)
-
-    name: str
-    inferred_type: ColumnType = Field(description="Inferred logical type of the column.")
-    nullable: bool = True
-    example_values: list[str] = Field(default_factory=list)
-
-    @field_validator("inferred_type", mode="before")
-    @classmethod
-    def _normalize_inferred_type(cls, value: object) -> object:
-        """Map the model's type word onto the closed vocabulary.
-
-        Small models answer ``int``, ``number``, ``text`` and the like instead
-        of the requested names. Common aliases are mapped, case-insensitively,
-        and any other string becomes ``string``, the safe type, rather than
-        failing the whole inspection over one column.
-        """
-        if not isinstance(value, str):
-            return value
-        normalized = value.strip().lower()
-        if normalized in get_args(ColumnType):
-            return normalized
-        return _COLUMN_TYPE_ALIASES.get(normalized, "string")
-
-    @field_validator("example_values", mode="before")
-    @classmethod
-    def _stringify_scalar_examples(cls, value: object) -> object:
-        """Accept JSON scalars as raw example values.
-
-        Models often emit numeric examples as JSON numbers (``1447.44``)
-        rather than strings. Examples are raw text by contract, so scalars
-        are rendered as their JSON text (``null`` as ``""``) instead of
-        failing the whole inspection over a cosmetic field.
-        """
-        if not isinstance(value, list):
-            return value
-        return [
-            "" if item is None else json.dumps(item) if isinstance(item, int | float) else item
-            for item in value
-        ]
 
 
 class Usage(BaseModel):
@@ -166,9 +85,11 @@ class CSVInspectionResult(BaseModel):
         footer_rows_to_skip: Number of trailing rows to discard as non-data
             footers. Derived from ``footer_lines`` rather than inferred
             separately, so the two can never disagree.
-        columns: The preliminary schema inferred for each column.
+        columns: The column names as written in the header row, in file
+            order, or positional names (``column_1``, ``column_2``, ...) when
+            ``has_header`` is ``False``. Surrounding whitespace is stripped;
+            empty names and duplicates are kept, as they are in the file.
         confidence: The model's self-reported confidence, in ``[0.0, 1.0]``.
-        notes: Optional free-text observations relevant to downstream parsing.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -191,9 +112,8 @@ class CSVInspectionResult(BaseModel):
         ),
     )
     footer_lines: list[str] = Field(default_factory=list)
-    columns: list[ColumnSchema]
+    columns: list[str] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
-    notes: str | None = None
     # Tokens, latency and attempts of the inspection that returned this result
     # (see Usage); None on a result built any other way. Kept out of the JSON
     # Schema sent to the model and out of every dump, so the serialized result
@@ -230,6 +150,19 @@ class CSVInspectionResult(BaseModel):
         if len(value) != 1:
             raise ValueError(f"must be exactly one character, got {value!r}")
         return value
+
+    @field_validator("columns", mode="before")
+    @classmethod
+    def _strip_column_names(cls, value: object) -> object:
+        """Strip surrounding whitespace from each column name.
+
+        Empty names (a pandas index column is written as ``""``) and
+        duplicate names are kept: they are what the file holds. Anything
+        that is not a list of strings is left to fail validation.
+        """
+        if not isinstance(value, list):
+            return value
+        return [name.strip() if isinstance(name, str) else name for name in value]
 
     @model_validator(mode="before")
     @classmethod

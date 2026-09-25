@@ -12,23 +12,19 @@ from __future__ import annotations
 
 import json
 import re
-from typing import get_args
 
 from pydantic import ValidationError
 
 from ._exceptions import ResponseParsingError, SchemaValidationError
-from ._models import ColumnType, CSVInspectionResult
+from ._models import CSVInspectionResult
 
 # Bumped by hand on any change to the prompt wording (date-based; the suffix
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-a"
+PROMPT_VERSION = "2026.09-b"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
-
-# Built from the model's vocabulary so the prompt can never drift from it.
-_COLUMN_TYPE_CHOICES = "|".join(get_args(ColumnType))
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 
@@ -108,16 +104,8 @@ markdown, no backticks) with exactly this shape:
   "has_header": <true if a row holds the column names, false if the first row is already data>,
   "header_row_index": <0-based index of the column-name row, or null if has_header is false>,
   "footer_lines": ["<every footer line after the last data row, in file order>", "..."],
-  "columns": [
-    {{
-      "name": "<name copied character for character from the header row; column_N if none>",
-      "inferred_type": "<{_COLUMN_TYPE_CHOICES}>",
-      "nullable": <true|false>,
-      "example_values": ["<at most 3 raw values copied from this column>"]
-    }}
-  ],
-  "confidence": <number between 0.0 and 1.0 indicating your confidence>,
-  "notes": "<relevant observations, or null>"
+  "columns": ["<name copied character for character from the header row; column_N if none>", "..."],
+  "confidence": <number between 0.0 and 1.0 indicating your confidence>
 }}
 
 HEADER (start of the file): lines before the real column-name row, such as \

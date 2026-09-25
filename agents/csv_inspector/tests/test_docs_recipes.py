@@ -42,7 +42,7 @@ def _result(
         delimiter=delimiter,
         header_row_index=header_row_index,
         footer_lines=footer_lines,
-        columns=[],
+        columns=["unused"],  # read_rows reads the dialect and positions only
         confidence=1.0,
     )
 

@@ -26,7 +26,7 @@ _REPOSITORY = "https://github.com/deluispablo/data-agent-toolkit"
 
 _DESCRIPTION = f"""Example HTTP host that embeds the **csv-inspector** agent: upload a CSV or TSV
 file and get back its encoding, dialect, header row, footer lines and a
-preliminary column schema, inferred by a model (a local Ollama by default) from
+column names, inferred by a model (a local Ollama by default) from
 a bounded head and tail sample. It is executable documentation of how to embed
 the agent, not a product: see the
 [example's README]({_REPOSITORY}/tree/main/examples/csv_inspector_api) and the

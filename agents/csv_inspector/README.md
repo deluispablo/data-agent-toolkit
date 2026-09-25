@@ -12,7 +12,11 @@ LLM-assisted inspection of large, messy CSV/TSV sources. From small,
   after the data (`footer_lines`: totals rows, "end of report" markers,
   generation timestamps, blank separators; `footer_rows_to_skip` is derived
   from them);
-- a preliminary column schema (name, inferred type, nullability, examples).
+- the column names, as written in the header row (`columns`).
+
+Column types are not inferred: the engine that loads the file reads all of
+it and infers them better than a 4 KB sample can (see
+[Using the result](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#column-types)).
 
 It runs on a **local Ollama model by default** (free, no credentials) or on
 **Google Gemini** as an opt-in, and returns a Pydantic-validated
@@ -56,7 +60,7 @@ with open("exports/ledger.csv", "rb") as f:
     result = inspect_csv(f)  # ...or a binary stream
 
 print(result.delimiter, result.header_row_index, result.footer_rows_to_skip)
-print([column.name for column in result.columns])
+print(result.columns)  # ["Fecha", "Cliente", "Importe"]
 ```
 
 To read the file with these values, follow
@@ -83,8 +87,8 @@ stable API. Every other module and name is internal.
 | `inspect_csv(source, /, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)` | Synchronous inspection |
 | `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
 | `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
-| `CSVInspectionResult`, `ColumnSchema` | The validated output contract. An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
-| `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
+| `CSVInspectionResult` | The validated output contract (see [The result](#the-result)). An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
+| `Usage` | The type of `result.usage`: what the model phase cost (see [Usage](#usage)) |
 | `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
 | `Settings` | Explicit configuration; constructing it never reads the environment |
 | `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
@@ -94,22 +98,21 @@ stable API. Every other module and name is internal.
 | `CSVInspectorError` and subclasses | See [Errors](#errors) |
 | `__version__` | The installed version |
 
-### Column types
+### The result
 
-`ColumnSchema.inferred_type` is always one of `string`, `integer`, `float`,
-`date` (no time part), `datetime` or `boolean`, so a downstream type mapping
-only has to cover these six values. Small models often answer with other
-words; common aliases are mapped (case-insensitively), and any other word
-becomes `string`, the safe type:
-
-| Model answer | `inferred_type` |
+| Field | Meaning |
 |---|---|
-| `int`, `bigint`, `int64` | `integer` |
-| `number`, `decimal`, `double`, `numeric` | `float` |
-| `text`, `str`, `varchar` | `string` |
-| `bool` | `boolean` |
-| `timestamp` | `datetime` |
-| anything else | `string` |
+| `encoding` | The character encoding, checked against the one detected from the bytes |
+| `delimiter`, `quotechar`, `escapechar`, `doublequote` | The dialect, ready for `csv`, pandas, PySpark or BigQuery |
+| `has_header`, `header_row_index` | Whether the file has a row of column names, and how many physical lines precede it (`None` for a header-less file) |
+| `footer_lines`, `footer_rows_to_skip` | The trailing non-data lines, verbatim, and how many there are |
+| `columns` | The column names as written in the header row, in file order (`column_1`, `column_2`, ... for a header-less file). Empty names (a pandas index column) and duplicate names are kept, as they are in the file |
+| `confidence` | The model's self-reported confidence, from 0.0 to 1.0 |
+
+`confidence` is a routing signal, not a guarantee: send inspections below
+a threshold you choose (for example 0.7) to human review instead of loading
+them automatically. The dialect, header row, column names and footer are
+grounded in the sampled bytes whatever the model's confidence.
 
 ### Sources
 
@@ -145,7 +148,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-a`); it changes with every change to the prompt wording |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-b`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is

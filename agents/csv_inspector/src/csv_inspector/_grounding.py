@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 from ._encoding import LINE_BREAK, canonical_codec_name
-from ._models import ColumnSchema, CSVInspectionResult
+from ._models import CSVInspectionResult
 
 logger = logging.getLogger(__name__)
 
@@ -102,7 +102,7 @@ def _locate_header_row(
         (e.g. a header-less file, or a dialect Python's ``csv`` module
         rejects).
     """
-    expected = [column.name.strip() for column in result.columns]
+    expected = [name.strip() for name in result.columns]
     if not expected:
         return None
     rows = [
@@ -170,8 +170,8 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     empty field matching any shape) with at least half of the fields
     non-text in both rows. A row-0 field equal to one of the model's
     column names (case-insensitive) always keeps the header. Only the
-    sample is read, never the model's example values; only the first line
-    is tested, so a header-less file with preamble lines is not described.
+    sample is read; only the first line is tested, so a header-less file
+    with preamble lines is not described.
     """
     lines = _split_lines(head_sample.lstrip("\ufeff"))
     if len(lines) < _MIN_AGREEING_LINES:
@@ -180,7 +180,7 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     second = _split_fields(lines[1], result.delimiter, result.quotechar)
     if not first or second is None or not len(first) == len(second) == len(result.columns):
         return False
-    names = {column.name.strip().casefold() for column in result.columns} - {""}
+    names = {name.strip().casefold() for name in result.columns} - {""}
     if any(field.strip().casefold() in names for field in first):
         return False
     first_shape = [_field_shape(field) for field in first]
@@ -213,44 +213,24 @@ def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, o
         return {
             "has_header": False,
             "header_row_index": None,
-            "columns": [
-                column.model_copy(update={"name": f"column_{number}"})
-                for number, column in enumerate(result.columns, start=1)
-            ],
+            "columns": [f"column_{number}" for number in range(1, len(result.columns) + 1)],
         }
     updates: dict[str, object] = {}
     header_row_index, names = header
     if header_row_index != result.header_row_index:
         updates["header_row_index"] = header_row_index
-    if names != [column.name for column in result.columns]:
-        updates["columns"] = _columns_named(result.columns, names)
+    # The header's fields as written, blank names the model left out included.
+    if names != result.columns:
+        updates["columns"] = names
     return updates
 
 
-def _columns_named(columns: list[ColumnSchema], names: list[str]) -> list[ColumnSchema]:
-    """Rename the inferred columns to the header's names as written.
-
-    When the header has more names than inferred columns, the extra names
-    are the blank ones the model left out (see :func:`_locate_header_row`):
-    each gets a new nullable ``string`` column, and the inferred columns
-    keep their order over the non-blank names.
-    """
-    if len(names) == len(columns):
-        return [
-            column.model_copy(update={"name": name})
-            for column, name in zip(columns, names, strict=True)
-        ]
-    inferred = iter(columns)
-    return [
-        next(inferred).model_copy(update={"name": name})
-        if name.strip()
-        else ColumnSchema(name=name, inferred_type="string")
-        for name in names
-    ]
-
-
 def _locate_footer_lines(
-    footer_lines: list[str], end_of_file: str, delimiter: str, quotechar: str
+    footer_lines: list[str],
+    end_of_file: str,
+    delimiter: str,
+    quotechar: str,
+    model_delimiter: str | None = None,
 ) -> list[str] | None:
     """Re-read the model's footer verbatim from the real end of the file.
 
@@ -258,9 +238,11 @@ def _locate_footer_lines(
     copying it exactly: it tends to drop blank separator lines, skip a line
     in the middle, copy a line imperfectly, or take the last data rows for
     a footer. Each non-blank line it reported anchors at its last matching
-    line in the file's last lines (see :func:`_anchor_matches`). The footer
-    starts at the earliest anchor, moved forward past data rows, since a
-    data row is never a footer line; it then takes every line from there
+    line in the file's last lines (see :func:`_anchor_matches`); a line the
+    model wrote with its own, replaced delimiter also anchors. The footer
+    starts at the earliest anchor, moved past the last data row at or after
+    it, since a footer follows the data (the model may point at a ragged
+    data row with full rows after it); it then takes every line from there
     to the end of the file verbatim, and extends backwards over the blank,
     totals and other non-data lines that separate it from the data.
 
@@ -270,13 +252,21 @@ def _locate_footer_lines(
             tail sample, or the head sample when it covers the whole file).
         delimiter: The field delimiter, used to tell footer lines from data.
         quotechar: The quote character, used to tell footer lines from data.
+        model_delimiter: The delimiter the model answered, when grounding
+            replaced it: the model copies footer lines with its own
+            delimiter (``TOTAL,,12.50`` for ``TOTAL		12.50``).
+
+    A reported data row that occurs nowhere (the model miscopied or made up
+    the last data row) anchors right after the data.
 
     Returns:
         The grounded footer lines, or ``None`` when none of the model's
-        non-blank footer lines occur in ``end_of_file``, or all of them are
-        data rows (nothing to anchor).
+        non-blank footer lines occur in ``end_of_file`` (and none is shaped
+        like a data row), or nothing but data follows the anchor.
     """
     reported = {line.strip() for line in footer_lines if line.strip()}
+    if model_delimiter and model_delimiter != delimiter:
+        reported |= {line.replace(model_delimiter, delimiter) for line in reported}
     if not reported:
         return None
     lines = _split_lines(end_of_file)
@@ -291,16 +281,22 @@ def _locate_footer_lines(
         for text in reported
     )
     anchors = [anchor for anchor in last_seen if anchor is not None]
-    if not anchors:
-        return None
     width = _data_width(lines, delimiter, quotechar)
 
     def is_data(line: str) -> bool:
         return width is not None and _is_data_row(line, delimiter, quotechar, width)
 
+    if not anchors:
+        # A data row the model miscopied or made up still says where it saw
+        # the footer: right after the data.
+        if not any(is_data(text) for text in reported):
+            return None
+        anchors = [1]
+
     start = min(anchors)
-    while start < len(lines) and is_data(lines[start]):
-        start += 1
+    data_rows = [index for index in range(start, len(lines)) if is_data(lines[index])]
+    if data_rows:
+        start = data_rows[-1] + 1
     if start == len(lines):
         return None
     while start > 1 and (
@@ -490,10 +486,10 @@ def ground_in_samples(
     row 0 that cannot be anchored becomes "no header" when the first row
     has the same field shapes (integer, decimal, date, empty or text) as the
     second: header-less detection is a shape test on the sample, not on the
-    model's example values (see :func:`_first_row_is_data`). Any other
-    header that cannot be anchored is left as the model reported it. A
-    footer that cannot be anchored is dropped when the end of the file was
-    sampled, since it is not there.
+    model's answer (see :func:`_first_row_is_data`). Any other header that
+    cannot be anchored is left as the model reported it. A footer that
+    cannot be anchored is dropped when the end of the file was sampled,
+    since it is not there.
 
     Args:
         result: The model's validated result.
@@ -514,6 +510,7 @@ def ground_in_samples(
     """
     updates: dict[str, object] = {}
 
+    model_delimiter = result.delimiter
     delimiter = _ground_delimiter(result, head_sample)
     if delimiter != result.delimiter:
         updates["delimiter"] = delimiter
@@ -529,7 +526,7 @@ def ground_in_samples(
     else:
         end_of_file = tail_sample if tail_sample is not None else head_sample
         footer_lines = _locate_footer_lines(
-            result.footer_lines, end_of_file, result.delimiter, result.quotechar
+            result.footer_lines, end_of_file, result.delimiter, result.quotechar, model_delimiter
         )
         if footer_lines is None and any(line.strip() for line in result.footer_lines):
             # The real end of the file was seen and the reported footer is

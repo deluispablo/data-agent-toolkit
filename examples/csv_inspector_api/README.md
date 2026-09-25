@@ -3,7 +3,7 @@
 A small FastAPI service that embeds the
 [`csv-inspector`](../../agents/csv_inspector/README.md) agent: send a CSV
 or TSV file and get back its encoding, dialect, header row, footer lines
-and a preliminary column schema.
+and column names.
 
 - **An example**: executable documentation of how to put the agent behind
   HTTP. It is never built, tagged or published, and it has no
@@ -100,9 +100,7 @@ unchanged:
 ```json
 {"encoding": "utf-8", "delimiter": ";", "quotechar": "\"", "escapechar": "\\",
  "doublequote": true, "has_header": true, "header_row_index": 2, "footer_lines": [],
- "columns": [{"name": "Fecha", "inferred_type": "date", "nullable": false,
-              "example_values": ["2024-01-15", "2024-01-16", "..."]}, "..."],
- "confidence": 1.0, "notes": null, "footer_rows_to_skip": 0}
+ "columns": ["Fecha", "Cliente", "Importe"], "confidence": 1.0, "footer_rows_to_skip": 0}
 ```
 
 Every successful inspection also returns `X-Inspection-Model` (the model

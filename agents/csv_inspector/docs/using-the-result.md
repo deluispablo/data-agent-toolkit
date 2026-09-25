@@ -20,11 +20,11 @@ deterministically from the sampled text:
   exactly one does. Ties and one-column files keep the model's answer.
 - **Header:** the head line whose fields equal the inferred column names,
   or whose non-empty fields do when it also has blank ones (a blank name
-  the model left out, such as a pandas index column, is restored as a
-  `string` column); failing that, the first line with as many fields as inferred columns,
+  the model left out, such as a pandas index column, is restored as `""`);
+  failing that, the first line with as many fields as inferred columns,
   followed by a line of the same shape, that shares at least one name with
-  the model's answer. Its index becomes `header_row_index`, and its fields
-  replace any paraphrased column names. Skipped when the model reports
+  the model's answer. Its index becomes `header_row_index`, and its fields,
+  as written, become `columns`. Skipped when the model reports
   `has_header=false`: a header-less file keeps its positional names
   (`column_1`, ...) and `header_row_index=None`. When no header line
   anchors and the model's header at row 0 is shaped like the row below it
@@ -32,7 +32,7 @@ deterministically from the sampled text:
   least half the fields non-text unless the shapes are identical, and no
   field equal to a model's column name), that row is data: the result is
   corrected to `has_header=false` with positional names. The test reads
-  only the sample, never the model's `example_values`.
+  only the sample.
 - **Footer:** the earliest reported footer line (by last occurrence) that
   really appears at the end of the source, moved forward past data rows,
   taken verbatim through to the end, and extended backwards over blank
@@ -134,7 +134,7 @@ df = pd.read_csv(
     doublequote=result.doublequote,
     skiprows=result.header_row_index or 0,  # physical lines: NOT header=
     header=0 if result.has_header else None,
-    names=None if result.has_header else [column.name for column in result.columns],
+    names=None if result.has_header else result.columns,
     skipfooter=result.footer_rows_to_skip,
     engine="python" if result.footer_rows_to_skip else "c",
 )
@@ -150,8 +150,8 @@ df = pd.read_csv(
 - `skipfooter` also counts physical lines, including blank footer lines,
   but only the `python` engine supports it. That engine is slower, so the
   snippet only switches to it when there is a footer to drop.
-- Column types are left to pandas. `result.columns` gives the names and a
-  preliminary type if you want to pass `dtype=` or `parse_dates=`.
+- Column types are left to pandas, which infers them from every row (see
+  [Column types](#column-types)).
 
 ## PySpark
 
@@ -212,6 +212,41 @@ df = spark.read.options(**options).csv(kept)
 preamble or footer): rewrite the file first as clean UTF-8 with the
 [stdlib recipe](#stdlib-csv) and `csv.writer`, then read it with the
 first snippet.
+
+## Column types
+
+The result names the columns; it does not type them. Let the engine that
+loads the file infer the types: it reads every row, while the inspection
+only sees a few kilobytes, so it is right more often, and it costs no model
+tokens.
+
+- **pandas** infers a dtype per column by default. Pass `parse_dates=` for
+  the date columns you know by name.
+- **PySpark:** add `.option("inferSchema", True)` to the reader (one extra
+  pass over the data), or pass a `schema=` built from `result.columns` and
+  your own types.
+- **BigQuery:** load with schema auto-detection, and skip the preamble and
+  the header row:
+
+  ```python
+  from google.cloud import bigquery
+
+  job_config = bigquery.LoadJobConfig(
+      source_format=bigquery.SourceFormat.CSV,
+      autodetect=True,  # BigQuery samples the file and infers the types
+      field_delimiter=result.delimiter,
+      quote_character=result.quotechar,
+      skip_leading_rows=(result.header_row_index or 0) + result.has_header,
+  )
+  ```
+
+  `bq load --autodetect --skip_leading_rows=N` is the command-line
+  equivalent. With auto-detection, BigQuery skips `N - 1` rows and reads
+  the column names from row `N`, the header row; a header-less file
+  (`N = 0`) gets positional names, which `result.columns` does not improve
+  on. BigQuery cannot drop footer lines: remove them first, as in the
+  [stdlib recipe](#stdlib-csv). To pin the names instead (a Dataform
+  declaration, for example), take them from `result.columns`.
 
 ## Encoding names
 

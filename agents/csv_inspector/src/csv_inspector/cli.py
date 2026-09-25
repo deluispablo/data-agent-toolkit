@@ -285,11 +285,9 @@ def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None)
         result.encoding,
         result.delimiter,
         result.header_row_index if result.has_header else "none",
-        [column.name for column in result.columns],
+        result.columns,
         result.confidence,
     )
-    if result.notes:
-        logger.info("Notes: %s", result.notes)
 
 
 if __name__ == "__main__":  # pragma: no cover

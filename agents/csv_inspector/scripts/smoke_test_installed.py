@@ -28,6 +28,7 @@ from csv_inspector import (
     InspectionTimeoutError,
     LLMBackend,
     Settings,
+    Usage,
     ainspect_csv,
     ensure_backend_ready,
     inspect_csv,
@@ -40,11 +41,7 @@ ANSWER = json.dumps(
         "delimiter": ";",
         "header_row_index": 0,
         "footer_lines": ["TOTAL;;10.00"],
-        "columns": [
-            {"name": "Fecha", "inferred_type": "date"},
-            {"name": "Cliente", "inferred_type": "string"},
-            {"name": "Importe", "inferred_type": "float"},
-        ],
+        "columns": ["Fecha", "Cliente", "Importe"],
         "confidence": 0.9,
     }
 )
@@ -79,7 +76,8 @@ def main() -> None:
     # model_dump() leaves out result.usage, whose latency differs between calls.
     _check(from_bytes.model_dump() == from_stream.model_dump(), "bytes and stream sources disagree")
     usage = from_bytes.usage
-    _check(usage is not None and usage.attempts == 1, "no usage attached to the result")
+    _check(isinstance(usage, Usage) and usage.attempts == 1, "no usage attached to the result")
+    _check(from_bytes.columns == ["Fecha", "Cliente", "Importe"], "column names not returned")
     # Grounding fixes the header row (the model said 0) and the blank separator.
     _check(from_bytes.header_row_index == 1, "header row was not grounded")
     _check(from_bytes.footer_lines == ["", "TOTAL;;10.00"], "footer was not grounded")

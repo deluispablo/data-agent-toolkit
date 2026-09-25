@@ -43,7 +43,7 @@ RESULT_JSON = json.dumps(
         "encoding": "utf-8",
         "delimiter": ";",
         "header_row_index": 0,
-        "columns": [{"name": "Fecha", "inferred_type": "date"}],
+        "columns": ["Fecha"],
         "confidence": 0.9,
     }
 )

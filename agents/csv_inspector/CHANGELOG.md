@@ -8,8 +8,34 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+To be released as **0.4.0**: the output contract is slimmed to what
+pipelines consume.
+
+### Changed (breaking)
+
+- `CSVInspectionResult.columns` is a list of column names (`list[str]`):
+  the names as written in the header row, in file order, or `column_1`,
+  `column_2`, ... for a header-less file. Surrounding whitespace in a
+  model's answer is stripped; empty names (a pandas index column) and
+  duplicate names are kept, as they are in the file; an empty list fails
+  validation. The per-column `inferred_type`, `nullable` and
+  `example_values` are removed, and so is `notes`. `ColumnSchema` and
+  `ColumnType` are no longer exported. `confidence` stays: route low values
+  to human review. Those fields were 51 % of the characters of a model's
+  answer on the 0.3.0 baseline, and the model no longer spends tokens on
+  them. The prompt asks for the names only (`PROMPT_VERSION` `2026.09-b`).
+  Migration: `[c.name for c in result.columns]` becomes `result.columns`;
+  drop any use of `notes`; for column types, let the engine that loads the
+  file infer them (pandas by default, Spark `inferSchema`, BigQuery
+  schema auto-detection), which reads every row instead of a 4 KB sample:
+  see `docs/using-the-result.md`, "Column types"
+  ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129)).
+
 ### Added
 
+- `Usage`, the type of `result.usage`, is exported from `csv_inspector`,
+  so host code can annotate it
+  ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129)).
 - Every successful inspection records what its model phase cost in
   `result.usage`: the model whose answer was kept, prompt and completion
   tokens summed over every attempt (a failed primary's tokens included;
@@ -54,7 +80,7 @@ listed under **Changed (breaking)**.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-a` today), and the
+  version of the prompt the models were sent (`2026.09-b` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -104,6 +130,13 @@ listed under **Changed (breaking)**.
 
 ### Fixed
 
+- Wide files no longer fail on local models. On 0.3.0 every inspection of
+  a 40-column file failed with both default Ollama models: the per-column
+  answer (about 30 to 40 completion tokens per column) was cut off at the
+  1024-token reply cap, so it was invalid JSON, and the fallback hit the
+  same cap. With column names only, a 40-column answer fits well within
+  the cap
+  ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
 - Delimiter grounding replaces the model's delimiter when another usual
   delimiter clearly dominates it, not only when it splits fewer than two
   head lines: a `,` answered for a tab-separated file whose values hold
@@ -112,9 +145,6 @@ listed under **Changed (breaking)**.
   the same number of fields. Ties, one-column files and exotic delimiters
   still keep the model's answer
   ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
-
-### Fixed
-
 - Footer grounding no longer turns data rows into a footer. A data row
   (the modal field count of the end of the file, at least half of its
   fields filled, not a totals row) is never a footer line: the footer
@@ -130,8 +160,16 @@ listed under **Changed (breaking)**.
   ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 - A header row with a blank name the model left out (`,id,id,value` answered
   as `id, id, value`) is now anchored: the names are taken from the file,
-  blanks included, and each blank name gets a nullable `string` column
+  blanks included (a blank name is reported as `""`)
   ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+- A footer now always starts after the last data row: a ragged data row
+  the model points at, with full rows after it, is no longer a footer, and
+  a data row the model reports but that is not in the file (miscopied or
+  made up) is read as "the footer starts after the data". A
+  footer line the model copied with its own delimiter, replaced by
+  grounding (`TOTAL,,12.50` in a tab-separated file), still anchors
+  ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129),
+  follow-up of [#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 
 ### Documentation
 

@@ -33,7 +33,7 @@ from csv_inspector import (
     inspect_csv,
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
-from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
+from csv_inspector._invokers import ModelInvoker, _invoke_ollama
 from csv_inspector._sampling import (
     MAX_SAMPLE_BYTES,
 )
@@ -314,7 +314,7 @@ def test_invoke_ollama_model_returns_message_content(monkeypatch: pytest.MonkeyP
 
     _install_fake_ollama(monkeypatch, chat)
 
-    assert invoke_ollama_model("prompt", "some-model") == '{"ok": true}'
+    assert _invoke_ollama("prompt", "some-model").text == '{"ok": true}'
 
 
 @pytest.mark.parametrize("content", [None, ""])
@@ -329,7 +329,7 @@ def test_invoke_ollama_model_rejects_empty_content(
     _install_fake_ollama(monkeypatch, chat)
 
     with pytest.raises(ModelInvocationError, match="empty response"):
-        invoke_ollama_model("prompt", "some-model")
+        _invoke_ollama("prompt", "some-model")
 
 
 def test_invoke_ollama_model_wraps_backend_errors(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -341,7 +341,7 @@ def test_invoke_ollama_model_wraps_backend_errors(monkeypatch: pytest.MonkeyPatc
     _install_fake_ollama(monkeypatch, chat)
 
     with pytest.raises(ModelInvocationError, match="connection refused"):
-        invoke_ollama_model("prompt", "some-model")
+        _invoke_ollama("prompt", "some-model")
 
 
 def test_invoke_ollama_model_reports_missing_package(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -349,7 +349,7 @@ def test_invoke_ollama_model_reports_missing_package(monkeypatch: pytest.MonkeyP
     monkeypatch.setitem(sys.modules, "ollama", None)
 
     with pytest.raises(BackendConfigurationError, match="pip install ollama"):
-        invoke_ollama_model("prompt", "some-model")
+        _invoke_ollama("prompt", "some-model")
 
 
 def test_a_conflicting_dialect_moves_on_to_the_fallback_model(tmp_path: Path) -> None:

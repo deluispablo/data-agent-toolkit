@@ -1,0 +1,89 @@
+{
+  "file": {
+    "name": "demo_sales.csv",
+    "size_bytes": 380
+  },
+  "samples": {
+    "encoding": "Windows-1252",
+    "head_bytes": 224,
+    "tail_bytes": 80,
+    "unread_bytes": 76,
+    "head_text": "Sales report – ACME Europe Ltd.\r\nGenerated: 2026-09-24 08:15\r\n\r\nDate;Store;Product;Units;Amount (€);Returned\r\n2026-07-01;München;Ground coffee 1kg;12;143,40;no\r\n2026-07-01;Zürich;Green tea;7;38,50;no\r\n",
+    "tail_text": "ançon;Ground coffee 1kg;9;107,55;no\r\nTOTAL;;;51;427,30;\r\n*** End of report ***\r\n"
+  },
+  "prompt": {
+    "text": "Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'Windows-1252'.\n\n--- HEAD SAMPLE START (first bytes of the file) ---\nSales report – ACME Europe Ltd.\r\nGenerated: 2026-09-24 08:15\r\n\r\nDate;Store;Product;Units;Amount (€);Returned\r\n2026-07-01;München;Ground coffee 1kg;12;143,40;no\r\n2026-07-01;Zürich;Green tea;7;38,50;no\r\n\n--- HEAD SAMPLE END ---\n\n--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---\nançon;Ground coffee 1kg;9;107,55;no\r\nTOTAL;;;51;427,30;\r\n*** End of report ***\r\n\n--- TAIL SAMPLE END ---\n\nThe head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file: read footer lines ONLY from its last lines. Its first line is likely a cut fragment: do not use it for columns.\n\nHEADER:\n- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n- No column-name row (the first line is already data, e.g. \"17,red,3.5\"): \"has_header\": false, \"header_row_index\": null, columns column_1, column_2, ...\n\nFOOTER (end of the file): check the last lines of the TAIL sample independently of the header. A data row holds a real record, with values like the rows above it (a date in the date column, a name in the name column, and so on). Any trailing line after the last data row is a footer line, for example:\n- a totals/summary row: it may have the same number of fields as a data row, but it carries a label instead of a record and leaves other fields empty, e.g. \"TOTAL,,4241.25\", \"TOTAL;;;98765.40\" or \"Total registros: 250\"\n- an end-of-report marker, e.g. \"--- Fin del informe ---\" or \"*** END ***\"\n- a generation timestamp or signature, e.g. \"Generado el 2024-01-20 10:00:00\"\n- a blank line separating the data from any of the above\nCopy only the first non-blank line after the last data row, verbatim, into \"footer_first_line\"; the rest of the footer is read from the file. Use null only when the file really ends with a data row.\n\nAnalyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n- \"encoding\" is the real encoding, e.g. utf-8, latin-1, cp1252.\n- \"quotechar\" is the character that wraps quoted fields: \"'\" when fields look like 'Acme, S.L.', '\"' when they look like \"Acme, S.L.\" or are never quoted.\n- \"escapechar\" and \"doublequote\": a quote inside a quoted field written with a backslash (\\\") means \"escapechar\": \"\\\\\", \"doublequote\": false; written doubled (\"\") or never present, \"escapechar\": null, \"doublequote\": true.\n- \"delimiter\" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n- \"columns\" holds each name copied character for character from the header row.\n",
+    "version": "2026.09-m",
+    "tokens": 842
+  },
+  "answer": {
+    "model": "qwen2.5-coder:7b",
+    "text": "{\n  \"encoding\": \"Windows-1252\",\n  \"delimiter\": \";\",\n  \"quotechar\": \"\\\"\",\n  \"escapechar\": null,\n  \"doublequote\": true,\n  \"has_header\": true,\n  \"header_row_index\": 0,\n  \"footer_first_line\": \"TOTAL;;;51;427,30;\",\n  \"columns\": [\n    \"Date\",\n    \"Store\",\n    \"Product\",\n    \"Units\",\n    \"Amount (€)\",\n    \"Returned\"\n  ],\n  \"confidence\": 0.95\n}",
+    "fields": {
+      "encoding": "Windows-1252",
+      "delimiter": ";",
+      "quotechar": "\"",
+      "escapechar": null,
+      "doublequote": true,
+      "has_header": true,
+      "header_row_index": 0,
+      "footer_first_line": "TOTAL;;;51;427,30;",
+      "columns": [
+        "Date",
+        "Store",
+        "Product",
+        "Units",
+        "Amount (€)",
+        "Returned"
+      ],
+      "confidence": 0.95
+    }
+  },
+  "grounding": [
+    {
+      "field": "header_row_index",
+      "model": 0,
+      "result": 3
+    },
+    {
+      "field": "footer_lines",
+      "model": [
+        "TOTAL;;;51;427,30;"
+      ],
+      "result": [
+        "TOTAL;;;51;427,30;",
+        "*** End of report ***"
+      ]
+    }
+  ],
+  "result": {
+    "encoding": "Windows-1252",
+    "delimiter": ";",
+    "quotechar": "\"",
+    "escapechar": null,
+    "doublequote": true,
+    "has_header": true,
+    "header_row_index": 3,
+    "footer_lines": [
+      "TOTAL;;;51;427,30;",
+      "*** End of report ***"
+    ],
+    "columns": [
+      "Date",
+      "Store",
+      "Product",
+      "Units",
+      "Amount (€)",
+      "Returned"
+    ],
+    "confidence": 0.95,
+    "footer_rows_to_skip": 2
+  },
+  "usage": {
+    "model": "qwen2.5-coder:7b",
+    "prompt_tokens": 842,
+    "completion_tokens": 122,
+    "latency_seconds": 2.0,
+    "attempts": 1
+  }
+}

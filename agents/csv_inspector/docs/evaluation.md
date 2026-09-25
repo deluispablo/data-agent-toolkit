@@ -504,6 +504,26 @@ the list price used for 0.3.0 ($0.30 input and $2.50 output per million
 tokens). That is **$0.00084 per inspection, about $0.84 per 1,000 files**:
 half of 0.3.0's $1.64, mostly because the answer is 70 % shorter.
 
+### Correction: quote escaping scored on every quoted fixture (#158)
+
+The baselines above scored `escapechar` on 1 fixture and `doublequote` on
+2, so a model that always answered `"\\"` scored 100 %. Since #158 the
+manifest holds both on the 45 fixtures with quoted fields (44 expect
+`escapechar: null`), and an expected `null` is scored. Replaying the 0.4.0
+answers under the new scoring (`--replay`, same answers, no model):
+
+| | 7b, 0.4.0 | 7b, rescored | 3b, 0.4.0 | 3b, rescored |
+|---|---|---|---|---|
+| accuracy | 99.7 % | 99.8 % | 98.7 % | 98.8 % |
+| `escapechar`, `doublequote` | 100 % (1 and 2 fixtures) | 100 % (45 fixtures) | 100 % | 100 % |
+
+No verdict changed: the 0.4.0 prompt already answered `null` on these
+files, and the doubled quote in the matrix fixtures' `Taller "El Rápido"`
+was grounded since #130. The aggregate moves only because more fields are
+compared. The grounding rule #158 adds (quoted fields with no escaped
+quote mean `escapechar=None`) guards the answer the model gave on 0.3.0
+and on the README's demo files.
+
 ### Open for M6
 
 - The template is 701 tokens, not the 600 that #133 targeted: the footer

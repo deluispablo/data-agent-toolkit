@@ -313,8 +313,9 @@ def render(spec: FixtureSpec) -> SampleCase:
 
     Returns:
         The catalog entry, ``generated`` set, with ``expected`` holding the
-        encoding, dialect, header position and footer, and ``columns``
-        the header names (``column_1..N`` without a header).
+        encoding, dialect (quote escaping too, when a field is quoted),
+        header position and footer, and ``columns`` the header names
+        (``column_1..N`` without a header).
     """
     rng = random.Random(zlib.crc32(spec.slug.encode("utf-8")))
     start = date(2023, 1, 1) + timedelta(days=_pick(rng, 365))
@@ -328,7 +329,8 @@ def render(spec: FixtureSpec) -> SampleCase:
         for line in _PREAMBLE[: spec.preamble_lines]
     ]
     header = [_write_row(names, spec, quote_all=spec.quoted_header)] if spec.has_header else []
-    lines = [*preamble, *header, *(_write_row(row, spec) for row in rows), *footer]
+    table = [*header, *(_write_row(row, spec) for row in rows), *footer]
+    lines = [*preamble, *table]
     text = "".join(line + spec.newline for line in lines)
 
     bom = {"utf-8": UTF8_BOM, "utf-16-le": UTF16LE_BOM}.get(spec.encoding, b"") if spec.bom else b""
@@ -337,6 +339,10 @@ def render(spec: FixtureSpec) -> SampleCase:
         "delimiter": spec.delimiter,
         "quotechar": spec.quotechar,
     }
+    if any(spec.quotechar in line for line in table):
+        # csv.writer quotes a field holding the delimiter or the quote and
+        # doubles a quote inside it; it never writes an escape character.
+        expected.update({"escapechar": None, "doublequote": True})
     if not spec.has_header:
         expected["has_header"] = False
     expected.update(

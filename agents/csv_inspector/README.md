@@ -111,10 +111,10 @@ inspections excluded. On 0.4.0 every category is at 100 % except
 40-column files that failed on 0.3.0 now pass
 ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
 The fallback `qwen2.5-coder:3b` scores 98.7 % when used as the primary. The
-remaining misses are two known limitations and one missed footer. The
-catalog scores `escapechar` and `doublequote` on too few fixtures to
-trust their figures yet
-([#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)).
+remaining misses are two known limitations and one missed footer. Since
+[#158](https://github.com/deluispablo/data-agent-toolkit/issues/158) the
+catalog scores `escapechar` and `doublequote` on every fixture with quoted
+fields (45 of 80); the 0.4.0 answers, replayed, score 100 % on both.
 Method, per-category and per-field scores, machine and every miss:
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-040).
 
@@ -311,10 +311,10 @@ the primary fails, within one time budget.
 but count and copy lines poorly, so the model's answer is used as a key to
 recompute the delimiter, the header row and literal column names (or "no
 header"), and the verbatim footer from the sampled text. How quotes are
-escaped (`""` or `\"`) is read from the samples too, when they show one
-convention. Common small-model slips are read instead of failing (a
-confidence of `90` as 90 %, a tab written `"tab"`, a line break answered as
-the delimiter of a one-column file). The exact rules are in
+escaped (`""`, `\"` or not at all) is read from the samples too, when they
+show one convention, or quoted fields with no quote inside. Common
+small-model slips are read instead of failing (a confidence of `90` as
+90 %, a tab written `"tab"`, a line break answered as the delimiter of a one-column file). The exact rules are in
 [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
 
 <details>

@@ -16,6 +16,20 @@ listed under **Changed (breaking)**.
   The summary records `replay_of`, and `compare_runs.py` labels a replayed
   column `(replay)`. See "Replaying a run" in `docs/evaluation.md`.
 
+### Fixed
+
+- A file whose quoted fields hold no quote (`"Washer, zinc"`, the most
+  common quoting in exports) no longer keeps a model's `escapechar="\\"`:
+  grounding sets `escapechar=None` when the samples hold a quoted field
+  and neither `\"` nor a doubled quote. A reader configured with a
+  backslash escape silently dropped the backslashes of Windows paths,
+  regexes and JSON fragments
+  ([#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)).
+- The evaluation catalog scores `escapechar` and `doublequote` on every
+  fixture with quoted fields (45 of 80; they were scored on 1 and 2), and
+  an expected `escapechar: null` now counts as an answer, not as "not
+  scored". A model that always answered `"\\"` scored 100 % before.
+
 ### Documentation
 
 - The README is reorganized to show what the library does before how it

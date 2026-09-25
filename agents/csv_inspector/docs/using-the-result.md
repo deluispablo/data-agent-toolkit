@@ -18,6 +18,13 @@ deterministically from the sampled text:
   file, even one whose values hold a comma) it is replaced by the usual
   delimiter (`,`, `;`, tab, `|`) that splits the most lines that way, when
   exactly one does. Ties and one-column files keep the model's answer.
+- **Quote escaping:** a quote character right after a backslash (`\"`)
+  gives `escapechar="\\"`, `doublequote=False`; a quote doubled inside a
+  value (`abc""`) gives `escapechar=None`, `doublequote=True`. When the
+  samples show neither but hold a quoted field (`,"Washer, zinc",`),
+  nothing is escaped: `escapechar=None`, with `doublequote` as answered.
+  Both conventions at once, or no quoted field at all, keep the model's
+  answer.
 - **Header:** the head line whose fields equal the inferred column names,
   or whose non-empty fields do when it also has blank ones (a blank name
   the model left out, such as a pandas index column, is restored as `""`);

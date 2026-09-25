@@ -13,3 +13,6 @@ dist/
 
 # Evaluation runs written by scripts/eval_samples.py --out
 agents/*/runs/
+
+# Claude Code agent worktrees (each one a full checkout of another branch)
+.claude/worktrees/

@@ -300,6 +300,9 @@ One line per notable design choice, with the issue that records it.
   ([#98](https://github.com/deluispablo/data-agent-toolkit/issues/98)).
 - **A header-less file is part of the contract** (`has_header`), not a
   sentinel value ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
+- **Header-less detection is a shape test on the sample, not on the
+  model's examples**
+  ([#131](https://github.com/deluispablo/data-agent-toolkit/issues/131)).
 - **Every exception derives from `CSVInspectorError`**, and the library
   logs through module loggers only (a `NullHandler`, no `print`).
 

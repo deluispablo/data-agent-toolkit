@@ -25,9 +25,12 @@ deterministically from the sampled text:
   replace any paraphrased column names. Skipped when the model reports
   `has_header=false`: a header-less file keeps its positional names
   (`column_1`, ...) and `header_row_index=None`. When no header line
-  anchors and the model's header at row 0 holds its own example values
-  (at least two, and half the fields), that row is data: the result is
-  corrected to `has_header=false` with positional names.
+  anchors and the model's header at row 0 is shaped like the row below it
+  (the same integer, decimal, date, empty or text shape per field, with at
+  least half the fields non-text unless the shapes are identical, and no
+  field equal to a model's column name), that row is data: the result is
+  corrected to `has_header=false` with positional names. The test reads
+  only the sample, never the model's `example_values`.
 - **Footer:** the earliest reported footer line (by last occurrence) that
   really appears at the end of the source, taken verbatim through to the
   end, and extended backwards over blank separators and totals-labelled rows

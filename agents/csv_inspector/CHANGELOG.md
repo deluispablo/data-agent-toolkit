@@ -87,6 +87,21 @@ listed under **Changed (breaking)**.
   tokens at the measured 1.81 characters per token
   ([#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)).
 
+### Changed
+
+- Grounding decides that a claimed header at row 0 is really data with a
+  deterministic shape test on the sample instead of the model's
+  `example_values`. When the model's names cannot be anchored in the head,
+  row 0 is data if rows 0 and 1 have as many fields as inferred columns
+  and their per-field shapes (integer, decimal with `.` or `,`, date,
+  empty or text) are identical, or agree field by field (an empty cell
+  matching any shape) with at least half the fields non-text in both
+  rows. A row-0 field equal to one of the model's column names,
+  case-insensitively, always keeps the header, and a header of years
+  above decimal data stays a header. The result is then reported with
+  `has_header=false` and positional names, as before
+  ([#131](https://github.com/deluispablo/data-agent-toolkit/issues/131)).
+
 ### Documentation
 
 - New `docs/evaluation.md`: the before/after ritual for changes that can

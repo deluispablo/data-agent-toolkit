@@ -38,6 +38,14 @@ _CANDIDATE_DELIMITERS = ",;\t|"
 # How many lines must split into the same number of fields to pick a candidate.
 _MIN_AGREEING_LINES = 2
 
+# Field shapes compared by the header-less test (see _field_shape).
+_INTEGER = re.compile(r"[+-]?\d+")
+_DECIMAL = re.compile(r"[+-]?(?:\d{1,3}(?:[.,]\d{3})+|\d*)[.,]\d+")
+_DATE = re.compile(
+    r"\d{4}-\d{1,2}-\d{1,2}(?:[ T]\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)?"
+    r"|\d{1,2}[/.-]\d{1,2}[/.-](?:\d{4}|\d{2})"
+)
+
 
 def _split_lines(text: str) -> list[str]:
     """Split ``text`` into lines the way ``csv``/pandas count rows."""
@@ -111,34 +119,75 @@ def _locate_header_row(
     return None
 
 
+def _field_shape(value: str) -> str:
+    """Classify one field as ``empty``, ``integer``, ``date``, ``decimal`` or ``text``.
+
+    Surrounding spaces are ignored. A decimal may use ``.`` or ``,`` as its
+    separator, with optional thousands grouping (``1.234,56``). Dates are
+    ISO (``2024-01-15``, optionally with a time) or day-first European
+    (``15/01/2024``, ``15.01.24``); they are tested before decimals so
+    ``15.01.2024`` is not read as a number.
+    """
+    value = value.strip()
+    if not value:
+        return "empty"
+    if _INTEGER.fullmatch(value):
+        return "integer"
+    if _DATE.fullmatch(value):
+        return "date"
+    if _DECIMAL.fullmatch(value):
+        return "decimal"
+    return "text"
+
+
+def _shapes_agree(first: list[str], second: list[str]) -> bool:
+    """Whether two shape signatures match field by field, an empty field matching any."""
+    return all(a == b or "empty" in (a, b) for a, b in zip(first, second, strict=True))
+
+
 def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
-    """Whether the first line holds the model's own example values, not names.
+    """Whether the first line is shaped like the data below it, not like names.
 
     Small models asked about a header-less file still answer
     ``has_header=true`` and invent names (``date``, ``amount``) for the
-    first row. That row is data when at least half of its fields, and at
-    least two, are among the example values the model gave for the same
-    column. Only the first line is checked: a header-less file with
-    preamble lines is not described.
+    first row. That row is data when rows 0 and 1 have as many fields as
+    inferred columns and either their shape signatures (see
+    :func:`_field_shape`) are identical, or they agree field by field (an
+    empty field matching any shape) with at least half of the fields
+    non-text in both rows. A row-0 field equal to one of the model's
+    column names (case-insensitive) always keeps the header. Only the
+    sample is read, never the model's example values; only the first line
+    is tested, so a header-less file with preamble lines is not described.
     """
     lines = _split_lines(head_sample.lstrip("\ufeff"))
-    fields = _split_fields(lines[0], result.delimiter, result.quotechar) if lines else None
-    if not fields or len(fields) != len(result.columns):
+    if len(lines) < _MIN_AGREEING_LINES:
         return False
-    matches = sum(
-        1
-        for field, column in zip(fields, result.columns, strict=True)
-        if field.strip() and field.strip() in {value.strip() for value in column.example_values}
+    first = _split_fields(lines[0], result.delimiter, result.quotechar)
+    second = _split_fields(lines[1], result.delimiter, result.quotechar)
+    if not first or second is None or not len(first) == len(second) == len(result.columns):
+        return False
+    names = {column.name.strip().casefold() for column in result.columns} - {""}
+    if any(field.strip().casefold() in names for field in first):
+        return False
+    first_shape = [_field_shape(field) for field in first]
+    second_shape = [_field_shape(field) for field in second]
+    if first_shape == second_shape:
+        return True
+    half = (len(first) + 1) // 2
+    return (
+        _shapes_agree(first_shape, second_shape)
+        and sum(shape != "text" for shape in first_shape) >= half
+        and sum(shape != "text" for shape in second_shape) >= half
     )
-    return matches >= max(_MIN_AGREEING_LINES, (len(fields) + 1) // 2)
 
 
 def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
     """Return the header fields to correct: row index, names, or "no header".
 
     A header-less file keeps its positional column names. A model that
-    answers a header at row 0 whose fields are its own example values is
-    corrected to no header row (see :func:`_first_row_is_data`).
+    answers a header at row 0 it cannot anchor, over a first row shaped
+    like the data below it, is corrected to no header row (see
+    :func:`_first_row_is_data`).
     """
     if not result.has_header:
         return {}
@@ -333,8 +382,12 @@ def ground_in_samples(
     verbatim from the end of the file. A delimiter that splits too few head
     lines is replaced (see :func:`_ground_delimiter`), and the reported
     encoding is checked against the detected one (see
-    :func:`_ground_encoding`). A header that cannot be anchored is left as
-    the model reported it. A footer that cannot be anchored is dropped when
+    :func:`_ground_encoding`). A header at row 0 that cannot be anchored
+    becomes "no header" when the first row has the same field shapes
+    (integer, decimal, date, empty or text) as the second: header-less
+    detection is a shape test on the sample, not on the model's example
+    values (see :func:`_first_row_is_data`). Any other header that cannot
+    be anchored is left as the model reported it. A footer that cannot be anchored is dropped when
     the end of the file was sampled, since it is not there.
 
     Args:

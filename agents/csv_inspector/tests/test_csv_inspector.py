@@ -43,7 +43,12 @@ from csv_inspector import (
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
 from csv_inspector._encoding import decode_sample, detect_encoding
-from csv_inspector._grounding import _extends_footer
+from csv_inspector._grounding import (
+    _extends_footer,
+    _field_shape,
+    _first_row_is_data,
+    ground_in_samples,
+)
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
 from csv_inspector._prompt import _extract_json_payload, build_prompt, parse_and_validate
 from csv_inspector._sampling import (
@@ -52,6 +57,8 @@ from csv_inspector._sampling import (
     read_tail_bytes,
 )
 from fakes import install_fake_ollama
+from generate_samples import CASES, SampleCase, derive_columns
+from matrix import MATRIX, render
 
 SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "sample.csv"
 
@@ -476,17 +483,17 @@ def test_a_header_less_fixture_keeps_its_positional_columns() -> None:
     assert '"has_header"' in build_prompt("a,b\n", "utf-8")
 
 
-def test_grounding_detects_a_first_row_of_example_values() -> None:
-    """A model that invents names for a data row is corrected to no header (#94)."""
+def test_grounding_detects_a_first_row_shaped_like_data() -> None:
+    """A model that invents names for a data row is corrected to no header (#94, #131)."""
     fixture = SAMPLE_CSV_PATH.parent / "samples" / "header_none_data_only.csv"
     answer = {
         **VALID_RESULT_PAYLOAD,
         "delimiter": ",",
         "header_row_index": 0,
         "columns": [
-            {"name": "date", "inferred_type": "date", "example_values": ["2024-01-15"]},
-            {"name": "name", "inferred_type": "string", "example_values": ["Acme S.L."]},
-            {"name": "amount", "inferred_type": "float", "example_values": ["1250.50"]},
+            {"name": "date", "inferred_type": "date"},
+            {"name": "name", "inferred_type": "string"},
+            {"name": "amount", "inferred_type": "float"},
         ],
     }
 
@@ -514,6 +521,135 @@ def test_grounding_keeps_a_header_whose_names_are_not_examples(tmp_path: Path) -
     result = inspect_csv(target, model_invoker=lambda prompt, model: json.dumps(answer))
 
     assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("value", "shape"),
+    [
+        ("", "empty"),
+        ("  ", "empty"),
+        ("42", "integer"),
+        (" -7 ", "integer"),
+        ("2023", "integer"),
+        ("1250.50", "decimal"),
+        ("1250,50", "decimal"),
+        ("1.234,56", "decimal"),
+        ("-0.5", "decimal"),
+        ("2024-01-15", "date"),
+        ("2024-01-15 08:30:00", "date"),
+        ("15/01/2024", "date"),
+        ("15.01.2024", "date"),
+        ("1-2-24", "date"),
+        ("Acme S.L.", "text"),
+        ("A-0042", "text"),
+        ("Importe", "text"),
+    ],
+)
+def test_field_shape_classifies_a_field(value: str, shape: str) -> None:
+    """Each field has exactly one shape: integer, decimal, date, empty or text."""
+    assert _field_shape(value) == shape
+
+
+def _ground_case(case: SampleCase, names: list[str]) -> CSVInspectionResult:
+    """Ground a model answer claiming a header at row 0 with ``names`` in a fixture."""
+    encoding = case.expected["encoding"]
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "encoding": encoding,
+        "delimiter": case.expected["delimiter"],
+        "header_row_index": 0,
+        "columns": [{"name": name, "inferred_type": "string"} for name in names],
+    }
+    head = case.raw_bytes.decode(encoding)
+    return ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+
+
+_HEADERLESS_CASES = [
+    *(case for case in CASES if case.filename == "header_none_data_only.csv"),
+    *(render(spec) for spec in MATRIX if spec.slug in {"headerless_narrow", "headerless_marker"}),
+]
+
+
+@pytest.mark.parametrize("case", _HEADERLESS_CASES, ids=lambda case: case.filename)
+def test_grounding_reports_no_header_for_header_less_fixtures(case: SampleCase) -> None:
+    """Invented names over a header-less fixture become positional columns (#131)."""
+    width = len(derive_columns(case) or [])
+    assert len(_HEADERLESS_CASES) == 3
+    assert width >= 3
+
+    result = _ground_case(case, [f"invented_{n}" for n in range(width)])
+
+    assert (result.has_header, result.header_row_index) == (False, None)
+    assert [column.name for column in result.columns] == derive_columns(case)
+
+
+def test_grounding_keeps_an_all_text_header_it_cannot_anchor() -> None:
+    """A header of names above typed data is kept, even with paraphrased names (#131)."""
+    spec = next(
+        spec
+        for spec in MATRIX
+        if spec.has_header and spec.preamble_lines == 0 and spec.encoding == "utf-8"
+    )
+    case = render(spec)
+    width = len(derive_columns(case) or [])
+
+    result = _ground_case(case, [f"paraphrased_{n}" for n in range(width)])
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize("names", [["2023", "2024", "2025"], ["y1", "y2", "y3"]])
+def test_grounding_keeps_a_header_of_years(names: list[str]) -> None:
+    """Integer years above decimal data stay a header, anchored or not (#131)."""
+    case = next(case for case in CASES if case.filename == "header_years.csv")
+
+    result = _ground_case(case, names)
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+    assert [column.name for column in result.columns] == names
+
+
+def test_grounding_keeps_a_header_named_by_the_model_in_another_case() -> None:
+    """A row-0 field equal to a model's name, case aside, keeps the header (#131)."""
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": "fecha", "inferred_type": "string"},
+            {"name": "concepto", "inferred_type": "string"},
+        ],
+    }
+    head = "Fecha,Cliente\nAcme,Beta\nGamma,Delta\n"
+
+    result = ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("head", "is_data"),
+    [
+        pytest.param("2024-01-15,Acme,10.5\n", False, id="one-line"),
+        pytest.param("2024-01-15,Acme,10.5\n2024-01-16,Beta\n", False, id="ragged-second-row"),
+        pytest.param("Fecha,Cliente,Importe\n2024-01-15,Acme,10.5\n", False, id="text-over-data"),
+        pytest.param("2024-01-15,,10.5\n2024-01-16,Beta,3.5\n", True, id="empty-cell-matches"),
+        pytest.param("2024-01-15,Acme,Norte\n2024-01-16,Beta,\n", False, id="mostly-text"),
+    ],
+)
+def test_first_row_is_data_needs_a_second_row_of_the_same_shape(head: str, is_data: bool) -> None:
+    """Only two rows of equal width and agreeing shapes flag row 0 as data."""
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": name, "inferred_type": "string"} for name in ("date", "client", "amount")
+        ],
+    }
+    result = CSVInspectionResult.model_validate(answer)
+
+    assert _first_row_is_data(result, head) is is_data
 
 
 def test_extract_json_payload_strips_markdown_fence() -> None:
@@ -1002,7 +1138,11 @@ def test_grounding_reads_the_footer_from_the_tail_of_a_large_file() -> None:
 
 
 def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
-    """Invented names that share nothing with the data never promote a data row to header."""
+    """Invented names that share nothing with the data never promote a data row to header.
+
+    The first row has the shape of the second, so the header the model
+    claimed at row 0 is dropped and the columns become positional (#131).
+    """
     target = tmp_path / "no_header.csv"
     target.write_text("2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8")
     columns = [
@@ -1015,7 +1155,8 @@ def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
         target, model_invoker=_sloppy_answer(columns=columns, header_row_index=0, footer_lines=[])
     )
 
-    assert [column.name for column in result.columns] == ["col_1", "col_2", "col_3"]
+    assert (result.has_header, result.header_row_index) == (False, None)
+    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
     assert result.footer_lines == []
 
 

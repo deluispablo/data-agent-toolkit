@@ -1,15 +1,13 @@
 """Inspection orchestration: sampling, prompting, model calls and grounding.
 
-:func:`inspect_csv` is the synchronous entry point; :func:`ainspect_csv` is
-its asyncio counterpart. Both share the same steps and guarantees:
+:func:`inspect_csv` and its asyncio counterpart :func:`ainspect_csv` share
+the same steps and guarantees:
 
-* configuration is resolved and checked **before** the source is read, so a
-  non-seekable stream is never consumed only to fail on a missing setting;
-* ``timeout_seconds`` is one overall budget for the model phase, shared by
-  the primary and fallback models (the primary may use about 70 % of it,
-  so a slowly loading primary rarely loses its answer while a hung one
-  still leaves the fallback time), and enforced by the library itself, so
-  custom invokers are bounded too;
+* configuration is checked **before** the source is read, so a non-seekable
+  stream is never consumed only to fail on a missing setting;
+* ``timeout_seconds`` is one budget for the model phase, shared by the
+  primary (about 70 % of it) and fallback models and enforced by the library,
+  so custom invokers are bounded too;
 * no state is shared between calls: every call builds its own clients.
 """
 
@@ -46,13 +44,7 @@ from ._invokers import (
 )
 from ._models import CSVInspectionResult, Usage, _ModelAnswer
 from ._prompt import PROMPT_VERSION, build_prompt, parse_and_validate
-from ._sampling import (
-    DEFAULT_SAMPLE_BYTES,
-    DEFAULT_TAIL_BYTES,
-    CSVSource,
-    Samples,
-    sample_source,
-)
+from ._sampling import DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES, CSVSource, Samples, sample_source
 
 logger = logging.getLogger(__name__)
 
@@ -61,15 +53,20 @@ PRIMARY_SHARE = 0.7
 
 _SyncCall = Callable[[str, str, float | None], InvokerResponse]
 _AsyncCall = Callable[[str, str, float | None], Awaitable[InvokerResponse]]
-_N = TypeVar("_N", int, float)
+_C = TypeVar("_C")
 
-
-@dataclass(frozen=True)
-class _Plan:
-    """Resolved models and settings for one inspection."""
-
-    candidates: tuple[str, ...]
-    settings: Settings
+# Built-in invokers report every failure as one of these. A custom invoker may
+# raise anything (RuntimeError, raw httpx errors...): any exception from it is
+# a failed attempt too, never escaping unwrapped (BackendConfigurationError aside).
+_RETRYABLE = (ModelInvocationError, ResponseParsingError, SchemaValidationError)
+_USAGE_LOG = (
+    "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
+    "attempts=%d retries=%d prompt_version=%s lines_omitted=%d"
+)
+_SKIPPED_LOG = (
+    "Skipping model '%s': the %.2fs time budget ran out (it would have had "
+    "%.0f%% of what the models before it left)."
+)
 
 
 class _Deadline:
@@ -85,15 +82,9 @@ class _Deadline:
         return self._expires_at - time.monotonic()
 
     def share(self, models_left: int) -> float | None:
-        """This model's slice of the budget: most of what is left, or all of it.
+        """:data:`PRIMARY_SHARE` of what is left, or all of it for the last model.
 
-        Giving the current model the whole remainder would let a hung primary
-        spend it all, so the fallback, needed exactly then, would never run.
-        An equal split has the opposite flaw: a cold 7B load on CPU often
-        needs more than half, so the weaker fallback answered on every cold
-        start. A model followed by another one gets :data:`PRIMARY_SHARE` of
-        what is left; the last one gets everything. Time a model does not
-        use carries over.
+        All of it would let a hung primary starve the fallback; half made a cold 7B lose.
         """
         remaining = self.remaining()
         if remaining is None:
@@ -107,50 +98,6 @@ class _Deadline:
         return remaining is not None and remaining <= 0
 
 
-def _plan(
-    backend: LLMBackend,
-    settings: Settings | None,
-    model: str | None,
-    fallback_model: str | None,
-    timeout_seconds: float | None,
-    *,
-    uses_builtin_invoker: bool,
-) -> _Plan:
-    """Validate arguments and resolve models/settings, before touching the source.
-
-    Settings are only resolved when something needs them (a default model
-    name or a built-in invoker), so callers that inject an invoker and model
-    names never cause the environment to be read.
-
-    Raises:
-        ValueError: If ``timeout_seconds`` is not positive.
-        BackendConfigurationError: If the backend is unusable as configured.
-    """
-    if timeout_seconds is not None and not timeout_seconds > 0:
-        raise ValueError(f"timeout_seconds must be > 0, got {timeout_seconds}.")
-
-    if model is not None and fallback_model is not None and not uses_builtin_invoker:
-        # Everything was injected: the environment is never consulted.
-        return _Plan(
-            candidates=_candidates(model, fallback_model),
-            settings=settings if settings is not None else Settings(),
-        )
-
-    resolved = resolve_settings(settings)
-    if uses_builtin_invoker:
-        ensure_backend_ready(backend, resolved)
-    primary = model if model is not None else resolved.model_for(backend)
-    fallback = (
-        fallback_model if fallback_model is not None else resolved.fallback_model_for(backend)
-    )
-    return _Plan(candidates=_candidates(primary, fallback), settings=resolved)
-
-
-def _candidates(primary: str, fallback: str) -> tuple[str, ...]:
-    """The models to try in order; the fallback is skipped when it equals the primary."""
-    return (primary,) if primary == fallback else (primary, fallback)
-
-
 def _timed_out(model: str, remaining: float) -> ModelTimeoutError:
     return ModelTimeoutError(f"Model '{model}' did not answer within {max(remaining, 0):.2f}s.")
 
@@ -160,15 +107,9 @@ def _call_with_deadline(
 ) -> InvokerResponse:
     """Run one sync model call, returning no later than ``remaining`` seconds.
 
-    With a budget, the call runs in a daemon worker thread and is abandoned
-    when the budget runs out: Python cannot interrupt a blocking call, but
-    the caller gets control back on time (built-in invokers also stop on
-    their own, as the same timeout is passed to their HTTP client). The
-    thread is a daemon so that a call that never returns cannot keep the
-    interpreter from exiting, as a ``ThreadPoolExecutor`` worker would.
-
-    Raises:
-        ModelTimeoutError: If the budget runs out first.
+    With a budget the call runs in a daemon thread, abandoned (``ModelTimeoutError``)
+    when the budget runs out: Python cannot interrupt a blocking call, and a call
+    that never returns must not keep the interpreter from exiting.
     """
     if remaining is None:
         return call(prompt, model, None)
@@ -190,176 +131,175 @@ def _call_with_deadline(
 async def _acall_with_deadline(
     call: _AsyncCall, prompt: str, model: str, remaining: float | None
 ) -> InvokerResponse:
-    """Await one async model call, cancelling it after ``remaining`` seconds.
-
-    Raises:
-        ModelTimeoutError: If the budget runs out first.
-    """
+    """Await one async model call, cancelling it (``ModelTimeoutError``) after ``remaining`` s."""
     try:
         return await asyncio.wait_for(call(prompt, model, remaining), remaining)
     except asyncio.TimeoutError:
         raise _timed_out(model, remaining or 0) from None
 
 
-def _add(total: _N | None, value: _N | None) -> _N | None:
-    """Sum two optional counters; ``None`` only when neither was reported."""
-    if value is None:
-        return total
-    return value if total is None else total + value
+@dataclass
+class _UsageTally:
+    """The usage of every attempt of one inspection; answers count even if invalid."""
 
+    attempts: int = 0
+    started: float = 0.0
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    retries: int = 0
+    load_seconds: float | None = None
 
-_RETRYABLE: tuple[type[Exception], ...] = (
-    ModelInvocationError,
-    ResponseParsingError,
-    SchemaValidationError,
-)
+    def start(self) -> None:
+        """Count one more attempt; the first one starts the clock."""
+        if not self.attempts:
+            self.started = time.monotonic()
+        self.attempts += 1
 
+    def add(self, response: InvokerResponse) -> str:
+        """Add one answer's counters (a raising attempt reports none); return its text."""
+        for name in ("prompt_tokens", "completion_tokens", "load_seconds"):
+            value = getattr(response, name)  # None when not reported: the total stays
+            if value is not None:
+                setattr(self, name, value + (getattr(self, name) or 0))
+        self.retries += response.retries
+        return response.text
 
-def _retryable(custom_invoker: bool) -> tuple[type[Exception], ...]:
-    """The errors that count as a failed attempt, moving on to the next model.
-
-    Built-in invokers report every failure as a :class:`ModelInvocationError`.
-    A custom invoker may raise anything (``RuntimeError``, raw ``httpx``
-    errors...), so any exception from it is a failed attempt too, and ends
-    up in :class:`InspectionFailedError` rather than escaping unwrapped.
-    :class:`BackendConfigurationError` is re-raised before this applies.
-    """
-    return (Exception,) if custom_invoker else _RETRYABLE
+    def finish(self, model: str) -> Usage:
+        """The :class:`Usage` of the inspection, answered by ``model``."""
+        counters = {key: value for key, value in vars(self).items() if key != "started"}
+        latency = time.monotonic() - self.started
+        return Usage(
+            model=model, latency_seconds=latency, prompt_version=PROMPT_VERSION, **counters
+        )
 
 
 class _Run:
-    """The model phase of one inspection, shared by the sync and async entry points.
+    """One inspection: models and settings resolved up front, then the model phase.
 
-    Owns everything but the I/O mechanics of a model call: the prompt, the
-    order of the candidate models, each one's share of the time budget, the
-    errors that count as a failed attempt, and the final error when every
-    model fails.
+    :meth:`run` and :meth:`arun` differ only in one ``await``.
     """
 
     def __init__(
         self,
-        plan: _Plan,
-        samples: Samples,
+        backend: LLMBackend,
+        settings: Settings | None,
+        model: str | None,
+        fallback_model: str | None,
         timeout_seconds: float | None,
         *,
         custom_invoker: bool,
     ) -> None:
-        self.prompt = build_prompt(
+        """Validate and resolve everything, before the source is read.
+
+        The environment is read only for a default model name or a built-in
+        invoker; the fallback is tried only when it differs from the primary.
+
+        Raises:
+            ValueError: If ``timeout_seconds`` is not positive.
+            BackendConfigurationError: If the backend is unusable as configured.
+        """
+        if timeout_seconds is not None and not timeout_seconds > 0:
+            raise ValueError(f"timeout_seconds must be > 0, got {timeout_seconds}.")
+        if model is None or fallback_model is None or not custom_invoker:
+            settings = resolve_settings(settings)
+            if not custom_invoker:
+                ensure_backend_ready(backend, settings)
+            model = model if model is not None else settings.model_for(backend)
+            if fallback_model is None:
+                fallback_model = settings.fallback_model_for(backend)
+        # Both are set now: injected, or resolved above.
+        assert model is not None
+        assert fallback_model is not None
+        self.settings = settings if settings is not None else Settings()
+        self._candidates = (model,) if model == fallback_model else (model, fallback_model)
+        self._backend = backend
+        self._timeout_seconds = timeout_seconds
+        self._retryable = (Exception,) if custom_invoker else _RETRYABLE
+        self._errors: dict[str, Exception] = {}
+        self._tally = _UsageTally()
+
+    def run(self, samples: Samples, custom: ModelInvoker | None) -> CSVInspectionResult:
+        """The model phase with ``custom`` or the built-in sync invoker."""
+        call: _SyncCall
+        if custom is None:
+            call = self._builtin(samples, builtin_invoker)
+        else:
+            call = lambda prompt, model, _timeout: InvokerResponse(custom(prompt, model))  # noqa: E731
+        for candidate, budget in self._attempts(samples):
+            try:
+                response = _call_with_deadline(call, self._prompt, candidate, budget)
+                answer = parse_and_validate(self._tally.add(response), candidate)
+            except BackendConfigurationError:
+                raise
+            except self._retryable as exc:
+                self._failed(candidate, exc)
+                continue
+            return self._succeeded(candidate, answer)
+        raise self._failure()
+
+    async def arun(self, samples: Samples, custom: AsyncModelInvoker | None) -> CSVInspectionResult:
+        """The model phase with ``custom`` or the built-in async invoker."""
+        call: _AsyncCall
+        if custom is None:
+            call = self._builtin(samples, builtin_async_invoker)
+        else:
+
+            async def call(prompt: str, model: str, _timeout: float | None) -> InvokerResponse:
+                return InvokerResponse(await custom(prompt, model))
+
+        for candidate, budget in self._attempts(samples):
+            try:
+                response = await _acall_with_deadline(call, self._prompt, candidate, budget)
+                answer = parse_and_validate(self._tally.add(response), candidate)
+            except BackendConfigurationError:
+                raise
+            except self._retryable as exc:
+                self._failed(candidate, exc)
+                continue
+            return self._succeeded(candidate, answer)
+        raise self._failure()
+
+    def _builtin(self, samples: Samples, factory: Callable[..., _C]) -> _C:
+        """The built-in invoker, its reply sized from the head's field count."""
+        return factory(self._backend, self.settings, fields=head_field_count(samples.head_text))
+
+    def _attempts(self, samples: Samples) -> Iterator[tuple[str, float | None]]:
+        """Build the prompt, then yield each model to try with its share of the budget."""
+        self._samples = samples
+        self._prompt = build_prompt(
             samples.head_text,
             samples.encoding,
             tail_sample=samples.tail_text,
             covers_whole_file=samples.covers_whole_file,
         )
-        self.retryable = _retryable(custom_invoker)
-        self._candidates = plan.candidates
-        self._samples = samples
-        self._timeout_seconds = timeout_seconds
-        self._deadline = _Deadline(timeout_seconds)
-        self._errors: dict[str, Exception] = {}
-        # Usage, accumulated over every attempt that returned an answer.
-        self._started = 0.0
-        self._attempts = 0
-        self._prompt_tokens: int | None = None
-        self._completion_tokens: int | None = None
-        self._retries = 0
-        self._load_seconds: float | None = None
-        # The built-in invokers redact their own errors; a custom invoker's
-        # message may still carry the configured key, so the log line is redacted too.
-        self._secret = plan.settings.gemini_api_key
-
-    def attempts(self) -> Iterator[tuple[str, float | None]]:
-        """Yield each model to try, in order, with its share of the time budget.
-
-        Raises:
-            InspectionTimeoutError: If the budget runs out before a model starts.
-        """
+        deadline = self._deadline = _Deadline(self._timeout_seconds)
         for index, model in enumerate(self._candidates):
-            if self._deadline.expired:
-                self._log_skipped(self._candidates[index:])
-                raise self._timeout_error()
-            logger.info("Inspecting '%s' with model '%s'.", self._samples.description, model)
-            if not self._attempts:
-                self._started = time.monotonic()
-            self._attempts += 1
-            yield model, self._deadline.share(len(self._candidates) - index)
+            if deadline.expired:
+                raise self._timeout(index)
+            logger.info("Inspecting '%s' with model '%s'.", samples.description, model)
+            self._tally.start()
+            yield model, deadline.share(len(self._candidates) - index)
 
-    def responded(self, response: InvokerResponse) -> str:
-        """Add one answer's usage to the inspection's, and return its raw text.
-
-        Called before the answer is parsed, so an answer that then fails
-        validation still counts. An attempt that raises (timeout, empty
-        reply, transport error) reports nothing.
-        """
-        self._prompt_tokens = _add(self._prompt_tokens, response.prompt_tokens)
-        self._completion_tokens = _add(self._completion_tokens, response.completion_tokens)
-        self._load_seconds = _add(self._load_seconds, response.load_seconds)
-        self._retries += response.retries
-        return response.text
-
-    def failed(self, model: str, exc: Exception) -> None:
-        """Record a failed attempt; the next model is tried if time is left.
-
-        Raises:
-            InspectionTimeoutError: If the budget has run out.
-        """
-        logger.warning("Model '%s' failed: %s", model, _redact(str(exc), self._secret))
+    def _failed(self, model: str, exc: Exception) -> None:
+        """Record a failed attempt, or raise ``InspectionTimeoutError`` when the budget is out."""
+        # A custom invoker's message may carry the configured key: redacted too.
+        secret = self.settings.gemini_api_key
+        logger.warning("Model '%s' failed: %s", model, _redact(str(exc), secret))
         self._errors[model] = exc
-        # The last model's share is the whole remaining budget, so its timeout
-        # means the budget ran out, even when a timed wait returned a hair
-        # early and the clock still reads just before the deadline (seen on
-        # Windows).
-        last_timed_out = (
-            model == self._candidates[-1]
-            and self._timeout_seconds is not None
-            and isinstance(exc, ModelTimeoutError)
-        )
-        if self._deadline.expired or last_timed_out:
-            self._log_skipped(self._candidates[self._candidates.index(model) + 1 :])
-            raise self._timeout_error() from exc
+        # The last model's share is all that is left: its timeout means the budget ran
+        # out, even when a timed wait returned a hair early (seen on Windows).
+        last = model == self._candidates[-1]
+        timed_out = self._timeout_seconds is not None and isinstance(exc, ModelTimeoutError)
+        if self._deadline.expired or (last and timed_out):
+            raise self._timeout(self._candidates.index(model) + 1) from exc
 
-    def _log_skipped(self, models: tuple[str, ...]) -> None:
-        """Name the models the time budget left out, to help tune ``timeout_seconds``."""
-        for model in models:
-            share = 1.0 if model == self._candidates[-1] else PRIMARY_SHARE
-            logger.info(
-                "Skipping model '%s': the %.2fs time budget ran out (it would have had "
-                "%.0f%% of what the models before it left).",
-                model,
-                self._timeout_seconds,
-                share * 100,
-            )
-
-    def succeeded(self, model: str, answer: _ModelAnswer) -> CSVInspectionResult:
+    def _succeeded(self, model: str, answer: _ModelAnswer) -> CSVInspectionResult:
         """Ground a validated answer in the samples: the result, with its usage attached."""
-        usage = Usage(
-            model=model,
-            prompt_tokens=self._prompt_tokens,
-            completion_tokens=self._completion_tokens,
-            latency_seconds=time.monotonic() - self._started,
-            attempts=self._attempts,
-            retries=self._retries,
-            load_seconds=self._load_seconds,
-            prompt_version=PROMPT_VERSION,
-        )
-        samples = self._samples
-        logger.info(
-            "Inspection of '%s' succeeded with model '%s' (confidence=%.2f).",
-            samples.description,
-            model,
-            answer.confidence,
-        )
-        logger.info(
-            "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
-            "attempts=%d retries=%d prompt_version=%s lines_omitted=%d",
-            usage.model,
-            usage.prompt_tokens,
-            usage.completion_tokens,
-            usage.latency_seconds,
-            usage.attempts,
-            usage.retries,
-            usage.prompt_version,
-            samples.lines_omitted,
-        )
+        usage, samples = self._tally.finish(model), self._samples
+        msg = "Inspection of '%s' succeeded with model '%s' (confidence=%.2f)."
+        logger.info(msg, samples.description, model, answer.confidence)
+        counters = usage.model_dump(exclude={"load_seconds"}).values()
+        logger.info(_USAGE_LOG, *counters, samples.lines_omitted)
         grounded = ground_in_samples(
             answer,
             samples.head_text,
@@ -370,18 +310,21 @@ class _Run:
         # The model is frozen: attach the usage to a copy.
         return grounded.model_copy(update={"usage": usage})
 
-    def failure_error(self) -> InspectionFailedError:
-        """The error for when every model has failed."""
-        return InspectionFailedError(
-            f"No configured model produced a valid inspection result for "
-            f"'{self._samples.description}'. Tried: {list(self._errors)}.",
-            attempts=self._errors,
-        )
-
-    def _timeout_error(self) -> InspectionTimeoutError:
+    def _timeout(self, skipped: int) -> InspectionTimeoutError:
+        """The budget ran out: log the models from index ``skipped`` on (to tune it), and say so."""
+        for model in self._candidates[skipped:]:
+            share = 1.0 if model == self._candidates[-1] else PRIMARY_SHARE
+            logger.info(_SKIPPED_LOG, model, self._timeout_seconds, share * 100)
         return InspectionTimeoutError(
             f"Inspection of '{self._samples.description}' ran out of its "
             f"{self._timeout_seconds}s budget. Tried: {list(self._errors)}.",
+            attempts=self._errors,
+        )
+
+    def _failure(self) -> InspectionFailedError:
+        return InspectionFailedError(
+            f"No configured model produced a valid inspection result for "
+            f"'{self._samples.description}'. Tried: {list(self._errors)}.",
             attempts=self._errors,
         )
 
@@ -401,42 +344,31 @@ def inspect_csv(
 ) -> CSVInspectionResult:
     """Infer the dialect, header/footer layout and schema of a delimited source.
 
-    Samples only the first ``n_bytes`` (head) and, when the source is larger,
-    up to ``tail_bytes`` more from its end (tail), never loading it in full.
-    Asks an LLM (local Ollama by default, or Google Gemini with
-    ``backend=LLMBackend.API``) to infer the encoding, delimiter, quoting,
-    header row, footer lines and column names, then grounds
-    the answer in the sampled text and returns it validated.
-
-    Blocking: in an asyncio application use :func:`ainspect_csv`, or run
-    this function with ``asyncio.to_thread``; never call it on the event loop.
+    Samples a head of ``n_bytes`` and, when the source is larger, a tail of up
+    to ``tail_bytes``, never loading it in full; asks an LLM (local Ollama, or
+    Gemini with ``backend=LLMBackend.API``); grounds its answer in the samples.
+    Blocking: in asyncio, use :func:`ainspect_csv` or ``asyncio.to_thread``.
 
     Args:
         source: A path, in-memory bytes, or a binary file-like object (see
-            :data:`CSVSource`). Streams are read from their current position,
-            which is restored afterwards when the stream is seekable.
-        backend: The LLM backend: local Ollama (default, no credentials) or
-            the Gemini API (opt-in; needs the ``[cloud]`` extra).
-        settings: Explicit :class:`Settings`. When given, the environment is
-            never read. When ``None``, settings come from environment
-            variables (never from a ``.env`` file); see :func:`load_settings`.
+            :data:`CSVSource`), read from its current position (restored if seekable).
+        backend: Local Ollama (default, no credentials) or the Gemini API
+            (opt-in; needs the ``[cloud]`` extra).
+        settings: Explicit :class:`Settings`: the environment is never read.
+            ``None`` reads environment variables (never ``.env``; see :func:`load_settings`).
         model: Primary model name; defaults to the backend's configured model.
         fallback_model: Model to try if ``model`` fails; defaults to the
             backend's configured fallback. Skipped when equal to ``model``.
         n_bytes: Head sample size, in bytes. Must be at least 1.
-        tail_bytes: Maximum tail sample size, in bytes. The tail never
-            overlaps the head. ``0`` disables tail sampling.
-        timeout_seconds: Overall time budget for the model phase, shared by
-            the primary and fallback models and enforced even for custom
-            invokers. With a fallback, the primary may use about 70 % of
-            it (:data:`PRIMARY_SHARE`) and the fallback everything left;
-            time the primary does not use carries over. ``None`` (default)
-            means no limit.
-        model_invoker: A custom ``(prompt, model) -> text`` callable. When
-            given, it takes precedence over ``backend`` (which then only
-            selects default model names). Any exception it raises, other
-            than :class:`BackendConfigurationError`, counts as a failed
-            attempt for that model.
+        tail_bytes: Maximum tail sample size, in bytes, never overlapping the
+            head. ``0`` disables tail sampling.
+        timeout_seconds: One budget for the model phase, enforced even for
+            custom invokers: with a fallback, the primary may use about 70 %
+            (:data:`PRIMARY_SHARE`) and the fallback the rest. ``None``: no limit.
+        model_invoker: A custom ``(prompt, model) -> text`` callable, taking
+            precedence over ``backend`` (which then only selects default model
+            names). Any exception but :class:`BackendConfigurationError` is a
+            failed attempt for that model.
 
     Returns:
         A validated :class:`CSVInspectionResult`.
@@ -452,35 +384,9 @@ def inspect_csv(
         InspectionTimeoutError: If ``timeout_seconds`` runs out.
         InspectionFailedError: If every model fails to produce a valid result.
     """
-    plan = _plan(
-        backend,
-        settings,
-        model,
-        fallback_model,
-        timeout_seconds,
-        uses_builtin_invoker=model_invoker is None,
-    )
-    samples = sample_source(source, n_bytes, tail_bytes)
-
-    call: _SyncCall
-    if model_invoker is not None:
-        custom = model_invoker
-        call = lambda prompt, model, _timeout: InvokerResponse(custom(prompt, model))  # noqa: E731
-    else:
-        call = builtin_invoker(backend, plan.settings, fields=head_field_count(samples.head_text))
-
-    run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
-    for candidate, budget in run.attempts():
-        try:
-            raw = run.responded(_call_with_deadline(call, run.prompt, candidate, budget))
-            answer = parse_and_validate(raw, candidate)
-        except BackendConfigurationError:
-            raise
-        except run.retryable as exc:
-            run.failed(candidate, exc)
-            continue
-        return run.succeeded(candidate, answer)
-    raise run.failure_error()
+    custom = model_invoker is not None
+    run = _Run(backend, settings, model, fallback_model, timeout_seconds, custom_invoker=custom)
+    return run.run(sample_source(source, n_bytes, tail_bytes), model_invoker)
 
 
 async def ainspect_csv(
@@ -498,63 +404,14 @@ async def ainspect_csv(
 ) -> CSVInspectionResult:
     """Asyncio counterpart of :func:`inspect_csv`; safe to await on the event loop.
 
-    Sampling runs in a worker thread (``asyncio.to_thread``), since reading a
-    file or a slow stream is blocking I/O. Model calls use the SDKs' native
-    async clients (``ollama.AsyncClient`` / ``google-genai``'s ``client.aio``)
-    and the time budget is enforced with ``asyncio.wait_for``, which cancels
-    the pending call when it runs out.
+    Sampling runs in a worker thread; model calls use the SDKs' async clients,
+    and ``asyncio.wait_for`` cancels a call when the budget runs out.
 
-    Args:
-        source: See :func:`inspect_csv`.
-        backend: See :func:`inspect_csv`.
-        settings: See :func:`inspect_csv`.
-        model: See :func:`inspect_csv`.
-        fallback_model: See :func:`inspect_csv`.
-        n_bytes: See :func:`inspect_csv`.
-        tail_bytes: See :func:`inspect_csv`.
-        timeout_seconds: See :func:`inspect_csv`.
-        model_invoker: A custom async ``(prompt, model) -> text`` callable;
-            takes precedence over ``backend``. Its exceptions are handled
-            as in :func:`inspect_csv`.
-
-    Returns:
-        A validated :class:`CSVInspectionResult`.
-
-    Raises:
-        Same as :func:`inspect_csv`.
+    The arguments, result and exceptions are those of :func:`inspect_csv`,
+    except that ``model_invoker`` is an async ``(prompt, model) -> text``
+    callable.
     """
-    plan = _plan(
-        backend,
-        settings,
-        model,
-        fallback_model,
-        timeout_seconds,
-        uses_builtin_invoker=model_invoker is None,
-    )
+    custom = model_invoker is not None
+    run = _Run(backend, settings, model, fallback_model, timeout_seconds, custom_invoker=custom)
     samples = await asyncio.to_thread(sample_source, source, n_bytes, tail_bytes)
-
-    call: _AsyncCall
-    if model_invoker is not None:
-        custom = model_invoker
-
-        async def call(prompt: str, model: str, _timeout: float | None) -> InvokerResponse:
-            return InvokerResponse(await custom(prompt, model))
-
-    else:
-        call = builtin_async_invoker(
-            backend, plan.settings, fields=head_field_count(samples.head_text)
-        )
-
-    run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
-    for candidate, budget in run.attempts():
-        try:
-            response = await _acall_with_deadline(call, run.prompt, candidate, budget)
-            raw = run.responded(response)
-            answer = parse_and_validate(raw, candidate)
-        except BackendConfigurationError:
-            raise
-        except run.retryable as exc:
-            run.failed(candidate, exc)
-            continue
-        return run.succeeded(candidate, answer)
-    raise run.failure_error()
+    return await run.arun(samples, model_invoker)

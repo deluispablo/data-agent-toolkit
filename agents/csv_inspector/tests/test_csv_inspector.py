@@ -43,7 +43,12 @@ from csv_inspector import (
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL
 from csv_inspector._encoding import decode_sample, detect_encoding
-from csv_inspector._grounding import _extends_footer
+from csv_inspector._grounding import (
+    _extends_footer,
+    _field_shape,
+    _first_row_is_data,
+    ground_in_samples,
+)
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
 from csv_inspector._prompt import _extract_json_payload, build_prompt, parse_and_validate
 from csv_inspector._sampling import (
@@ -52,6 +57,8 @@ from csv_inspector._sampling import (
     read_tail_bytes,
 )
 from fakes import install_fake_ollama
+from generate_samples import CASES, SampleCase, derive_columns
+from matrix import MATRIX, render
 
 SAMPLE_CSV_PATH = Path(__file__).resolve().parent.parent / "sample.csv"
 
@@ -476,17 +483,17 @@ def test_a_header_less_fixture_keeps_its_positional_columns() -> None:
     assert '"has_header"' in build_prompt("a,b\n", "utf-8")
 
 
-def test_grounding_detects_a_first_row_of_example_values() -> None:
-    """A model that invents names for a data row is corrected to no header (#94)."""
+def test_grounding_detects_a_first_row_shaped_like_data() -> None:
+    """A model that invents names for a data row is corrected to no header (#94, #131)."""
     fixture = SAMPLE_CSV_PATH.parent / "samples" / "header_none_data_only.csv"
     answer = {
         **VALID_RESULT_PAYLOAD,
         "delimiter": ",",
         "header_row_index": 0,
         "columns": [
-            {"name": "date", "inferred_type": "date", "example_values": ["2024-01-15"]},
-            {"name": "name", "inferred_type": "string", "example_values": ["Acme S.L."]},
-            {"name": "amount", "inferred_type": "float", "example_values": ["1250.50"]},
+            {"name": "date", "inferred_type": "date"},
+            {"name": "name", "inferred_type": "string"},
+            {"name": "amount", "inferred_type": "float"},
         ],
     }
 
@@ -514,6 +521,135 @@ def test_grounding_keeps_a_header_whose_names_are_not_examples(tmp_path: Path) -
     result = inspect_csv(target, model_invoker=lambda prompt, model: json.dumps(answer))
 
     assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("value", "shape"),
+    [
+        ("", "empty"),
+        ("  ", "empty"),
+        ("42", "integer"),
+        (" -7 ", "integer"),
+        ("2023", "integer"),
+        ("1250.50", "decimal"),
+        ("1250,50", "decimal"),
+        ("1.234,56", "decimal"),
+        ("-0.5", "decimal"),
+        ("2024-01-15", "date"),
+        ("2024-01-15 08:30:00", "date"),
+        ("15/01/2024", "date"),
+        ("15.01.2024", "date"),
+        ("1-2-24", "date"),
+        ("Acme S.L.", "text"),
+        ("A-0042", "text"),
+        ("Importe", "text"),
+    ],
+)
+def test_field_shape_classifies_a_field(value: str, shape: str) -> None:
+    """Each field has exactly one shape: integer, decimal, date, empty or text."""
+    assert _field_shape(value) == shape
+
+
+def _ground_case(case: SampleCase, names: list[str]) -> CSVInspectionResult:
+    """Ground a model answer claiming a header at row 0 with ``names`` in a fixture."""
+    encoding = case.expected["encoding"]
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "encoding": encoding,
+        "delimiter": case.expected["delimiter"],
+        "header_row_index": 0,
+        "columns": [{"name": name, "inferred_type": "string"} for name in names],
+    }
+    head = case.raw_bytes.decode(encoding)
+    return ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+
+
+_HEADERLESS_CASES = [
+    *(case for case in CASES if case.filename == "header_none_data_only.csv"),
+    *(render(spec) for spec in MATRIX if spec.slug in {"headerless_narrow", "headerless_marker"}),
+]
+
+
+@pytest.mark.parametrize("case", _HEADERLESS_CASES, ids=lambda case: case.filename)
+def test_grounding_reports_no_header_for_header_less_fixtures(case: SampleCase) -> None:
+    """Invented names over a header-less fixture become positional columns (#131)."""
+    width = len(derive_columns(case) or [])
+    assert len(_HEADERLESS_CASES) == 3
+    assert width >= 3
+
+    result = _ground_case(case, [f"invented_{n}" for n in range(width)])
+
+    assert (result.has_header, result.header_row_index) == (False, None)
+    assert [column.name for column in result.columns] == derive_columns(case)
+
+
+def test_grounding_keeps_an_all_text_header_it_cannot_anchor() -> None:
+    """A header of names above typed data is kept, even with paraphrased names (#131)."""
+    spec = next(
+        spec
+        for spec in MATRIX
+        if spec.has_header and spec.preamble_lines == 0 and spec.encoding == "utf-8"
+    )
+    case = render(spec)
+    width = len(derive_columns(case) or [])
+
+    result = _ground_case(case, [f"paraphrased_{n}" for n in range(width)])
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize("names", [["2023", "2024", "2025"], ["y1", "y2", "y3"]])
+def test_grounding_keeps_a_header_of_years(names: list[str]) -> None:
+    """Integer years above decimal data stay a header, anchored or not (#131)."""
+    case = next(case for case in CASES if case.filename == "header_years.csv")
+
+    result = _ground_case(case, names)
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+    assert [column.name for column in result.columns] == names
+
+
+def test_grounding_keeps_a_header_named_by_the_model_in_another_case() -> None:
+    """A row-0 field equal to a model's name, case aside, keeps the header (#131)."""
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": "fecha", "inferred_type": "string"},
+            {"name": "concepto", "inferred_type": "string"},
+        ],
+    }
+    head = "Fecha,Cliente\nAcme,Beta\nGamma,Delta\n"
+
+    result = ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(
+    ("head", "is_data"),
+    [
+        pytest.param("2024-01-15,Acme,10.5\n", False, id="one-line"),
+        pytest.param("2024-01-15,Acme,10.5\n2024-01-16,Beta\n", False, id="ragged-second-row"),
+        pytest.param("Fecha,Cliente,Importe\n2024-01-15,Acme,10.5\n", False, id="text-over-data"),
+        pytest.param("2024-01-15,,10.5\n2024-01-16,Beta,3.5\n", True, id="empty-cell-matches"),
+        pytest.param("2024-01-15,Acme,Norte\n2024-01-16,Beta,\n", False, id="mostly-text"),
+    ],
+)
+def test_first_row_is_data_needs_a_second_row_of_the_same_shape(head: str, is_data: bool) -> None:
+    """Only two rows of equal width and agreeing shapes flag row 0 as data."""
+    answer = {
+        **VALID_RESULT_PAYLOAD,
+        "delimiter": ",",
+        "header_row_index": 0,
+        "columns": [
+            {"name": name, "inferred_type": "string"} for name in ("date", "client", "amount")
+        ],
+    }
+    result = CSVInspectionResult.model_validate(answer)
+
+    assert _first_row_is_data(result, head) is is_data
 
 
 def test_extract_json_payload_strips_markdown_fence() -> None:
@@ -1002,7 +1138,11 @@ def test_grounding_reads_the_footer_from_the_tail_of_a_large_file() -> None:
 
 
 def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
-    """Invented names that share nothing with the data never promote a data row to header."""
+    """Invented names that share nothing with the data never promote a data row to header.
+
+    The first row has the shape of the second, so the header the model
+    claimed at row 0 is dropped and the columns become positional (#131).
+    """
     target = tmp_path / "no_header.csv"
     target.write_text("2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8")
     columns = [
@@ -1015,7 +1155,8 @@ def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
         target, model_invoker=_sloppy_answer(columns=columns, header_row_index=0, footer_lines=[])
     )
 
-    assert [column.name for column in result.columns] == ["col_1", "col_2", "col_3"]
+    assert (result.has_header, result.header_row_index) == (False, None)
+    assert [column.name for column in result.columns] == ["column_1", "column_2", "column_3"]
     assert result.footer_lines == []
 
 
@@ -1111,6 +1252,45 @@ def test_grounding_replaces_a_delimiter_that_occurs_only_inside_a_value(
 
     assert result.delimiter == "\t"
     assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+
+
+def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> None:
+    """A ``,`` that splits a few TSV rows evenly still loses to the tab (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
+        if day % 4 == 0
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 21)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+    )
+
+    assert result.delimiter == "\t"
+    assert [column.name for column in result.columns] == ["Fecha", "Cliente", "Importe"]
+
+
+def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Path) -> None:
+    """A ``,`` splitting more than half as many rows as the tab stays (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
+        if day % 2 == 0 or day % 3 == 0
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 21)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+    )
+
+    assert result.delimiter == ","
 
 
 def test_grounding_keeps_a_reported_delimiter_that_splits_the_rows(tmp_path: Path) -> None:
@@ -1310,6 +1490,164 @@ def test_grounding_keeps_a_data_row_named_like_a_totals_label_out_of_the_footer(
     )
 
     assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+_MARKED_LEDGER = (
+    "Fecha;Cliente;Importe\n"
+    "2024-01-01;Acme;10.00\n"
+    "2024-01-02;Beta;20.00\n"
+    "\n"
+    "--- Fin del informe ---\n"
+    "Generado el 2024-08-08 10:00:00\n"
+)
+
+
+def test_grounding_drops_data_rows_the_model_reported_as_footer(tmp_path: Path) -> None:
+    """A data row is never a footer line: the footer starts past it (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            footer_lines=["2024-01-02;Beta;20.00", "Generado el 2024-08-08 10:00:00"]
+        ),
+    )
+
+    assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
+
+
+def test_grounding_discards_a_footer_made_only_of_data_rows(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The last data rows reported as a footer leave no footer at all (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8"
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            footer_lines=["2024-01-01;Acme;10.00", "2024-01-02;Beta;20.00"]
+        ),
+    )
+
+    assert result.footer_lines == []
+    assert "do not occur at the end of the file" in caplog.text
+
+
+def test_grounding_includes_a_marker_above_the_anchor(tmp_path: Path) -> None:
+    """Non-data lines above the reported footer line belong to the footer (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(footer_lines=["Generado el 2024-08-08 10:00:00"])
+    )
+
+    assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
+
+
+def test_grounding_keeps_a_totals_row_with_the_data_width(tmp_path: Path) -> None:
+    """A fully filled totals row has the data shape but is not a data row (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\nTOTAL;2;30.00\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;2;30.00"]))
+
+    assert result.footer_lines == ["TOTAL;2;30.00"]
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"),
+    [
+        (
+            ["2024-08-08 10:00:00"],
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+        ),
+        (["Fin del"], []),
+    ],
+)
+def test_grounding_anchors_on_a_substring_of_the_footer_line(
+    tmp_path: Path, reported: list[str], expected: list[str]
+) -> None:
+    """Reported text of 8 characters or more anchors the line it occurs in (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=reported))
+
+    assert result.footer_lines == expected
+
+
+def test_grounding_ignores_trailing_empty_fields_in_an_anchor(tmp_path: Path) -> None:
+    """A totals row copied with one trailing delimiter too few still anchors (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe;Nota;Extra\n"
+        "2024-01-01;Acme;10.00;a;b\n"
+        "2024-01-02;Beta;20.00;c;d\n"
+        "TOTAL;;30.00;;\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;;30.00;"]))
+
+    assert result.footer_lines == ["TOTAL;;30.00;;"]
+
+
+def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
+    """A blank name the model left out is restored from the header row (issue #153)."""
+    target = tmp_path / "indexed.csv"
+    target.write_text(",id,id,value\n0,1,2,a\n1,3,4,b\n", encoding="utf-8")
+    columns = [
+        {"name": "id", "inferred_type": "integer"},
+        {"name": "id", "inferred_type": "integer"},
+        {"name": "value", "inferred_type": "string"},
+    ]
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",", columns=columns, header_row_index=1, footer_lines=[]
+        ),
+    )
+
+    assert result.header_row_index == 0
+    assert [column.name for column in result.columns] == ["", "id", "id", "value"]
+    assert [column.inferred_type for column in result.columns] == [
+        "string",
+        "integer",
+        "integer",
+        "string",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("fixture", "expected"),
+    [
+        # "2024,,4241.25": a numeric label, so a data row, never a footer.
+        ("footer_like_data_row_numeric_label.csv", []),
+        ("footer_summary_totals.csv", ["TOTAL,,,274887.10"]),
+    ],
+)
+def test_grounding_of_totals_shaped_last_rows_in_the_catalog(
+    fixture: str, expected: list[str]
+) -> None:
+    """Totals-shaped data rows are dropped and real totals rows kept (issue #153)."""
+    lines = (SAMPLE_CSV_PATH.parent / "samples" / fixture).read_text(encoding="utf-8").splitlines()
+    columns = [{"name": name, "inferred_type": "string"} for name in lines[0].split(",")]
+
+    result = inspect_csv(
+        SAMPLE_CSV_PATH.parent / "samples" / fixture,
+        model_invoker=_sloppy_answer(delimiter=",", columns=columns, footer_lines=[lines[-1]]),
+    )
+
+    assert result.footer_lines == expected
 
 
 def test_grounding_counts_lines_like_csv_does(tmp_path: Path) -> None:

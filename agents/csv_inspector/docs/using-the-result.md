@@ -18,25 +18,38 @@ deterministically from the sampled text:
   file, even one whose values hold a comma) it is replaced by the usual
   delimiter (`,`, `;`, tab, `|`) that splits the most lines that way, when
   exactly one does. Ties and one-column files keep the model's answer.
-- **Header:** the head line whose fields equal the inferred column names;
-  failing that, the first line with as many fields as inferred columns,
+- **Header:** the head line whose fields equal the inferred column names,
+  or whose non-empty fields do when it also has blank ones (a blank name
+  the model left out, such as a pandas index column, is restored as a
+  `string` column); failing that, the first line with as many fields as inferred columns,
   followed by a line of the same shape, that shares at least one name with
   the model's answer. Its index becomes `header_row_index`, and its fields
   replace any paraphrased column names. Skipped when the model reports
   `has_header=false`: a header-less file keeps its positional names
   (`column_1`, ...) and `header_row_index=None`. When no header line
-  anchors and the model's header at row 0 holds its own example values
-  (at least two, and half the fields), that row is data: the result is
-  corrected to `has_header=false` with positional names.
+  anchors and the model's header at row 0 is shaped like the row below it
+  (the same integer, decimal, date, empty or text shape per field, with at
+  least half the fields non-text unless the shapes are identical, and no
+  field equal to a model's column name), that row is data: the result is
+  corrected to `has_header=false` with positional names. The test reads
+  only the sample, never the model's `example_values`.
 - **Footer:** the earliest reported footer line (by last occurrence) that
-  really appears at the end of the source, taken verbatim through to the
-  end, and extended backwards over blank separators and totals-labelled rows
-  (`TOTAL`, `Subtotal`, `Total registros: 250`, `Suma`...).
+  really appears at the end of the source, moved forward past data rows,
+  taken verbatim through to the end, and extended backwards over blank
+  separators, totals-labelled rows (`TOTAL`, `Subtotal`,
+  `Total registros: 250`, `Suma`...) and other lines that are not data
+  rows (an end marker above a timestamp line). A reported line matches a
+  line of the source when they are equal once surrounding spaces and
+  trailing empty fields are ignored, or when the reported text (8
+  characters or more) occurs within it. A data row has the modal field
+  count of the end of the source, at least half of its fields filled, and
+  is not a totals row.
 
 A header that cannot be anchored is returned as the model reported it. A
-reported footer that does not occur at the sampled end of the source is
-dropped, since keeping it would make readers skip real data rows. Grounding
-never promotes an unlabelled data row to a footer.
+reported footer that does not occur at the sampled end of the source, or
+that is made only of data rows, is dropped, since keeping it would make
+readers skip real data rows. Grounding never promotes an unlabelled data
+row to a footer.
 
 ## What is not serialized
 

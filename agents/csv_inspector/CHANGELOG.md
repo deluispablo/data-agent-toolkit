@@ -87,6 +87,52 @@ listed under **Changed (breaking)**.
   tokens at the measured 1.81 characters per token
   ([#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)).
 
+### Changed
+
+- Grounding decides that a claimed header at row 0 is really data with a
+  deterministic shape test on the sample instead of the model's
+  `example_values`. When the model's names cannot be anchored in the head,
+  row 0 is data if rows 0 and 1 have as many fields as inferred columns
+  and their per-field shapes (integer, decimal with `.` or `,`, date,
+  empty or text) are identical, or agree field by field (an empty cell
+  matching any shape) with at least half the fields non-text in both
+  rows. A row-0 field equal to one of the model's column names,
+  case-insensitively, always keeps the header, and a header of years
+  above decimal data stays a header. The result is then reported with
+  `has_header=false` and positional names, as before
+  ([#131](https://github.com/deluispablo/data-agent-toolkit/issues/131)).
+
+### Fixed
+
+- Delimiter grounding replaces the model's delimiter when another usual
+  delimiter clearly dominates it, not only when it splits fewer than two
+  head lines: a `,` answered for a tab-separated file whose values hold
+  commas (`"Fernández, Asociados"`, `1,50`) is now replaced by the tab
+  when exactly one candidate splits at least twice as many head lines into
+  the same number of fields. Ties, one-column files and exotic delimiters
+  still keep the model's answer
+  ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
+
+### Fixed
+
+- Footer grounding no longer turns data rows into a footer. A data row
+  (the modal field count of the end of the file, at least half of its
+  fields filled, not a totals row) is never a footer line: the footer
+  starts past any the model reported, and a footer made only of data rows
+  is dropped with the existing WARNING. Marker and timestamp lines just
+  above the reported footer line are now part of the footer, as blank and
+  totals lines already were. The model's footer lines also anchor
+  tolerantly: trailing empty fields (`TOTAL,,356681.99,` for
+  `TOTAL,,356681.99,,`) are ignored, and a reported text of 8 characters or
+  more matches the line it occurs in (a timestamp copied without its
+  `Generado el` prefix). One-column files, and files whose delimiter does
+  not split most lines, keep the previous rules
+  ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+- A header row with a blank name the model left out (`,id,id,value` answered
+  as `id, id, value`) is now anchored: the names are taken from the file,
+  blanks included, and each blank name gets a nullable `string` column
+  ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+
 ### Documentation
 
 - New `docs/evaluation.md`: the before/after ritual for changes that can

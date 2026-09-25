@@ -280,6 +280,14 @@ One line per notable design choice, with the issue that records it.
   column names, footer and delimiter are recomputed from the samples
   ([#53](https://github.com/deluispablo/data-agent-toolkit/issues/53),
   [#97](https://github.com/deluispablo/data-agent-toolkit/issues/97)).
+- **The model's delimiter yields only to a clear winner**: exactly one
+  usual candidate agreeing on at least 2 head lines and at least twice as
+  many as the model's answer; a wrong `,` on the tab fixtures lost by 4x to
+  13x ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
+- **A footer starts at the first non-data line the model pointed at; the
+  model's line is a key, matched tolerantly** (trailing empty fields
+  ignored, a long enough substring accepted)
+  ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 - **One time budget per inspection**, enforced by the library even for
   custom invokers. With a fallback, the primary gets 70 % of it
   ([#12](https://github.com/deluispablo/data-agent-toolkit/issues/12),
@@ -300,6 +308,9 @@ One line per notable design choice, with the issue that records it.
   ([#98](https://github.com/deluispablo/data-agent-toolkit/issues/98)).
 - **A header-less file is part of the contract** (`has_header`), not a
   sentinel value ([#94](https://github.com/deluispablo/data-agent-toolkit/issues/94)).
+- **Header-less detection is a shape test on the sample, not on the
+  model's examples**
+  ([#131](https://github.com/deluispablo/data-agent-toolkit/issues/131)).
 - **Every exception derives from `CSVInspectorError`**, and the library
   logs through module loggers only (a `NullHandler`, no `print`).
 

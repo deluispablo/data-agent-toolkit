@@ -280,6 +280,38 @@ _RAW_BODY_SCHEMA = {"type": "string", "format": "binary"}
 _OVERRIDE_OFF = "cloud calls cost money, and CSV_INSPECTOR_API_ALLOW_BACKEND_OVERRIDE is off"
 
 
+def _check_override(
+    settings: ApiSettings,
+    backend: LLMBackend | None,
+    model: str | None,
+    fallback_model: str | None,
+) -> None:
+    """Refuse the overrides that could bill a cloud call while they are off.
+
+    Raises:
+        BackendOverrideDisabledError: If, while ``settings.allow_backend_override``
+            is off, the request would switch a local deployment to the cloud
+            backend, or pick the models of a cloud call.
+    """
+    if settings.allow_backend_override:
+        return
+    configured = settings.llm_backend
+    if backend is LLMBackend.API and configured is not LLMBackend.API:
+        msg = "backend=api would move this local deployment to the paid cloud backend"
+        raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
+    if (backend or configured) is LLMBackend.API and (model or fallback_model):
+        msg = "model and fallback_model would pick the (billed) models of a cloud call"
+        raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
+
+
+def _set_object_headers(response: Response, size: int | None, generation: int | None) -> None:
+    """Report the size and the generation read of a Cloud Storage object, when known."""
+    if size is not None:
+        response.headers["X-Object-Size"] = str(size)
+    if generation is not None:
+        response.headers["X-Object-Generation"] = str(generation)
+
+
 def build_inspect_router(settings: ApiSettings) -> APIRouter:
     """Build the router of ``POST /inspect``, ``/inspect/raw`` and ``/inspect/gcs``.
 
@@ -354,14 +386,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
                 is off, the request would switch a local deployment to the cloud
                 backend, or pick the models of a cloud call.
         """
-        if not settings.allow_backend_override:
-            configured = settings.llm_backend
-            if backend is LLMBackend.API and configured is not LLMBackend.API:
-                msg = "backend=api would move this local deployment to the paid cloud backend"
-                raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
-            if (backend or configured) is LLMBackend.API and (model or fallback_model):
-                msg = "model and fallback_model would pick the (billed) models of a cloud call"
-                raise BackendOverrideDisabledError(f"{msg}; {_OVERRIDE_OFF}")
+        _check_override(settings, backend, model, fallback_model)
         return InspectParams(n_bytes, tail_bytes, timeout_seconds, backend, model, fallback_model)
 
     responses: dict[int | str, dict[str, Any]] = {
@@ -487,11 +512,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             )
         finally:
             gcs_object.reader.close()
-        blob = gcs_object.blob
-        if blob.size is not None:
-            response.headers["X-Object-Size"] = str(blob.size)
-        if blob.generation is not None:
-            response.headers["X-Object-Generation"] = str(blob.generation)
+        _set_object_headers(response, gcs_object.blob.size, gcs_object.blob.generation)
         return result
 
     return router

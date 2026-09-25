@@ -1572,6 +1572,63 @@ def test_grounding_ignores_trailing_empty_fields_in_an_anchor(tmp_path: Path) ->
     assert result.footer_lines == ["TOTAL;;30.00;;"]
 
 
+def test_grounding_starts_a_footer_after_the_last_data_row(tmp_path: Path) -> None:
+    """A ragged data row the model points at, with a full row after it, is no footer."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Proveedor;Monto\n"
+        "2024-01-01;Acme;10.00\n"
+        "2024-01-02;Beta;20.00\n"
+        "2024-01-03;Gamma\n"
+        "2024-01-04;Delta;40.00\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["2024-01-03;Gamma"]))
+
+    assert result.footer_lines == []
+
+
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        (_MARKED_LEDGER, ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]),
+        ("Fecha;Proveedor;Monto\n2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", []),
+    ],
+)
+def test_grounding_reads_an_invented_data_row_as_the_end_of_the_data(
+    tmp_path: Path, content: str, expected: list[str]
+) -> None:
+    """A made-up last data row anchors after the data: the footer if any, else none."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(content, encoding="utf-8")
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(footer_lines=["2024-01-09;Omega;99.00"])
+    )
+
+    assert result.footer_lines == expected
+
+
+def test_grounding_anchors_a_footer_copied_with_the_replaced_delimiter(tmp_path: Path) -> None:
+    """The model copies the footer with its own delimiter; the grounded one still finds it."""
+    target = tmp_path / "ledger.tsv"
+    target.write_text(
+        "Fecha\tProveedor\tMonto\n"
+        "2024-01-01\tAcme\t10.00\n"
+        "2024-01-02\tBeta\t20.00\n"
+        "TOTAL\t\t30.00\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(delimiter=",", footer_lines=["TOTAL,,30.00"])
+    )
+
+    assert result.delimiter == "\t"
+    assert result.footer_lines == ["TOTAL\t\t30.00"]
+
+
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     """A blank name the model left out is restored from the header row (issue #153)."""
     target = tmp_path / "indexed.csv"

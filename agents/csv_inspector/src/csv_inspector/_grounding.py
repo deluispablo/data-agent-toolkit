@@ -226,7 +226,11 @@ def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, o
 
 
 def _locate_footer_lines(
-    footer_lines: list[str], end_of_file: str, delimiter: str, quotechar: str
+    footer_lines: list[str],
+    end_of_file: str,
+    delimiter: str,
+    quotechar: str,
+    model_delimiter: str | None = None,
 ) -> list[str] | None:
     """Re-read the model's footer verbatim from the real end of the file.
 
@@ -234,9 +238,11 @@ def _locate_footer_lines(
     copying it exactly: it tends to drop blank separator lines, skip a line
     in the middle, copy a line imperfectly, or take the last data rows for
     a footer. Each non-blank line it reported anchors at its last matching
-    line in the file's last lines (see :func:`_anchor_matches`). The footer
-    starts at the earliest anchor, moved forward past data rows, since a
-    data row is never a footer line; it then takes every line from there
+    line in the file's last lines (see :func:`_anchor_matches`); a line the
+    model wrote with its own, replaced delimiter also anchors. The footer
+    starts at the earliest anchor, moved past the last data row at or after
+    it, since a footer follows the data (the model may point at a ragged
+    data row with full rows after it); it then takes every line from there
     to the end of the file verbatim, and extends backwards over the blank,
     totals and other non-data lines that separate it from the data.
 
@@ -246,13 +252,21 @@ def _locate_footer_lines(
             tail sample, or the head sample when it covers the whole file).
         delimiter: The field delimiter, used to tell footer lines from data.
         quotechar: The quote character, used to tell footer lines from data.
+        model_delimiter: The delimiter the model answered, when grounding
+            replaced it: the model copies footer lines with its own
+            delimiter (``TOTAL,,12.50`` for ``TOTAL		12.50``).
+
+    A reported data row that occurs nowhere (the model miscopied or made up
+    the last data row) anchors right after the data.
 
     Returns:
         The grounded footer lines, or ``None`` when none of the model's
-        non-blank footer lines occur in ``end_of_file``, or all of them are
-        data rows (nothing to anchor).
+        non-blank footer lines occur in ``end_of_file`` (and none is shaped
+        like a data row), or nothing but data follows the anchor.
     """
     reported = {line.strip() for line in footer_lines if line.strip()}
+    if model_delimiter and model_delimiter != delimiter:
+        reported |= {line.replace(model_delimiter, delimiter) for line in reported}
     if not reported:
         return None
     lines = _split_lines(end_of_file)
@@ -267,16 +281,22 @@ def _locate_footer_lines(
         for text in reported
     )
     anchors = [anchor for anchor in last_seen if anchor is not None]
-    if not anchors:
-        return None
     width = _data_width(lines, delimiter, quotechar)
 
     def is_data(line: str) -> bool:
         return width is not None and _is_data_row(line, delimiter, quotechar, width)
 
+    if not anchors:
+        # A data row the model miscopied or made up still says where it saw
+        # the footer: right after the data.
+        if not any(is_data(text) for text in reported):
+            return None
+        anchors = [1]
+
     start = min(anchors)
-    while start < len(lines) and is_data(lines[start]):
-        start += 1
+    data_rows = [index for index in range(start, len(lines)) if is_data(lines[index])]
+    if data_rows:
+        start = data_rows[-1] + 1
     if start == len(lines):
         return None
     while start > 1 and (
@@ -490,6 +510,7 @@ def ground_in_samples(
     """
     updates: dict[str, object] = {}
 
+    model_delimiter = result.delimiter
     delimiter = _ground_delimiter(result, head_sample)
     if delimiter != result.delimiter:
         updates["delimiter"] = delimiter
@@ -505,7 +526,7 @@ def ground_in_samples(
     else:
         end_of_file = tail_sample if tail_sample is not None else head_sample
         footer_lines = _locate_footer_lines(
-            result.footer_lines, end_of_file, result.delimiter, result.quotechar
+            result.footer_lines, end_of_file, result.delimiter, result.quotechar, model_delimiter
         )
         if footer_lines is None and any(line.strip() for line in result.footer_lines):
             # The real end of the file was seen and the reported footer is

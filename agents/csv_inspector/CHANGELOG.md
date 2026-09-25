@@ -145,9 +145,6 @@ pipelines consume.
   the same number of fields. Ties, one-column files and exotic delimiters
   still keep the model's answer
   ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
-
-### Fixed
-
 - Footer grounding no longer turns data rows into a footer. A data row
   (the modal field count of the end of the file, at least half of its
   fields filled, not a totals row) is never a footer line: the footer
@@ -165,6 +162,14 @@ pipelines consume.
   as `id, id, value`) is now anchored: the names are taken from the file,
   blanks included (a blank name is reported as `""`)
   ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+- A footer now always starts after the last data row: a ragged data row
+  the model points at, with full rows after it, is no longer a footer, and
+  a data row the model reports but that is not in the file (miscopied or
+  made up) is read as "the footer starts after the data". A
+  footer line the model copied with its own delimiter, replaced by
+  grounding (`TOTAL,,12.50` in a tab-separated file), still anchors
+  ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129),
+  follow-up of [#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 
 ### Documentation
 

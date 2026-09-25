@@ -344,7 +344,7 @@ def main() -> None:
     print(write_demo_csv())
     for pal in (LIGHT, DARK):
         path = ASSETS / f"hero-{pal.name}.svg"
-        path.write_text(render(pal), encoding="utf-8")
+        path.write_text(render(pal), encoding="utf-8", newline="\n")
         print(path)
 
 

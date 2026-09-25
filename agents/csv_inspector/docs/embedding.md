@@ -284,9 +284,10 @@ Without a bound, a burst of requests becomes a burst of model calls: on the
 cloud backend it spends the per-minute quota at once (and every `429` it
 earns is retried, costing another full call), and on a local one it queues
 every request on the same GPU until they time out together. In an async
-host, create one `asyncio.Semaphore(n)` at startup (in the lifespan, so it
-belongs to the serving event loop), acquire it around each `ainspect_csv`
-call with `asyncio.wait_for(semaphore.acquire(), timeout=...)`, release it
+host, create one `asyncio.Semaphore(n)` when the app is built (since Python
+3.10 it binds to the serving event loop on first use), acquire it around
+each `ainspect_csv` call with `asyncio.wait_for(semaphore.acquire(),
+timeout=...)`, release it
 in a `finally`, and answer a request that waited too long with `503` and
 `Retry-After` instead of letting it queue forever. Acquire before reading a
 streamed body, so a waiting request holds no memory, and never gate the

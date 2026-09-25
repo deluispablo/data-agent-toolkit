@@ -24,6 +24,13 @@ listed under **Changed (breaking)**.
   `footer_first_line`, the shape the prompt and the JSON Schema ask for
   ([#171](https://github.com/deluispablo/data-agent-toolkit/issues/171)).
 
+### Documentation
+
+- `docs/embedding.md` §7: the inspection semaphore can be created when the
+  app is built (it binds to the serving loop on first use), as the FastAPI
+  example now does
+  ([#175](https://github.com/deluispablo/data-agent-toolkit/issues/175)).
+
 ## [0.5.0] - 2026-09-25
 
 Leaner input and a measured budget: samples bounded in lines, a reply cap

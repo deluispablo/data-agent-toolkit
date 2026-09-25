@@ -1,47 +1,24 @@
-"""Mapping of ``csv_inspector`` and Cloud Storage errors to HTTP problem responses.
+"""Mapping of ``csv_inspector``, API and Cloud Storage errors to HTTP problem responses.
 
-Every :class:`csv_inspector.CSVInspectorError` that escapes a route becomes
-an RFC 9457-style ``application/problem+json`` response through one
-exception handler, so routes never catch library errors themselves. The
-errors of ``POST /inspect/gcs`` (``google.api_core`` and ``google.auth``
-exceptions, raised while the library samples the object) get a second
-handler, registered only when the ``[gcs]`` extra is installed: this module
-imports ``google.*`` inside that registration, never at module level.
+Every error escaping a route becomes an RFC 9457 ``application/problem+json``
+response (``error`` is the class name) from the ordered tables below; the
+Cloud Storage one needs the ``[gcs]`` extra, imported only then. ``ValueError``
+and ``TypeError`` are host bugs: a plain 500. Server faults log at ``ERROR``.
 
-``ValueError`` and ``TypeError`` from the library (a byte budget out of
-range, an unsupported source) are programming errors in this host, not
-domain failures: they are deliberately not handled here and surface as a
-plain 500 through FastAPI's default handling.
+- 403 ``BackendOverrideDisabledError``; Cloud Storage ``Forbidden`` (grant
+  ``storage.objects.get``). 404 ``NotFound``: buckets are not told apart.
+- 413 ``UploadTooLargeError``. 422 ``EmptySampleError``, ``FileSampleReadError``.
+- 429 ``TooManyRequests``, ``Retry-After`` passed through. 500 any other
+  ``CSVInspectorError``: report it.
+- 502 ``InspectionFailedError``, ``ModelInvocationError``, ``ResponseParsingError``,
+  ``SchemaValidationError`` (retry); any other ``GoogleAPICallError``, ``RetryError``.
+- 503 ``ServerBusyError`` (retry after ``Retry-After``), ``GcsNotInstalledError``,
+  ``BackendConfigurationError``, ``CredentialsNotConfiguredError``, ``Unauthorized``,
+  ``DefaultCredentialsError``, ``RefreshError``: a misconfigured deployment.
+- 504 ``InspectionTimeoutError``, matched before its parent ``InspectionFailedError``.
 
-Status per exception (``error`` in the body is the class name, so clients
-can branch without parsing ``detail``):
-
-- 403 ``BackendOverrideDisabledError`` (API): drop ``backend=api`` or the
-  model overrides, or ask the operator.
-- 413 ``UploadTooLargeError`` (API): send a smaller file.
-- 503 ``ServerBusyError`` (API): every inspection slot stayed taken for
-  ``queue_timeout_seconds``; retry after ``Retry-After`` seconds.
-- 503 ``GcsNotInstalledError`` (API): install the ``[gcs]`` extra.
-- 404 ``NotFound`` (Cloud Storage): a missing bucket and a missing object
-  answer the same, so buckets cannot be enumerated.
-- 403 ``Forbidden``: grant ``storage.objects.get`` to the service account.
-- 503 ``Unauthorized``, ``DefaultCredentialsError``, ``RefreshError``: the
-  deployment's credentials are missing or unusable, not the request.
-- 429 ``TooManyRequests``: ``Retry-After`` is passed through when sent.
-- 502 any other ``GoogleAPICallError`` or ``RetryError``.
-- 422 ``EmptySampleError``, ``FileSampleReadError``: fix the input.
-- 504 ``InspectionTimeoutError``, matched **before** its parent
-  ``InspectionFailedError``: retry with a larger budget or smaller windows.
-- 503 ``CredentialsNotConfiguredError``, ``BackendConfigurationError``: a
-  misconfigured deployment, not a bad request; another instance may work.
-- 502 ``InspectionFailedError``, ``ModelInvocationError``,
-  ``ResponseParsingError``, ``SchemaValidationError``: retry, maybe with
-  another model.
-- 500 any other ``CSVInspectorError``: report it.
-
-For Cloud Storage errors ``detail`` is a fixed sentence per status. The
-SDK's message (which names the bucket and whether it exists) only reaches
-the server log.
+A Cloud Storage ``detail`` is fixed: the SDK's message names the bucket, so
+it only reaches the log.
 """
 
 from __future__ import annotations
@@ -91,292 +68,134 @@ class ProblemDetails(BaseModel):
     error: str = Field(examples=["InspectionTimeoutError"])
 
 
-@dataclass(frozen=True)
-class _Rule:
-    """One row of the error table: the exceptions it matches and their response.
-
-    Server-side faults (503, 500) log at ``ERROR``; client input, timeouts and
-    model failures at ``WARNING``.
-    """
-
-    exceptions: tuple[type[CSVInspectorError], ...]
-    status: int
-    title: str
-    log_level: int = logging.WARNING
-
-
-# Checked in order, so a subclass row must come before its parent's row:
-# InspectionTimeoutError is an InspectionFailedError, and
-# BackendConfigurationError is a ModelInvocationError.
-_RULES = (
-    _Rule((EmptySampleError, FileSampleReadError), 422, "Unusable CSV input"),
-    _Rule((InspectionTimeoutError,), 504, "Inspection timed out"),
-    _Rule(
-        (BackendConfigurationError,),
-        503,
-        "Model backend misconfigured on the server; retrying elsewhere may help",
-        logging.ERROR,
-    ),
-    _Rule(
-        (InspectionFailedError, ModelInvocationError, ResponseParsingError, SchemaValidationError),
-        502,
-        "Model backend failed",
-    ),
-)
-_UPLOAD_TOO_LARGE_TITLE = "Upload too large"
-_OVERRIDE_DISABLED_TITLE = "Backend override disabled"
-_SERVER_BUSY_TITLE = "Server busy; retry after Retry-After seconds"
-_GCS_UNAVAILABLE_TITLE = "Cloud Storage unavailable on the server"
-_GCS_NOT_FOUND_TITLE = "Object not found"
-_GCS_FORBIDDEN_TITLE = "Access to the object denied"
-_GCS_CREDENTIALS_TITLE = "Cloud Storage credentials misconfigured on the server"
-_GCS_RATE_LIMITED_TITLE = "Cloud Storage rate limit reached"
-_GCS_FAILED_TITLE = "Cloud Storage failed"
-_FALLBACK = _Rule((CSVInspectorError,), 500, "Inspection error", logging.ERROR)
-
-
-def _rule_for(exc: CSVInspectorError) -> _Rule:
-    """Return the first rule of the error table that matches ``exc``."""
-    return next((rule for rule in _RULES if isinstance(exc, rule.exceptions)), _FALLBACK)
-
-
-def status_for(exc: CSVInspectorError) -> int:
-    """Return the HTTP status code for a library error.
-
-    Args:
-        exc: The error raised by ``csv_inspector``.
-
-    Returns:
-        422 for unusable input, 504 for a timeout, 503 for a misconfigured
-        backend, 502 for a failed or nonsensical model answer, 500 otherwise.
-    """
-    return _rule_for(exc).status
-
-
 class UploadTooLargeError(Exception):
-    """The upload exceeds ``ApiSettings.max_upload_bytes``; answered with 413.
-
-    Not a library error: the API raises it before calling ``csv_inspector``.
-    """
+    """The upload exceeds ``ApiSettings.max_upload_bytes``; raised before the library runs."""
 
 
 class BackendOverrideDisabledError(Exception):
-    """A request asked for the cloud backend while overrides are off; answered with 403.
-
-    Not a library error: the API raises it before calling ``csv_inspector``.
-    """
+    """A request asked for a billed cloud call while overrides are off."""
 
 
 class ServerBusyError(Exception):
-    """No inspection slot freed up within the queue timeout; answered with 503.
-
-    Not a library error: the API raises it before calling ``csv_inspector``.
-
-    Attributes:
-        retry_after_seconds: Whole seconds the client should wait before
-            retrying, sent as ``Retry-After``.
-    """
+    """No inspection slot freed up in time; ``retry_after_seconds`` is sent as ``Retry-After``."""
 
     def __init__(self, message: str, *, retry_after_seconds: int) -> None:
-        """Describe the refusal.
-
-        Args:
-            message: Explanation sent as ``detail``.
-            retry_after_seconds: Value of the ``Retry-After`` header.
-        """
+        """Describe the refusal; ``message`` is sent as ``detail``."""
         super().__init__(message)
         self.retry_after_seconds = retry_after_seconds
 
 
-def problem_response(
-    status: int,
-    title: str,
-    exc: Exception,
-    *,
-    detail: str | None = None,
-    headers: dict[str, str] | None = None,
-) -> JSONResponse:
-    """Build an ``application/problem+json`` response for ``exc``.
-
-    Args:
-        status: HTTP status code.
-        title: Short summary of the problem class.
-        exc: The error; its class name becomes ``error``, and its message
-            ``detail`` unless ``detail`` is given.
-        detail: Explanation to send instead of the exception message, when
-            that message must not reach the client.
-        headers: Extra response headers.
-
-    Returns:
-        The problem response.
-    """
-    problem = ProblemDetails(
-        title=title,
-        status=status,
-        detail=str(exc) if detail is None else detail,
-        error=type(exc).__name__,
-    )
-    return JSONResponse(
-        problem.model_dump(mode="json"),
-        status_code=status,
-        media_type=PROBLEM_MEDIA_TYPE,
-        headers=headers,
-    )
-
-
-async def _handle_inspector_error(request: Request, exc: Exception) -> JSONResponse:
-    """Turn a library error into a problem response and log it once."""
-    assert isinstance(exc, CSVInspectorError)  # registered for this class only
-    rule = _rule_for(exc)
-    logger.log(
-        rule.log_level,
-        "%s %s failed with %d %s: %s",
-        request.method,
-        request.url.path,
-        rule.status,
-        type(exc).__name__,
-        exc,
-        # A traceback only for the unexpected: the other rows are understood failures.
-        exc_info=exc if rule is _FALLBACK else None,
-    )
-    return problem_response(rule.status, rule.title, exc)
-
-
-async def _handle_upload_too_large(request: Request, exc: Exception) -> JSONResponse:
-    """Answer an oversize upload with 413."""
-    logger.warning("%s %s rejected with 413: %s", request.method, request.url.path, exc)
-    return problem_response(413, _UPLOAD_TOO_LARGE_TITLE, exc)
-
-
-async def _handle_override_disabled(request: Request, exc: Exception) -> JSONResponse:
-    """Answer a refused backend override with 403."""
-    logger.warning("%s %s rejected with 403: %s", request.method, request.url.path, exc)
-    return problem_response(403, _OVERRIDE_DISABLED_TITLE, exc)
-
-
-async def _handle_server_busy(request: Request, exc: Exception) -> JSONResponse:
-    """Answer a request that found no free inspection slot with 503 and ``Retry-After``."""
-    assert isinstance(exc, ServerBusyError)  # registered for this class only
-    logger.warning("%s %s rejected with 503: %s", request.method, request.url.path, exc)
-    headers = {"Retry-After": str(exc.retry_after_seconds)}
-    return problem_response(503, _SERVER_BUSY_TITLE, exc, headers=headers)
-
-
-async def _handle_gcs_not_installed(request: Request, exc: Exception) -> JSONResponse:
-    """Answer ``POST /inspect/gcs`` with 503 when the ``[gcs]`` extra is missing."""
-    logger.error("%s %s failed with 503: %s", request.method, request.url.path, exc)
-    return problem_response(503, _GCS_UNAVAILABLE_TITLE, exc)
-
-
 @dataclass(frozen=True)
-class _GcsRule:
-    """One row of the Cloud Storage error table.
-
-    ``detail`` replaces the SDK's message, which names the bucket and the
-    object and says which of the two is missing: clients must not learn
-    which buckets exist.
-    """
+class _Problem:
+    """One row of an error table; ``detail`` replaces the exception message when given."""
 
     exceptions: tuple[type[Exception], ...]
     status: int
     title: str
-    detail: str
+    detail: str | None = None
     log_level: int = logging.WARNING
 
 
-def _gcs_error_handler(
-    rules: tuple[_GcsRule, ...],
+_MODEL_FAILED = (InspectionFailedError, ModelInvocationError, ResponseParsingError)
+_MISCONFIGURED = "Model backend misconfigured on the server; retrying elsewhere may help"
+# Checked in order: InspectionTimeoutError is an InspectionFailedError, and
+# BackendConfigurationError a ModelInvocationError. The last row catches the rest.
+_LIBRARY = (
+    _Problem((EmptySampleError, FileSampleReadError), 422, "Unusable CSV input"),
+    _Problem((InspectionTimeoutError,), 504, "Inspection timed out"),
+    _Problem((BackendConfigurationError,), 503, _MISCONFIGURED, log_level=logging.ERROR),
+    _Problem((*_MODEL_FAILED, SchemaValidationError), 502, "Model backend failed"),
+    _Problem((CSVInspectorError,), 500, "Inspection error", log_level=logging.ERROR),
+)
+_NO_GCS = "Cloud Storage unavailable on the server"
+_API = (
+    _TOO_LARGE := _Problem((UploadTooLargeError,), 413, "Upload too large"),
+    _OVERRIDE_OFF := _Problem((BackendOverrideDisabledError,), 403, "Backend override disabled"),
+    _Problem((ServerBusyError,), 503, "Server busy; retry after Retry-After seconds"),
+    _Problem((GcsNotInstalledError,), 503, _NO_GCS, log_level=logging.ERROR),
+)
+_GCS: dict[int, tuple[str, str]] = {
+    404: ("Object not found", "The object does not exist, or its bucket does not exist."),
+    403: (
+        "Access to the object denied",
+        "The server's service account may not read this object (storage.objects.get).",
+    ),
+    503: (
+        "Cloud Storage credentials misconfigured on the server",
+        "The server has no usable Cloud Storage credentials.",
+    ),
+    429: (
+        "Cloud Storage rate limit reached",
+        "Cloud Storage rate-limited the request; retry later.",
+    ),
+    502: ("Cloud Storage failed", "Cloud Storage failed or is unavailable; retry later."),
+}
+
+
+def status_for(exc: CSVInspectorError) -> int:
+    """The HTTP status of a library error (the first matching row of the library table)."""
+    return next(row for row in _LIBRARY if isinstance(exc, row.exceptions)).status
+
+
+def _retry_after(exc: Exception, status: int) -> dict[str, str] | None:
+    """``Retry-After`` of a busy server, or passed through from a rate-limited Cloud Storage."""
+    if isinstance(exc, ServerBusyError):
+        return {"Retry-After": str(exc.retry_after_seconds)}
+    if status == 429:  # noqa: PLR2004 - the status code itself
+        retry_after = getattr(getattr(exc, "response", None), "headers", {}).get("Retry-After")
+        return {"Retry-After": retry_after} if retry_after else None
+    return None
+
+
+def _handler(
+    rows: tuple[_Problem, ...], *, api: bool = False
 ) -> Callable[[Request, Exception], Awaitable[JSONResponse]]:
-    """Build the handler that answers a Cloud Storage error from ``rules``."""
+    """The handler of one table: log once, answer with the first matching row's problem."""
 
-    async def _handle_gcs_error(request: Request, exc: Exception) -> JSONResponse:
-        rule = next(rule for rule in rules if isinstance(exc, rule.exceptions))
-        logger.log(
-            rule.log_level,
-            "%s %s failed with %d %s: %s",
-            request.method,
-            request.url.path,
-            rule.status,
-            type(exc).__name__,
-            exc,
+    async def handle(request: Request, exc: Exception) -> JSONResponse:
+        row = next(row for row in rows if isinstance(exc, row.exceptions))
+        name, where = type(exc).__name__, (request.method, request.url.path, row.status)
+        if api:
+            server_fault = row.log_level >= logging.ERROR
+            msg = "%s %s failed with %d: %s" if server_fault else "%s %s rejected with %d: %s"
+            logger.log(row.log_level, msg, *where, exc)
+        else:
+            trace = exc if row is _LIBRARY[-1] else None
+            logger.log(
+                row.log_level, "%s %s failed with %d %s: %s", *where, name, exc, exc_info=trace
+            )
+        detail = str(exc) if row.detail is None else row.detail
+        problem = ProblemDetails(title=row.title, status=row.status, detail=detail, error=name)
+        headers = _retry_after(exc, row.status)
+        return JSONResponse(
+            problem.model_dump(mode="json"), row.status, headers, PROBLEM_MEDIA_TYPE
         )
-        headers = None
-        if rule.status == 429:  # noqa: PLR2004 - the status code itself
-            response = getattr(exc, "response", None)
-            retry_after = getattr(response, "headers", {}).get("Retry-After")
-            headers = {"Retry-After": retry_after} if retry_after else None
-        return problem_response(rule.status, rule.title, exc, detail=rule.detail, headers=headers)
 
-    return _handle_gcs_error
+    return handle
 
 
-def _register_gcs_handlers(app: FastAPI) -> None:
-    """Install the Cloud Storage error handler, when the ``[gcs]`` extra is installed.
-
-    Without the extra no ``google.*`` exception can reach a route, and
-    ``POST /inspect/gcs`` answers 503 through :class:`GcsNotInstalledError`.
-    """
+def register_exception_handlers(app: FastAPI) -> None:
+    """Install the API's error handlers on ``app`` (the one ``create_app`` builds)."""
+    app.add_exception_handler(CSVInspectorError, _handler(_LIBRARY))
+    for row in _API:
+        app.add_exception_handler(row.exceptions[0], _handler((row,), api=True))
     try:
         from google.api_core import exceptions as api  # noqa: PLC0415 - the optional [gcs] extra
         from google.auth import exceptions as auth  # noqa: PLC0415
     except ImportError:
-        return
-    # Checked in order: the specific GoogleAPICallError subclasses first.
-    rules = (
-        _GcsRule(
-            (api.NotFound,),
-            404,
-            _GCS_NOT_FOUND_TITLE,
-            "The object does not exist, or its bucket does not exist.",
-        ),
-        _GcsRule(
-            (api.Forbidden,),
-            403,
-            _GCS_FORBIDDEN_TITLE,
-            "The server's service account may not read this object (storage.objects.get).",
-        ),
-        _GcsRule(
-            (api.Unauthorized, auth.DefaultCredentialsError, auth.RefreshError),
-            503,
-            _GCS_CREDENTIALS_TITLE,
-            "The server has no usable Cloud Storage credentials.",
-            logging.ERROR,
-        ),
-        _GcsRule(
-            (api.TooManyRequests,),
-            429,
-            _GCS_RATE_LIMITED_TITLE,
-            "Cloud Storage rate-limited the request; retry later.",
-        ),
-        _GcsRule(
-            (api.GoogleAPICallError, api.RetryError),
-            502,
-            _GCS_FAILED_TITLE,
-            "Cloud Storage failed or is unavailable; retry later.",
-        ),
+        return  # No google.* error can reach a route; /inspect/gcs answers GcsNotInstalledError.
+    auth_errors = (auth.DefaultCredentialsError, auth.RefreshError)
+    matches: tuple[tuple[tuple[type[Exception], ...], int, int], ...] = (
+        ((api.NotFound,), 404, logging.WARNING),  # The specific GoogleAPICallError first.
+        ((api.Forbidden,), 403, logging.WARNING),
+        ((api.Unauthorized, *auth_errors), 503, logging.ERROR),
+        ((api.TooManyRequests,), 429, logging.WARNING),
+        ((api.GoogleAPICallError, api.RetryError), 502, logging.WARNING),
     )
-    handler = _gcs_error_handler(rules)
-    for error_type in (
-        api.GoogleAPICallError,
-        api.RetryError,
-        auth.DefaultCredentialsError,
-        auth.RefreshError,
-    ):
+    rows = tuple(_Problem(types, status, *_GCS[status], level) for types, status, level in matches)
+    handler = _handler(rows)
+    for error_type in (api.GoogleAPICallError, api.RetryError, *auth_errors):
         app.add_exception_handler(error_type, handler)
-
-
-def register_exception_handlers(app: FastAPI) -> None:
-    """Install the API's error handlers on ``app``.
-
-    Args:
-        app: The application being built by ``create_app``.
-    """
-    app.add_exception_handler(CSVInspectorError, _handle_inspector_error)
-    app.add_exception_handler(UploadTooLargeError, _handle_upload_too_large)
-    app.add_exception_handler(BackendOverrideDisabledError, _handle_override_disabled)
-    app.add_exception_handler(ServerBusyError, _handle_server_busy)
-    app.add_exception_handler(GcsNotInstalledError, _handle_gcs_not_installed)
-    _register_gcs_handlers(app)
 
 
 _VALIDATION_ERROR_SCHEMA: dict[str, Any] = {
@@ -386,12 +205,11 @@ _VALIDATION_ERROR_SCHEMA: dict[str, Any] = {
 }
 """Shape of FastAPI's own 422 body for invalid parameters or a missing field."""
 
-
 _GCS_DESCRIPTIONS = {
-    403: f"{_OVERRIDE_DISABLED_TITLE}, or {_GCS_FORBIDDEN_TITLE.lower()}",
-    404: f"{_GCS_NOT_FOUND_TITLE} (or its bucket: not told apart)",
-    429: f"{_GCS_RATE_LIMITED_TITLE}; honour Retry-After when present",
-    502: f"Model backend or {_GCS_FAILED_TITLE}",
+    403: f"{_OVERRIDE_OFF.title}, or {_GCS[403][0].lower()}",
+    404: f"{_GCS[404][0]} (or its bucket: not told apart)",
+    429: f"{_GCS[429][0]}; honour Retry-After when present",
+    502: f"Model backend or {_GCS[502][0]}",
     503: "Model backend, Cloud Storage credentials or the [gcs] extra misconfigured on the server",
 }
 """OpenAPI descriptions of the statuses of ``POST /inspect/gcs``."""
@@ -402,19 +220,9 @@ def problem_responses(
 ) -> dict[int | str, dict[str, Any]]:
     """OpenAPI ``responses`` entries for error statuses with a ``ProblemDetails`` body.
 
-    Args:
-        *statuses: The error statuses a route can return.
-        gcs: Describe the statuses of ``POST /inspect/gcs``, which add the
-            Cloud Storage errors to the library's ones.
-        gated: The route waits for an inspection slot, so its 503 may also
-            mean the server is busy.
-
-    Returns:
-        A mapping for a route decorator's ``responses=`` argument.
+    ``gcs`` adds the Cloud Storage errors of ``POST /inspect/gcs``; ``gated``, the busy 503.
     """
-    titles = {rule.status: rule.title for rule in (*_RULES, _FALLBACK)}
-    titles[413] = _UPLOAD_TOO_LARGE_TITLE
-    titles[403] = _OVERRIDE_DISABLED_TITLE
+    titles = {row.status: row.title for row in (*_LIBRARY, _TOO_LARGE, _OVERRIDE_OFF)}
     if gcs:
         titles.update(_GCS_DESCRIPTIONS)
     if gated:

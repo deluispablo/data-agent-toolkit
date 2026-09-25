@@ -18,13 +18,13 @@ from typing import Any, cast
 from pydantic import ValidationError
 
 from ._exceptions import ResponseParsingError, SchemaValidationError
-from ._models import CSVInspectionResult
+from ._models import _ModelAnswer
 
 # Bumped by hand on any change to the prompt wording (date-based; the suffix
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-c"
+PROMPT_VERSION = "2026.09-d"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -66,7 +66,8 @@ def _strip_schema(node: object, defs: dict[str, Any]) -> object:
 def response_schema() -> dict[str, Any]:
     """The JSON Schema both backends send to constrain the model's answer.
 
-    Built from the result model's JSON Schema, without ``title``,
+    Built from the JSON Schema of the model's answer (``_ModelAnswer``:
+    ``footer_first_line``, not the result's ``footer_lines``), without ``title``,
     ``description`` and ``default`` keys and with any ``$defs`` inlined, so
     it is small enough for Ollama to compile into a grammar. Numeric bounds
     stay. The schema is the contract of the answer's shape; the prompt only
@@ -76,7 +77,7 @@ def response_schema() -> dict[str, Any]:
     Returns:
         The JSON Schema, as a dict.
     """
-    schema = CSVInspectionResult.model_json_schema()
+    schema = _ModelAnswer.model_json_schema()
     return cast("dict[str, Any]", _strip_schema(schema, schema.get("$defs", {})))
 
 
@@ -128,7 +129,7 @@ infer columns.
             "\n(The sample above is only the START of the file; its end was not sampled. "
             "Its last line may be truncated and is never a footer.)\n"
         )
-        file_end = 'the end of the file (not sampled here, so "footer_lines" must be [])'
+        file_end = 'the end of the file (not sampled here, so "footer_first_line" must be null)'
     else:
         tail_section = (
             "\n(The sample above contains the ENTIRE file; there is no separate tail. "
@@ -173,10 +174,10 @@ empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"
 - an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"
 - a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"
 - a blank line separating the data from any of the above
-Copy every footer line verbatim into "footer_lines" (a blank line is ""), \
-from the first footer line to the last line of the file. Use [] only when \
-the file really ends with a data row. Footer lines are never part of the \
-header preamble.
+Copy only the first non-blank line after the last data row, verbatim, \
+into "footer_first_line"; the rest of the footer is read from the file. Use \
+null only when the file really ends with a data row. Footer lines are never \
+part of the header preamble.
 
 Keep in mind:
 - The delimiter may also appear inside quoted fields; do not confuse it with the real separator.
@@ -211,8 +212,11 @@ def _extract_json_payload(raw_response: str) -> str:
     return text[start : end + 1] if 0 <= start < end else text
 
 
-def parse_and_validate(raw_response: str, model: str) -> CSVInspectionResult:
-    """Parse a raw model response into a validated inspection result.
+def parse_and_validate(raw_response: str, model: str) -> _ModelAnswer:
+    """Parse a raw model response into a validated model answer.
+
+    Built-in and custom invokers alike go through here; grounding then
+    turns the answer into the public result.
 
     Args:
         raw_response: The raw text returned by the model.
@@ -220,7 +224,7 @@ def parse_and_validate(raw_response: str, model: str) -> CSVInspectionResult:
             diagnostics.
 
     Returns:
-        A validated :class:`CSVInspectionResult`.
+        The validated answer, still to be grounded in the samples.
 
     Raises:
         ResponseParsingError: If the response is not valid JSON.
@@ -233,7 +237,7 @@ def parse_and_validate(raw_response: str, model: str) -> CSVInspectionResult:
         raise ResponseParsingError(f"Model '{model}' returned invalid JSON: {exc}") from exc
 
     try:
-        return CSVInspectionResult.model_validate(data)
+        return _ModelAnswer.model_validate(data)
     except ValidationError as exc:
         raise SchemaValidationError(
             f"Model '{model}' response did not match the expected schema: {exc}"

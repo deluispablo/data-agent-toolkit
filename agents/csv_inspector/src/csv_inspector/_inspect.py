@@ -44,7 +44,7 @@ from ._invokers import (
     builtin_async_invoker,
     builtin_invoker,
 )
-from ._models import CSVInspectionResult, Usage
+from ._models import CSVInspectionResult, Usage, _ModelAnswer
 from ._prompt import PROMPT_VERSION, build_prompt, parse_and_validate
 from ._sampling import (
     DEFAULT_SAMPLE_BYTES,
@@ -329,8 +329,8 @@ class _Run:
                 share * 100,
             )
 
-    def succeeded(self, model: str, result: CSVInspectionResult) -> CSVInspectionResult:
-        """Ground a validated answer in the samples and return it with its usage attached."""
+    def succeeded(self, model: str, answer: _ModelAnswer) -> CSVInspectionResult:
+        """Ground a validated answer in the samples: the result, with its usage attached."""
         usage = Usage(
             model=model,
             prompt_tokens=self._prompt_tokens,
@@ -346,7 +346,7 @@ class _Run:
             "Inspection of '%s' succeeded with model '%s' (confidence=%.2f).",
             samples.description,
             model,
-            result.confidence,
+            answer.confidence,
         )
         logger.info(
             "Usage: model=%s prompt_tokens=%s completion_tokens=%s latency=%.2fs "
@@ -360,7 +360,7 @@ class _Run:
             usage.prompt_version,
         )
         grounded = ground_in_samples(
-            result,
+            answer,
             samples.head_text,
             samples.tail_text,
             covers_whole_file=samples.covers_whole_file,
@@ -472,13 +472,13 @@ def inspect_csv(
     for candidate, budget in run.attempts():
         try:
             raw = run.responded(_call_with_deadline(call, run.prompt, candidate, budget))
-            result = parse_and_validate(raw, candidate)
+            answer = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
         except run.retryable as exc:
             run.failed(candidate, exc)
             continue
-        return run.succeeded(candidate, result)
+        return run.succeeded(candidate, answer)
     raise run.failure_error()
 
 
@@ -547,11 +547,11 @@ async def ainspect_csv(
         try:
             response = await _acall_with_deadline(call, run.prompt, candidate, budget)
             raw = run.responded(response)
-            result = parse_and_validate(raw, candidate)
+            answer = parse_and_validate(raw, candidate)
         except BackendConfigurationError:
             raise
         except run.retryable as exc:
             run.failed(candidate, exc)
             continue
-        return run.succeeded(candidate, result)
+        return run.succeeded(candidate, answer)
     raise run.failure_error()

@@ -40,6 +40,7 @@ def _result(
     return CSVInspectionResult(
         encoding=encoding,
         delimiter=delimiter,
+        has_header=header_row_index is not None,
         header_row_index=header_row_index,
         footer_lines=footer_lines,
         columns=["unused"],  # read_rows reads the dialect and positions only

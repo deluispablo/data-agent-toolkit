@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 2813 characters on PROMPT_VERSION
-# 2026.09-c, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 3095
+# The template with empty samples: 2826 characters on PROMPT_VERSION
+# 2026.09-d, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 3109
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -103,7 +103,7 @@ _GOLDEN_WITH_TAIL = (
     '- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"\n'
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
-    'Copy every footer line verbatim into "footer_lines" (a blank line is ""), from the first footer line to the last line of the file. Use [] only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
+    'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
     "\n"
     "Keep in mind:\n"
     "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"
@@ -133,12 +133,12 @@ _GOLDEN_TRUNCATED_HEAD = (
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
     "\n"
-    'FOOTER (end of the file): check the end of the file (not sampled here, so "footer_lines" must be []) independently of the header. A data row holds a real record, with values like the rows above it (a date in the date column, a name in the name column, and so on). Any trailing line after the last data row is a footer line, for example:\n'
+    'FOOTER (end of the file): check the end of the file (not sampled here, so "footer_first_line" must be null) independently of the header. A data row holds a real record, with values like the rows above it (a date in the date column, a name in the name column, and so on). Any trailing line after the last data row is a footer line, for example:\n'
     '- a totals/summary row: it may have the same number of fields as a data row, but it carries a label instead of a record and leaves other fields empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"\n'
     '- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"\n'
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
-    'Copy every footer line verbatim into "footer_lines" (a blank line is ""), from the first footer line to the last line of the file. Use [] only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
+    'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
     "\n"
     "Keep in mind:\n"
     "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"
@@ -173,7 +173,7 @@ _GOLDEN_WHOLE_FILE = (
     '- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"\n'
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
-    'Copy every footer line verbatim into "footer_lines" (a blank line is ""), from the first footer line to the last line of the file. Use [] only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
+    'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
     "\n"
     "Keep in mind:\n"
     "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"

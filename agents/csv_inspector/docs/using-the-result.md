@@ -33,8 +33,9 @@ deterministically from the sampled text:
   field equal to a model's column name), that row is data: the result is
   corrected to `has_header=false` with positional names. The test reads
   only the sample.
-- **Footer:** the earliest reported footer line (by last occurrence) that
-  really appears at the end of the source, moved forward past data rows,
+- **Footer:** the model reports only the first non-blank footer line.
+  That line, found at its last occurrence at the end of the source, is
+  moved forward past data rows,
   taken verbatim through to the end, and extended backwards over blank
   separators, totals-labelled rows (`TOTAL`, `Subtotal`,
   `Total registros: 250`, `Suma`...) and other lines that are not data
@@ -43,11 +44,12 @@ deterministically from the sampled text:
   trailing empty fields are ignored, or when the reported text (8
   characters or more) occurs within it. A data row has the modal field
   count of the end of the source, at least half of its fields filled, and
-  is not a totals row.
+  is not a totals row. A blank reported line starts at the end of the
+  source and extends backwards the same way.
 
 A header that cannot be anchored is returned as the model reported it. A
-reported footer that does not occur at the sampled end of the source, or
-that is made only of data rows, is dropped, since keeping it would make
+reported footer line that does not occur at the sampled end of the
+source, or that only data rows follow, is dropped with a WARNING, since keeping it would make
 readers skip real data rows. Grounding never promotes an unlabelled data
 row to a footer.
 

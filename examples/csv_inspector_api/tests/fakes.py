@@ -26,7 +26,7 @@ SAMPLE_ANSWER = json.dumps(
         "escapechar": None,
         "doublequote": True,
         "header_row_index": 2,
-        "footer_lines": [],
+        "footer_first_line": None,
         "columns": ["Fecha", "Cliente", "Descripción", "Importe", "Observaciones"],
         "confidence": 0.9,
     }

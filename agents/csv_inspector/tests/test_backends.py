@@ -259,6 +259,9 @@ def test_cloud_invoker_sends_a_deterministic_json_request_with_the_schema(
     assert config.response_mime_type == "application/json"
     # The very dict the Ollama backend sends as ``format`` (issue #130).
     assert config.response_json_schema is response_schema()
+    sent = config.response_json_schema["properties"]
+    assert "footer_first_line" in sent
+    assert "footer_lines" not in sent
     assert config.system_instruction
     assert config.automatic_function_calling.disable
 
@@ -663,6 +666,10 @@ def test_response_schema_is_small_flat_and_bounded() -> None:
         assert keyword not in text
     assert "usage" not in schema["properties"]
     assert schema["properties"]["columns"]["type"] == "array"
+    # The model's answer, not the result: one footer anchor line (issue #132).
+    assert "footer_first_line" in schema["properties"]
+    assert "footer_lines" not in schema["properties"]
+    assert "footer_rows_to_skip" not in schema["properties"]
     assert schema["properties"]["confidence"] == {
         "maximum": 1.0,
         "minimum": 0.0,
@@ -699,6 +706,8 @@ def test_ollama_request_sends_the_response_schema(
     (request,) = fake.requests
     assert request["format"] == response_schema()
     assert request["format"]["properties"]["columns"]["type"] == "array"
+    assert "footer_first_line" in request["format"]["properties"]
+    assert "footer_lines" not in request["format"]["properties"]
 
 
 @pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])

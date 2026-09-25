@@ -14,7 +14,7 @@ import re
 from collections import Counter
 
 from ._encoding import LINE_BREAK, canonical_codec_name
-from ._models import CSVInspectionResult
+from ._models import CSVInspectionResult, _ModelAnswer
 
 logger = logging.getLogger(__name__)
 
@@ -226,28 +226,32 @@ def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, o
 
 
 def _locate_footer_lines(
-    footer_lines: list[str],
+    anchor: str,
     end_of_file: str,
     delimiter: str,
     quotechar: str,
     model_delimiter: str | None = None,
 ) -> list[str] | None:
-    """Re-read the model's footer verbatim from the real end of the file.
+    """Read the footer verbatim from the real end of the file, from one anchor line.
 
-    The model is good at recognizing footer content but unreliable at
-    copying it exactly: it tends to drop blank separator lines, skip a line
-    in the middle, copy a line imperfectly, or take the last data rows for
-    a footer. Each non-blank line it reported anchors at its last matching
-    line in the file's last lines (see :func:`_anchor_matches`); a line the
-    model wrote with its own, replaced delimiter also anchors. The footer
-    starts at the earliest anchor, moved past the last data row at or after
-    it, since a footer follows the data (the model may point at a ragged
-    data row with full rows after it); it then takes every line from there
-    to the end of the file verbatim, and extends backwards over the blank,
-    totals and other non-data lines that separate it from the data.
+    The model is asked for the first non-blank footer line only: it is good
+    at recognizing footer content but unreliable at copying several lines
+    (it drops blank separators, skips a line, or takes the last data rows
+    for a footer), and the file holds the footer anyway. The anchor matches
+    its last occurrence in the file's last lines (see
+    :func:`_anchor_matches`), also when the model wrote it with its own,
+    replaced delimiter; a data-shaped anchor that occurs nowhere (a
+    miscopied or made-up last data row) means the footer starts right after
+    the data. The footer starts after the last data row at or after the
+    anchor, since a footer follows the data (the model may point at a
+    ragged data row with full rows after it); it then takes every line from
+    there to the end of the file verbatim, and extends backwards over the
+    blank, totals and other non-data lines that separate it from the data.
+    A blank anchor (the model copied the blank separator line) starts at the
+    end of the file and extends backwards the same way.
 
     Args:
-        footer_lines: The footer lines reported by the model.
+        anchor: The first footer line reported by the model.
         end_of_file: Decoded text that ends at the real end of the file (the
             tail sample, or the head sample when it covers the whole file).
         delimiter: The field delimiter, used to tell footer lines from data.
@@ -256,54 +260,51 @@ def _locate_footer_lines(
             replaced it: the model copies footer lines with its own
             delimiter (``TOTAL,,12.50`` for ``TOTAL		12.50``).
 
-    A reported data row that occurs nowhere (the model miscopied or made up
-    the last data row) anchors right after the data.
-
     Returns:
-        The grounded footer lines, or ``None`` when none of the model's
-        non-blank footer lines occur in ``end_of_file`` (and none is shaped
-        like a data row), or nothing but data follows the anchor.
+        The grounded footer lines, or ``None`` when the anchor does not occur
+        in ``end_of_file`` (and is not shaped like a data row), or only data
+        rows follow it (nothing to anchor).
     """
-    reported = {line.strip() for line in footer_lines if line.strip()}
+    reported = anchor.strip()
+    keys = {reported}
     if model_delimiter and model_delimiter != delimiter:
-        reported |= {line.replace(model_delimiter, delimiter) for line in reported}
-    if not reported:
-        return None
+        keys.add(reported.replace(model_delimiter, delimiter))
     lines = _split_lines(end_of_file)
-    # Last occurrence of each reported line, so text that also appears earlier
-    # in the data cannot drag data rows into the footer. Line 0 is skipped: in
-    # a tail sample it is usually a truncated fragment.
-    last_seen = (
-        next(
-            (i for i in range(len(lines) - 1, 0, -1) if _anchor_matches(text, lines[i], delimiter)),
-            None,
-        )
-        for text in reported
-    )
-    anchors = [anchor for anchor in last_seen if anchor is not None]
     width = _data_width(lines, delimiter, quotechar)
 
     def is_data(line: str) -> bool:
         return width is not None and _is_data_row(line, delimiter, quotechar, width)
 
-    if not anchors:
-        # A data row the model miscopied or made up still says where it saw
-        # the footer: right after the data.
-        if not any(is_data(text) for text in reported):
-            return None
-        anchors = [1]
-
-    start = min(anchors)
-    data_rows = [index for index in range(start, len(lines)) if is_data(lines[index])]
-    if data_rows:
-        start = data_rows[-1] + 1
+    if reported:
+        # The last occurrence, so text that also appears earlier in the data
+        # cannot drag data rows into the footer. Line 0 is skipped: in a tail
+        # sample it is usually a truncated fragment.
+        found = next(
+            (
+                i
+                for i in range(len(lines) - 1, 0, -1)
+                if any(_anchor_matches(key, lines[i], delimiter) for key in keys)
+            ),
+            None,
+        )
+        if found is None:
+            # A data row the model miscopied or made up still says where it
+            # saw the footer: right after the data.
+            if not any(is_data(key) for key in keys):
+                return None
+            found = 1
+        data_rows = [index for index in range(found, len(lines)) if is_data(lines[index])]
+        start = data_rows[-1] + 1 if data_rows else found
+    else:
+        start = len(lines)
+    if start < len(lines) or not reported:
+        while start > 1 and (
+            _extends_footer(lines[start - 1], delimiter, quotechar)
+            or (width is not None and not is_data(lines[start - 1]))
+        ):
+            start -= 1
     if start == len(lines):
         return None
-    while start > 1 and (
-        _extends_footer(lines[start - 1], delimiter, quotechar)
-        or (width is not None and not is_data(lines[start - 1]))
-    ):
-        start -= 1
     return lines[start:]
 
 
@@ -462,23 +463,24 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
 
 
 def ground_in_samples(
-    result: CSVInspectionResult,
+    answer: _ModelAnswer,
     head_sample: str,
     tail_sample: str | None,
     *,
     covers_whole_file: bool = True,
     detected_encoding: str | None = None,
 ) -> CSVInspectionResult:
-    """Correct what the model reported by matching it against the sampled text.
+    """Build the public result from the model's answer, matched against the sampled text.
 
-    Small local models recognize headers and footers reliably but count and
-    copy lines poorly. Positions and verbatim text are therefore recomputed
-    deterministically from the real samples, using the model's own answer
-    as the key: the header row (and the column names as actually written)
-    is located from the inferred columns, blank names the model left out
-    included, and the footer is re-read verbatim from the end of the file.
-    A footer starts at the first non-data line the model pointed at; the
-    model's line is a key, matched tolerantly (see
+    This is the only place the pipeline constructs a
+    :class:`CSVInspectionResult`. Small local models recognize headers and
+    footers reliably but count and copy lines poorly. Positions and verbatim
+    text are therefore recomputed deterministically from the real samples,
+    using the model's own answer as the key: the header row (and the column
+    names as actually written) is located from the inferred columns, blank
+    names the model left out included, and the footer is read verbatim from
+    the end of the file, starting at the first non-data line the model
+    pointed at (its ``footer_first_line``, matched tolerantly: see
     :func:`_locate_footer_lines`). A delimiter that splits too few head
     lines, or that another usual delimiter clearly dominates, is replaced
     (see :func:`_ground_delimiter`), and the reported encoding is checked
@@ -487,27 +489,27 @@ def ground_in_samples(
     has the same field shapes (integer, decimal, date, empty or text) as the
     second: header-less detection is a shape test on the sample, not on the
     model's answer (see :func:`_first_row_is_data`). Any other header that
-    cannot be anchored is left as the model reported it. A footer that
-    cannot be anchored is dropped when the end of the file was sampled,
-    since it is not there.
+    cannot be anchored is left as the model reported it. A footer anchor
+    that cannot be found is dropped, with a WARNING, when the end of the
+    file was sampled, since the footer is not there.
 
     Args:
-        result: The model's validated result.
+        answer: The model's validated answer.
         head_sample: The decoded head sample.
         tail_sample: The decoded tail sample, or ``None`` when the head
             covers the whole file.
         covers_whole_file: Whether the samples reach the real end of the
             file. When ``False`` (no tail and a truncated head), any footer
             the model reported cannot be real, since the end was never
-            seen, so ``footer_lines`` is cleared.
+            seen, so ``footer_lines`` is empty.
         detected_encoding: The encoding detected from the raw head sample,
             or ``None`` to leave the reported encoding unchecked.
 
     Returns:
-        The result with ``delimiter``, ``header_row_index``, column names,
-        ``footer_lines`` and ``encoding`` grounded in the samples; the same
-        object when nothing changed.
+        The result, with ``delimiter``, ``header_row_index``, column names,
+        ``footer_lines`` and ``encoding`` grounded in the samples.
     """
+    result = CSVInspectionResult.model_validate(answer.model_dump(exclude={"footer_first_line"}))
     updates: dict[str, object] = {}
 
     model_delimiter = result.delimiter
@@ -519,25 +521,23 @@ def ground_in_samples(
 
     updates.update(_ground_header(result, head_sample))
 
-    if tail_sample is None and not covers_whole_file:
-        # The head's last lines are mid-file data, never a footer.
-        if result.footer_lines:
-            updates["footer_lines"] = []
-    else:
+    anchor = answer.footer_first_line
+    if anchor is not None and (tail_sample is not None or covers_whole_file):
         end_of_file = tail_sample if tail_sample is not None else head_sample
         footer_lines = _locate_footer_lines(
-            result.footer_lines, end_of_file, result.delimiter, result.quotechar, model_delimiter
+            anchor, end_of_file, result.delimiter, result.quotechar, model_delimiter
         )
-        if footer_lines is None and any(line.strip() for line in result.footer_lines):
+        if footer_lines is None:
             # The real end of the file was seen and the reported footer is
             # not there. Keeping it would make readers drop real data rows.
             logger.warning(
-                "Discarding footer lines that do not occur at the end of the file: %s",
-                result.footer_lines,
+                "Discarding a footer line that does not occur at the end of the file: %r",
+                anchor,
             )
-            footer_lines = []
-        if footer_lines is not None and footer_lines != result.footer_lines:
+        else:
             updates["footer_lines"] = footer_lines
+    # Otherwise the footer stays empty: the model reported none, or the end
+    # of the file was never sampled (the head's last lines are mid-file data).
 
     if detected_encoding is not None:
         encoding = _ground_encoding(result.encoding, detected_encoding)

@@ -30,6 +30,15 @@ pipelines consume.
   schema auto-detection), which reads every row instead of a 4 KB sample:
   see `docs/using-the-result.md`, "Column types"
   ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129)).
+- Building or validating a `CSVInspectionResult` by hand is strict: the
+  small-model spellings the library accepts in a model's answer (a tab
+  written `"tab"` or `"\t"`, `""` or `"null"` for no escape or quote
+  character, a `-1` header index, an escape character equal to the quote
+  character, a `has_header` inferred from `header_row_index`) now fail
+  validation there. Answers from a model or a custom `model_invoker` are
+  unaffected. Migration: pass the real characters and an explicit
+  `has_header`
+  ([#132](https://github.com/deluispablo/data-agent-toolkit/issues/132)).
 
 ### Added
 
@@ -80,7 +89,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-c` today), and the
+  version of the prompt the models were sent (`2026.09-d` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -115,6 +124,18 @@ pipelines consume.
 
 ### Changed
 
+- The model is asked for the first footer line only
+  (`footer_first_line`: the first non-blank line after the last data row,
+  or `null`) instead of copying every footer line; grounding already read
+  the footer from the file, and now anchors on that one line. The JSON
+  contract of the result does not change: `CSVInspectionResult` still has
+  `footer_lines` and `footer_rows_to_skip`. What the model answers is now a
+  private type, `_ModelAnswer`, separate from the result; the schema both
+  backends send describes it (`footer_first_line`, no `footer_lines`).
+  A custom `model_invoker` answer in the old shape, with a `footer_lines`
+  list, is still accepted: its first non-blank line is the anchor
+  (`PROMPT_VERSION` `2026.09-d`)
+  ([#132](https://github.com/deluispablo/data-agent-toolkit/issues/132)).
 - The local backend sends the answer's JSON Schema to Ollama
   (`format=<schema>`, structured outputs) instead of plain JSON mode, and
   the cloud backend sends the same schema, stripped of titles,

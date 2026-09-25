@@ -61,35 +61,57 @@ class Usage(BaseModel):
     prompt_version: str
 
 
-class CSVInspectionResult(BaseModel):
-    """Structured, validated result of inspecting a CSV/TSV file fragment.
+def _require_one_character(value: str | None) -> str | None:
+    """Reject a dialect character that is not exactly one character."""
+    if value is not None and len(value) != 1:
+        raise ValueError(f"must be exactly one character, got {value!r}")
+    return value
 
-    Attributes:
-        encoding: The detected character encoding (e.g. ``utf-8``, ``latin-1``).
-        delimiter: The field delimiter character (e.g. ``,`` or ``;``).
-        quotechar: The character used to quote fields containing the delimiter.
-        escapechar: The escape character, if any, used to escape the quote
-            character inside a field.
-        doublequote: Whether embedded quote characters are escaped by
-            doubling them, per RFC 4180.
-        has_header: Whether the file has a row of column names. ``False``
-            for a header-less file, whose first row is already data.
-        header_row_index: Zero-based index of the row containing the real
-            column names; equivalently, the number of preamble lines (export
-            banners, comments, blank lines) to skip before the header.
-            ``None`` exactly when ``has_header`` is ``False``; a header-less
-            file with preamble lines is not described (known limitation).
-        footer_lines: Raw trailing lines (totals, summary rows, "end of
-            report" markers, generation timestamps, blank separator lines)
-            that follow the last data row, in file order.
-        footer_rows_to_skip: Number of trailing rows to discard as non-data
-            footers. Derived from ``footer_lines`` rather than inferred
-            separately, so the two can never disagree.
-        columns: The column names as written in the header row, in file
-            order, or positional names (``column_1``, ``column_2``, ...) when
-            ``has_header`` is ``False``. Surrounding whitespace is stripped;
-            empty names and duplicates are kept, as they are in the file.
-        confidence: The model's self-reported confidence, in ``[0.0, 1.0]``.
+
+def _require_consistent_header(has_header: bool, header_row_index: int | None) -> None:
+    """Require a header row index exactly when the file has a header."""
+    if has_header and header_row_index is None:
+        raise ValueError("header_row_index is required when has_header is true")
+    if not has_header and header_row_index is not None:
+        raise ValueError("header_row_index must be null when has_header is false")
+
+
+def _require_readable_dialect(delimiter: str, quotechar: str, escapechar: str | None) -> None:
+    """Reject a dialect that ``csv`` and pandas cannot read.
+
+    Each character may be valid alone, but a line break cannot separate or
+    quote fields, and the delimiter, quote and escape characters must all
+    differ. Failing validation moves on to the fallback model instead of
+    breaking grounding and every reader downstream.
+    """
+    characters = {"delimiter": delimiter, "quotechar": quotechar, "escapechar": escapechar}
+    for name, character in characters.items():
+        if character in _LINE_BREAKS:
+            raise ValueError(f"{name} cannot be a line break, got {character!r}")
+    if delimiter in (quotechar, escapechar):
+        raise ValueError(f"delimiter {delimiter!r} must differ from quotechar and escapechar")
+    if escapechar == quotechar:
+        raise ValueError(f"escapechar and quotechar must differ, got {quotechar!r}")
+
+
+class _ModelAnswer(BaseModel):
+    """What the model is asked to answer: the key that grounding turns into a result.
+
+    Private: hosts receive :class:`CSVInspectionResult`, which
+    ``ground_in_samples`` builds from this answer and the samples. Its JSON
+    Schema, stripped of annotations, is the schema both backends send
+    (``_prompt.response_schema``). The fields are those of the result,
+    except that the footer is asked for as one anchor line,
+    ``footer_first_line`` (the first non-blank line after the last data
+    row, or ``None``): grounding re-reads the whole footer from the file.
+
+    Validation is lenient where small models are predictably sloppy (a tab
+    spelled ``"tab"``, a ``-1`` header index, an escaped quote meaning
+    doubled quotes, padded column names) and strict where a reader would
+    break (see :class:`CSVInspectionResult`). An answer in the pre-0.4
+    shape, with ``footer_lines`` instead of ``footer_first_line`` (a custom
+    ``model_invoker`` written for an older release), is still accepted: its
+    first non-blank footer line is the anchor.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -99,27 +121,11 @@ class CSVInspectionResult(BaseModel):
     quotechar: str = '"'
     escapechar: str | None = None
     doublequote: bool = True
-    has_header: bool = Field(
-        default=True,
-        description="Whether the file has a row of column names; false if its first row is data.",
-    )
-    header_row_index: int | None = Field(
-        default=None,
-        ge=0,
-        description=(
-            "Zero-based index of the row containing the real column names; "
-            "null exactly when has_header is false."
-        ),
-    )
-    footer_lines: list[str] = Field(default_factory=list)
+    has_header: bool = True
+    header_row_index: int | None = Field(default=None, ge=0)
+    footer_first_line: str | None = None
     columns: list[str] = Field(min_length=1)
     confidence: float = Field(ge=0.0, le=1.0)
-    # Tokens, latency and attempts of the inspection that returned this result
-    # (see Usage); None on a result built any other way. Kept out of the JSON
-    # Schema sent to the model and out of every dump, so the serialized result
-    # keeps its contract. Documented here, not in the docstring above: that
-    # docstring is the schema's description, part of every cloud request.
-    usage: SkipJsonSchema[Usage | None] = Field(default=None, exclude=True)
 
     @field_validator("delimiter", "quotechar", "escapechar", mode="before")
     @classmethod
@@ -132,9 +138,10 @@ class CSVInspectionResult(BaseModel):
         same spellings (and JSON ``null``) come back as the quote character;
         they map to the default ``'"'``, which is inert for ``csv``, pandas,
         PySpark and BigQuery when it never occurs in the file. Anything else
-        that is not exactly one character is rejected, so a malformed answer
-        fails validation (and the fallback model runs) instead of breaking
-        ``csv``/pandas downstream.
+        is left to the strict check, which rejects a value that is not
+        exactly one character, so a malformed answer fails validation (and
+        the fallback model runs) instead of breaking ``csv``/pandas
+        downstream.
         """
         if value is None and info.field_name == "quotechar":
             return '"'
@@ -147,9 +154,13 @@ class CSVInspectionResult(BaseModel):
         # Strip spaces only: a line break stays a (rejected) quote character.
         if info.field_name == "quotechar" and value.strip(" ").lower() in _NO_ESCAPE_SPELLINGS:
             return '"'
-        if len(value) != 1:
-            raise ValueError(f"must be exactly one character, got {value!r}")
         return value
+
+    @field_validator("delimiter", "quotechar", "escapechar")
+    @classmethod
+    def _check_one_character(cls, value: str | None) -> str | None:
+        """Reject a dialect character that is not exactly one character."""
+        return _require_one_character(value)
 
     @field_validator("columns", mode="before")
     @classmethod
@@ -163,6 +174,25 @@ class CSVInspectionResult(BaseModel):
         if not isinstance(value, list):
             return value
         return [name.strip() if isinstance(name, str) else name for name in value]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _footer_lines_as_first_line(cls, data: object) -> object:
+        """Read a pre-0.4 ``footer_lines`` list as its first footer line.
+
+        The first non-blank line is the anchor; a list of blank lines only
+        is a blank anchor, and an empty list is ``None``. An explicit
+        ``footer_first_line`` wins.
+        """
+        if not isinstance(data, dict) or "footer_lines" not in data:
+            return data
+        lines = data["footer_lines"]
+        data = {key: value for key, value in data.items() if key != "footer_lines"}
+        if "footer_first_line" in data or not isinstance(lines, list):
+            return data
+        texts = [line for line in lines if isinstance(line, str)]
+        anchor = next((line for line in texts if line.strip()), "" if texts else None)
+        return {**data, "footer_first_line": anchor}
 
     @model_validator(mode="before")
     @classmethod
@@ -201,37 +231,96 @@ class CSVInspectionResult(BaseModel):
         return data
 
     @model_validator(mode="after")
+    def _check_header_and_dialect(self) -> _ModelAnswer:
+        """Apply the result's strict header and dialect checks to the answer."""
+        _require_consistent_header(self.has_header, self.header_row_index)
+        _require_readable_dialect(self.delimiter, self.quotechar, self.escapechar)
+        return self
+
+
+class CSVInspectionResult(BaseModel):
+    """Structured, validated result of inspecting a CSV/TSV file fragment.
+
+    The library builds it from the model's answer grounded in the samples;
+    the model never answers this type directly. Validation is strict: each
+    dialect character is exactly one character, the delimiter, quote and
+    escape characters differ and none is a line break, and
+    ``header_row_index`` is set exactly when ``has_header`` is true.
+
+    Attributes:
+        encoding: The detected character encoding (e.g. ``utf-8``, ``latin-1``).
+        delimiter: The field delimiter character (e.g. ``,`` or ``;``).
+        quotechar: The character used to quote fields containing the delimiter.
+        escapechar: The escape character, if any, used to escape the quote
+            character inside a field.
+        doublequote: Whether embedded quote characters are escaped by
+            doubling them, per RFC 4180.
+        has_header: Whether the file has a row of column names. ``False``
+            for a header-less file, whose first row is already data.
+        header_row_index: Zero-based index of the row containing the real
+            column names; equivalently, the number of preamble lines (export
+            banners, comments, blank lines) to skip before the header.
+            ``None`` exactly when ``has_header`` is ``False``; a header-less
+            file with preamble lines is not described (known limitation).
+        footer_lines: Raw trailing lines (totals, summary rows, "end of
+            report" markers, generation timestamps, blank separator lines)
+            that follow the last data row, in file order.
+        footer_rows_to_skip: Number of trailing rows to discard as non-data
+            footers. Derived from ``footer_lines`` rather than inferred
+            separately, so the two can never disagree.
+        columns: The column names as written in the header row, in file
+            order, or positional names (``column_1``, ``column_2``, ...) when
+            ``has_header`` is ``False``. Surrounding whitespace in the model's
+            answer is stripped; empty names and duplicates are kept, as they
+            are in the file.
+        confidence: The model's self-reported confidence, in ``[0.0, 1.0]``.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    encoding: str
+    delimiter: str
+    quotechar: str = '"'
+    escapechar: str | None = None
+    doublequote: bool = True
+    has_header: bool = Field(
+        default=True,
+        description="Whether the file has a row of column names; false if its first row is data.",
+    )
+    header_row_index: int | None = Field(
+        default=None,
+        ge=0,
+        description=(
+            "Zero-based index of the row containing the real column names; "
+            "null exactly when has_header is false."
+        ),
+    )
+    footer_lines: list[str] = Field(default_factory=list)
+    columns: list[str] = Field(min_length=1)
+    confidence: float = Field(ge=0.0, le=1.0)
+    # Tokens, latency and attempts of the inspection that returned this result
+    # (see Usage); None on a result built any other way. Kept out of the JSON
+    # Schema and out of every dump, so the serialized result keeps its
+    # contract. Documented here, not in the docstring above: that docstring
+    # is the schema's description.
+    usage: SkipJsonSchema[Usage | None] = Field(default=None, exclude=True)
+
+    @field_validator("delimiter", "quotechar", "escapechar")
+    @classmethod
+    def _check_one_character(cls, value: str | None) -> str | None:
+        """Reject a dialect character that is not exactly one character."""
+        return _require_one_character(value)
+
+    @model_validator(mode="after")
     def _check_header(self) -> CSVInspectionResult:
         """Require a header row index exactly when the file has a header."""
-        if self.has_header and self.header_row_index is None:
-            raise ValueError("header_row_index is required when has_header is true")
-        if not self.has_header and self.header_row_index is not None:
-            raise ValueError("header_row_index must be null when has_header is false")
+        _require_consistent_header(self.has_header, self.header_row_index)
         return self
 
     @model_validator(mode="after")
     def _check_dialect(self) -> CSVInspectionResult:
-        """Reject a dialect that ``csv`` and pandas cannot read.
-
-        Each character may be valid alone, but a line break cannot separate
-        or quote fields, and the delimiter, quote and escape characters must
-        all differ. Failing validation moves on to the fallback model instead
-        of breaking grounding and every reader downstream.
-        """
-        characters = {
-            "delimiter": self.delimiter,
-            "quotechar": self.quotechar,
-            "escapechar": self.escapechar,
-        }
-        for name, character in characters.items():
-            if character in _LINE_BREAKS:
-                raise ValueError(f"{name} cannot be a line break, got {character!r}")
-        if self.delimiter in (self.quotechar, self.escapechar):
-            raise ValueError(
-                f"delimiter {self.delimiter!r} must differ from quotechar and escapechar"
-            )
-        if self.escapechar == self.quotechar:
-            raise ValueError(f"escapechar and quotechar must differ, got {self.quotechar!r}")
+        """Reject a dialect that ``csv`` and pandas cannot read."""
+        _require_readable_dialect(self.delimiter, self.quotechar, self.escapechar)
         return self
 
     @computed_field  # type: ignore[prop-decorator]

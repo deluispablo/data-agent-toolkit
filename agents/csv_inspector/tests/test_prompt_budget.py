@@ -17,7 +17,7 @@ import pytest
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
 # The template with empty samples: 1912 characters on PROMPT_VERSION
-# 2026.09-j, plus 10 %. Lower it when the template shrinks (#133).
+# 2026.09-k, plus 10 %. Lower it when the template shrinks (#133).
 PROMPT_TEMPLATE_MAX_CHARS = 2104
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
@@ -86,7 +86,7 @@ _GOLDEN_WITH_TAIL = (
     "\n"
     "--- TAIL SAMPLE END ---\n"
     "\n"
-    "The head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file; its first line is likely a cut fragment: do not use it for columns.\n"
+    "The head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file: read footer lines ONLY from its last lines. Its first line is likely a cut fragment: do not use it for columns.\n"
     "\n"
     "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'

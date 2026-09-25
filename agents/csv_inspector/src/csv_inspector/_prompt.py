@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-j"
+PROMPT_VERSION = "2026.09-k"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -117,8 +117,8 @@ def build_prompt(
 --- TAIL SAMPLE END ---
 
 The head stops mid-data: its last line may be cut and is never a footer. \
-The tail is the real end of the file; its first line is likely a cut \
-fragment: do not use it for columns.
+The tail is the real end of the file: read footer lines ONLY from its last \
+lines. Its first line is likely a cut fragment: do not use it for columns.
 """
         file_end = "the last lines of the TAIL sample"
     elif not covers_whole_file:

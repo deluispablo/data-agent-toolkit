@@ -427,9 +427,6 @@ def test_header_less_answers_validate(
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        pytest.param(
-            {"has_header": True, "header_row_index": None}, "required when has_header", id="null"
-        ),
         pytest.param({"has_header": False, "header_row_index": 0}, "must be null when", id="index"),
         pytest.param({"header_row_index": -2}, "greater than or equal to 0", id="negative"),
     ],
@@ -438,6 +435,16 @@ def test_contradictory_header_answers_fail(answer: dict[str, object], message: s
     """has_header and header_row_index must agree, with a clear message."""
     with pytest.raises(ValidationError, match=message):
         _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+
+
+@pytest.mark.parametrize("index", [None, -1])
+def test_a_null_header_index_means_no_header_whatever_has_header_says(index: int | None) -> None:
+    """``has_header: true`` with a null index is a header-less answer, not a contradiction."""
+    answer = _ModelAnswer.model_validate(
+        {**VALID_RESULT_PAYLOAD, "has_header": True, "header_row_index": index}
+    )
+
+    assert (answer.has_header, answer.header_row_index) == (False, None)
 
 
 def test_a_missing_header_row_index_still_fails() -> None:
@@ -1847,7 +1854,7 @@ def test_no_quoting_spellings_map_quotechar_to_default(value: str | None) -> Non
     [
         {"delimiter": ",", "quotechar": ","},
         {"delimiter": ",", "escapechar": ","},
-        {"delimiter": "\n"},
+        {"quotechar": "\n"},
         {"quotechar": "\r"},
     ],
 )
@@ -1855,6 +1862,34 @@ def test_a_dialect_csv_cannot_read_fails_validation(dialect: dict[str, str]) -> 
     """Characters that are valid alone but conflict fail validation (issue #48)."""
     with pytest.raises(ValidationError, match=r"line break|must differ"):
         _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **dialect})
+
+
+@pytest.mark.parametrize("value", ["\n", "\r\n"])
+def test_a_line_break_delimiter_in_the_answer_means_one_column(value: str) -> None:
+    """A model reading a one-column file as one field per line answers a line break."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": value})
+
+    assert answer.delimiter == ","
+    with pytest.raises(ValidationError, match="line break"):
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": "\n"})
+
+
+@pytest.mark.parametrize(
+    ("anchor", "expected"),
+    [
+        ("--- Fin ---\nGenerado el 2024-08-08\n\n", "--- Fin ---"),
+        ("\r\n\r\nTOTAL;;1", "TOTAL;;1"),
+        ("\n\n", ""),
+        ("TOTAL;;1", "TOTAL;;1"),
+    ],
+)
+def test_a_multi_line_footer_anchor_keeps_its_first_non_blank_line(
+    anchor: str, expected: str
+) -> None:
+    """Asked for one line, a model that copies the whole footer still anchors on its first."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "footer_first_line": anchor})
+
+    assert answer.footer_first_line == expected
 
 
 def test_an_escapechar_equal_to_the_quotechar_means_doubled_quotes() -> None:

@@ -151,7 +151,10 @@ class _ModelAnswer(_StrictDialect):
 
         Small models often write a tab as ``"tab"`` or as a backslash followed
         by ``t``, and "no escape character" as ``""`` or ``"null"``.
-        Those are mapped to a real tab and to ``None``. For unquoted files the
+        Those are mapped to a real tab and to ``None``. A line break given
+        as the delimiter (a one-column file read as "one field per line")
+        maps to ``,``, which splits nothing there; grounding still replaces
+        it when another delimiter splits the head. For unquoted files the
         same spellings (and JSON ``null``) come back as the quote character;
         they map to the default ``'"'``, which is inert for ``csv``, pandas,
         PySpark and BigQuery when it never occurs in the file. Anything else
@@ -166,6 +169,8 @@ class _ModelAnswer(_StrictDialect):
             return value
         if value.lower() in _TAB_SPELLINGS:
             return "\t"
+        if info.field_name == "delimiter" and value and not value.strip("\r\n"):
+            value = ","
         if info.field_name == "escapechar" and value.strip().lower() in _NO_ESCAPE_SPELLINGS:
             return None
         # Strip spaces only: a line break stays a (rejected) quote character.
@@ -227,19 +232,33 @@ class _ModelAnswer(_StrictDialect):
     def _infer_has_header(cls, data: object) -> object:
         """Read a null (or ``-1``) header row index as "no header row".
 
-        Models answer ``null`` or ``-1`` for a header-less file, often
-        without ``has_header``. ``-1`` is taken as ``null``, and a missing
-        ``has_header`` follows the header row index. An explicit
-        ``has_header`` is kept, so a contradiction still fails validation.
+        Models answer ``null`` or ``-1`` for a header-less file, with or
+        without ``has_header``, and sometimes with ``has_header: true``.
+        ``-1`` is taken as ``null``, and a null index means no header row,
+        whatever ``has_header`` says. A missing ``has_header`` follows the
+        index. ``has_header: false`` with an index still fails validation:
+        which of the two is wrong cannot be told.
         """
         if not isinstance(data, dict) or "header_row_index" not in data:
             return data
         index = data["header_row_index"]
         if index == -1 and not isinstance(index, bool):
             data = {**data, "header_row_index": None}
-        if "has_header" not in data:
+        if data["header_row_index"] is None or "has_header" not in data:
             data = {**data, "has_header": data["header_row_index"] is not None}
         return data
+
+    @field_validator("footer_first_line", mode="before")
+    @classmethod
+    def _first_line_only(cls, value: object) -> object:
+        """Keep the first non-blank line of an anchor that spans several lines.
+
+        Asked for one line, models sometimes copy the whole footer. The first
+        non-blank line is the anchor; blank lines only are a blank anchor.
+        """
+        if not isinstance(value, str) or ("\n" not in value and "\r" not in value):
+            return value
+        return next((line for line in value.splitlines() if line.strip()), "")
 
 
 class CSVInspectionResult(_StrictDialect):

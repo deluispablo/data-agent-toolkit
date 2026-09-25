@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-i"
+PROMPT_VERSION = "2026.09-j"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -122,11 +122,9 @@ def build_prompt(
 {tail_sample}
 --- TAIL SAMPLE END ---
 
-The head sample stops somewhere in the middle of the data: its last line \
-may be truncated and is never a footer. The tail sample is the real end of \
-the file: read footer lines ONLY from its last lines. Its first visible \
-line is very likely a truncated fragment, not a real row: do not use it to \
-infer columns.
+The head stops mid-data: its last line may be cut and is never a footer. \
+The tail is the real end of the file; its first line is likely a cut \
+fragment: do not use it for columns.
 """
         file_end = "the last lines of the TAIL sample"
     elif not covers_whole_file:
@@ -142,9 +140,8 @@ infer columns.
         )
         file_end = "the last lines of the sample above"
 
-    return f"""Below are byte samples from a real, possibly messy CSV file. The \
-encoding heuristically detected by chardet is: {detected_encoding!r} (it may \
-be incorrect).
+    return f"""Byte samples of a real, possibly messy CSV file follow. Encoding \
+guessed by chardet (may be wrong): {detected_encoding!r}.
 
 --- HEAD SAMPLE START (first bytes of the file) ---
 {head_sample}

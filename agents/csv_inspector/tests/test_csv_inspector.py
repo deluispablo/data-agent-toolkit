@@ -356,7 +356,7 @@ def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
     prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample="9,9\n")
 
     assert "FOOTER: in the last lines of the TAIL sample" in prompt
-    assert "read footer lines ONLY from its last lines" in prompt
+    assert "The tail is the real end of the file" in prompt
 
 
 def test_build_prompt_no_longer_requests_derived_or_removed_fields() -> None:

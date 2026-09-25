@@ -6,6 +6,7 @@ import asyncio
 import sys
 import time
 from collections.abc import Callable
+from functools import partial
 from types import SimpleNamespace
 from typing import Any
 
@@ -47,52 +48,62 @@ class FakeOllama:
     Attributes:
         client_kwargs: Keyword arguments each client was constructed with.
         requests: Keyword arguments of every chat request, in call order.
+        chat: The handler every client's ``chat`` calls.
+        delay_seconds: Delay before each answer.
         closed_clients: How many clients were closed (context exited).
     """
 
     def __init__(self, chat: ChatHandler, *, delay_seconds: float = 0.0) -> None:
-        self._chat = chat
-        self._delay = delay_seconds
+        self.chat = chat
+        self.delay_seconds = delay_seconds
         self.client_kwargs: list[dict[str, Any]] = []
         self.requests: list[dict[str, Any]] = []
         self.closed_clients = 0
-        fake = self
-
-        class Client:
-            def __init__(self, **kwargs: Any) -> None:
-                fake.client_kwargs.append(kwargs)
-
-            def __enter__(self) -> Client:
-                return self
-
-            def __exit__(self, *exc_info: object) -> None:
-                fake.closed_clients += 1
-
-            def chat(self, **kwargs: Any) -> Any:
-                fake.requests.append(kwargs)
-                if fake._delay:
-                    time.sleep(fake._delay)
-                return fake._chat(**kwargs)
-
-        class AsyncClient:
-            def __init__(self, **kwargs: Any) -> None:
-                fake.client_kwargs.append(kwargs)
-
-            async def __aenter__(self) -> AsyncClient:
-                return self
-
-            async def __aexit__(self, *exc_info: object) -> None:
-                fake.closed_clients += 1
-
-            async def chat(self, **kwargs: Any) -> Any:
-                fake.requests.append(kwargs)
-                if fake._delay:
-                    await asyncio.sleep(fake._delay)
-                return fake._chat(**kwargs)
-
         self.module = SimpleNamespace(
-            Client=Client, AsyncClient=AsyncClient, ResponseError=ResponseError
+            Client=partial(_FakeOllamaClient, self),
+            AsyncClient=partial(_FakeOllamaAsyncClient, self),
+            ResponseError=ResponseError,
         )
+
+
+class _FakeOllamaClient:
+    """``ollama.Client`` of a :class:`FakeOllama`."""
+
+    def __init__(self, fake: FakeOllama, **kwargs: Any) -> None:
+        self._fake = fake
+        fake.client_kwargs.append(kwargs)
+
+    def __enter__(self) -> _FakeOllamaClient:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self._fake.closed_clients += 1
+
+    def chat(self, **kwargs: Any) -> Any:
+        self._fake.requests.append(kwargs)
+        if self._fake.delay_seconds:
+            time.sleep(self._fake.delay_seconds)
+        return self._fake.chat(**kwargs)
+
+
+class _FakeOllamaAsyncClient:
+    """``ollama.AsyncClient`` of a :class:`FakeOllama`."""
+
+    def __init__(self, fake: FakeOllama, **kwargs: Any) -> None:
+        self._fake = fake
+        fake.client_kwargs.append(kwargs)
+
+    async def __aenter__(self) -> _FakeOllamaAsyncClient:
+        return self
+
+    async def __aexit__(self, *exc_info: object) -> None:
+        self._fake.closed_clients += 1
+
+    async def chat(self, **kwargs: Any) -> Any:
+        self._fake.requests.append(kwargs)
+        if self._fake.delay_seconds:
+            await asyncio.sleep(self._fake.delay_seconds)
+        return self._fake.chat(**kwargs)
 
 
 def install_fake_ollama(

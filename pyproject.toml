@@ -44,9 +44,13 @@ select = [
     "RET",      # return statements
     "PTH",      # prefer pathlib
     "PT",       # pytest style
-    "PL",       # pylint
+    "PL",       # pylint (includes PLR0912 branches and PLR0915 statements)
+    "C90",      # mccabe complexity
     "RUF",      # ruff-specific
 ]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
 
 [tool.ruff.lint.pydocstyle]
 convention = "google"

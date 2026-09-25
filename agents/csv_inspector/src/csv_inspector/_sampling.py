@@ -484,6 +484,36 @@ def _bound_lines(
     return "".join(head[:MAX_HEAD_LINES]), tail_text, omitted
 
 
+def _sample_tail(
+    reader: _Reader, head_raw: bytes, encoding: str, tail_bytes: int
+) -> tuple[str, str | None, bool]:
+    """Read and decode the tail that follows a full head window.
+
+    Args:
+        reader: The source's reader.
+        head_raw: The head window, as read.
+        encoding: The encoding detected from the head.
+        tail_bytes: Maximum tail window size, in bytes; ``0`` disables it.
+
+    Returns:
+        The encoding (detected again from both windows when a UTF-8 head is
+        followed by a tail that is not UTF-8), the decoded tail (``None``
+        without one), and whether the head covers the whole source.
+    """
+    tail_raw = reader.tail(len(head_raw), tail_bytes, code_unit_size(encoding))
+    if tail_raw is None:
+        return encoding, None, False
+    if not tail_raw:
+        # Without a known size, nothing tells whether the source ends
+        # here: assume it does not.
+        return encoding, None, tail_bytes != 0 or reader.size == len(head_raw)
+    if canonical_codec_name(encoding) == "utf-8" and not is_utf8_suffix(tail_raw):
+        # An ASCII head says nothing about bytes further down, e.g.
+        # a cp1252 name in the last rows: detect from both samples.
+        encoding = detect_encoding(head_raw + tail_raw)
+    return encoding, decode_sample(tail_raw, tail_encoding(head_raw, encoding)), True
+
+
 def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     """Read and decode the bounded head and tail samples of ``source``.
 
@@ -535,20 +565,12 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         tail_text: str | None = None
         covers_whole_file = True
         if len(head_raw) == n_bytes:
-            tail_raw = reader.tail(len(head_raw), tail_bytes, code_unit_size(encoding))
-            if tail_raw:
-                if canonical_codec_name(encoding) == "utf-8" and not is_utf8_suffix(tail_raw):
-                    # An ASCII head says nothing about bytes further down, e.g.
-                    # a cp1252 name in the last rows: detect from both samples.
-                    encoding = detect_encoding(head_raw + tail_raw)
-                    head_text = decode_sample(head_raw, encoding)
-                tail_text = decode_sample(tail_raw, tail_encoding(head_raw, encoding))
-            elif tail_raw is None:
-                covers_whole_file = False
-            elif tail_bytes == 0:
-                # Without a known size, nothing tells whether the source ends
-                # here: assume it does not.
-                covers_whole_file = reader.size == len(head_raw)
+            tail_encoding_, tail_text, covers_whole_file = _sample_tail(
+                reader, head_raw, encoding, tail_bytes
+            )
+            if tail_encoding_ != encoding:
+                encoding = tail_encoding_
+                head_text = decode_sample(head_raw, encoding)
     except OSError as exc:
         raise FileSampleReadError(f"Unable to read sample from '{description}': {exc}") from exc
     finally:

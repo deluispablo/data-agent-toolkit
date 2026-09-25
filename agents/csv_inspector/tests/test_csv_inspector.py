@@ -438,13 +438,21 @@ def test_contradictory_header_answers_fail(answer: dict[str, object], message: s
 
 
 @pytest.mark.parametrize("index", [None, -1])
-def test_a_null_header_index_means_no_header_whatever_has_header_says(index: int | None) -> None:
-    """``has_header: true`` with a null index is a header-less answer, not a contradiction."""
+def test_has_header_with_a_null_index_is_read_as_row_0(index: int | None) -> None:
+    """Ambiguous, not a contradiction: grounding decides from the sample."""
     answer = _ModelAnswer.model_validate(
         {**VALID_RESULT_PAYLOAD, "has_header": True, "header_row_index": index}
     )
 
-    assert (answer.has_header, answer.header_row_index) == (False, None)
+    assert (answer.has_header, answer.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(("value", "expected"), [(90, 0.9), (100, 1.0), (0.8, 0.8), (1, 1)])
+def test_a_percentage_confidence_is_read_as_a_fraction(value: float, expected: float) -> None:
+    """Small models answer 90 or 100; the schema's maximum cannot stop them."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "confidence": value})
+
+    assert answer.confidence == pytest.approx(expected)
 
 
 def test_a_missing_header_row_index_still_fails() -> None:
@@ -1759,6 +1767,38 @@ def test_grounding_names_header_less_columns_positionally(tmp_path: Path) -> Non
     )
 
     assert result.columns == ["column_1", "column_2", "column_3"]
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        (["Fecha", "Cliente", "Importe"], (True, 0, ["Fecha", "Cliente", "Importe"])),
+        (["2024-01-01", "Acme", "10.00"], (False, None, ["column_1", "column_2", "column_3"])),
+    ],
+)
+def test_grounding_finds_the_header_a_no_header_answer_named(
+    tmp_path: Path, names: list[str], expected: tuple[bool, int | None, list[str]]
+) -> None:
+    """Names equal to a line above differently shaped data are a header; data values are not."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha,Cliente,Importe\n2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8"
+    )
+    if names[0] == "2024-01-01":
+        target.write_text("2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=names,
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index, result.columns) == expected
 
 
 def test_grounding_keeps_one_name_in_a_one_column_file(tmp_path: Path) -> None:

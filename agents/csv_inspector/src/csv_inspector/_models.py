@@ -25,6 +25,9 @@ _NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
 # Characters that end a row: csv and pandas reject them as dialect characters.
 _LINE_BREAKS = frozenset({"\r", "\n"})
 
+# A confidence above 1 and up to this is a percentage (see _ModelAnswer).
+_PERCENT = 100
+
 
 class Usage(BaseModel):
     """What the model phase of one successful inspection cost.
@@ -232,21 +235,36 @@ class _ModelAnswer(_StrictDialect):
     def _infer_has_header(cls, data: object) -> object:
         """Read a null (or ``-1``) header row index as "no header row".
 
-        Models answer ``null`` or ``-1`` for a header-less file, with or
-        without ``has_header``, and sometimes with ``has_header: true``.
-        ``-1`` is taken as ``null``, and a null index means no header row,
-        whatever ``has_header`` says. A missing ``has_header`` follows the
-        index. ``has_header: false`` with an index still fails validation:
-        which of the two is wrong cannot be told.
+        Models answer ``null`` or ``-1`` for a header-less file, often
+        without ``has_header``. ``-1`` is taken as ``null``, and a missing
+        ``has_header`` follows the header row index. ``has_header: true``
+        with a null index is ambiguous (models answer it for real headers
+        and for header-less files alike): it is read as row 0, and grounding
+        decides, anchoring the names or finding row 0 shaped like data.
+        ``has_header: false`` with an index still fails validation.
         """
         if not isinstance(data, dict) or "header_row_index" not in data:
             return data
         index = data["header_row_index"]
         if index == -1 and not isinstance(index, bool):
             data = {**data, "header_row_index": None}
-        if data["header_row_index"] is None or "has_header" not in data:
+        if "has_header" not in data:
             data = {**data, "has_header": data["header_row_index"] is not None}
+        elif data["has_header"] is True and data["header_row_index"] is None:
+            data = {**data, "header_row_index": 0}
         return data
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _percent_confidence(cls, value: object) -> object:
+        """Read a confidence above 1 and up to 100 as a percentage.
+
+        A response schema cannot make a model respect ``maximum``; small
+        models answer ``90`` or ``100``.
+        """
+        if isinstance(value, int | float) and not isinstance(value, bool) and 1 < value <= _PERCENT:
+            return value / _PERCENT
+        return value
 
     @field_validator("footer_first_line", mode="before")
     @classmethod

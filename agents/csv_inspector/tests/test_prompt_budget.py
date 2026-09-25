@@ -17,7 +17,7 @@ import pytest
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
 # The template with empty samples: 1912 characters on PROMPT_VERSION
-# 2026.09-k, plus 10 %. Lower it when the template shrinks (#133).
+# 2026.09-l, plus 10 %. Lower it when the template shrinks (#133).
 PROMPT_TEMPLATE_MAX_CHARS = 2104
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
@@ -88,13 +88,6 @@ _GOLDEN_WITH_TAIL = (
     "\n"
     "The head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file: read footer lines ONLY from its last lines. Its first line is likely a cut fragment: do not use it for columns.\n"
     "\n"
-    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
-    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
-    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
-    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
-    '- "columns" holds each name copied character for character from the header row.\n'
-    "\n"
     "HEADER:\n"
     "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
@@ -103,6 +96,13 @@ _GOLDEN_WITH_TAIL = (
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
     '"footer_first_line": the first non-blank footer line, verbatim; null only when the file ends with a data row.\n'
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
+    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
+    '- "columns" holds each name copied character for character from the header row.\n'
 )
 
 _GOLDEN_TRUNCATED_HEAD = (
@@ -116,13 +116,6 @@ _GOLDEN_TRUNCATED_HEAD = (
     "\n"
     "(The sample above is only the START of the file; its end was not sampled. Its last line may be truncated and is never a footer.)\n"
     "\n"
-    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
-    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
-    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
-    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
-    '- "columns" holds each name copied character for character from the header row.\n'
-    "\n"
     "HEADER:\n"
     "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
@@ -131,6 +124,13 @@ _GOLDEN_TRUNCATED_HEAD = (
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
     '"footer_first_line": the first non-blank footer line, verbatim; null only when the file ends with a data row.\n'
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
+    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
+    '- "columns" holds each name copied character for character from the header row.\n'
 )
 
 _GOLDEN_WHOLE_FILE = (
@@ -144,13 +144,6 @@ _GOLDEN_WHOLE_FILE = (
     "\n"
     "(The sample above contains the ENTIRE file; there is no separate tail. Its last lines are the real end of the file.)\n"
     "\n"
-    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
-    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
-    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
-    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
-    '- "columns" holds each name copied character for character from the header row.\n'
-    "\n"
     "HEADER:\n"
     "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
@@ -159,4 +152,11 @@ _GOLDEN_WHOLE_FILE = (
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
     '"footer_first_line": the first non-blank footer line, verbatim; null only when the file ends with a data row.\n'
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
+    '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
+    '- "columns" holds each name copied character for character from the header row.\n'
 )

@@ -185,6 +185,11 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     names = {name.strip().casefold() for name in result.columns} - {""}
     if any(field.strip().casefold() in names for field in first):
         return False
+    return _shaped_alike(first, second)
+
+
+def _shaped_alike(first: list[str], second: list[str]) -> bool:
+    """Whether two rows of equal width look like two data rows (see :func:`_first_row_is_data`)."""
     first_shape = [_field_shape(field) for field in first]
     second_shape = [_field_shape(field) for field in second]
     if first_shape == second_shape:
@@ -200,17 +205,32 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
 def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
     """Return the header fields to correct: row index, names, or "no header".
 
-    A header-less file gets positional column names, whatever names the
-    model made up. A model that answers a header at row 0 it cannot anchor,
+    A model that answers "no header" but whose names are, exactly, a line
+    of the head followed by a line not shaped like it (see
+    :func:`_shaped_alike`) has found the header after all: that line is
+    reported as the header row. Otherwise a header-less file gets
+    positional column names, whatever names the model made up (often the
+    first data row's values). A model that answers a header at row 0 it cannot anchor,
     over a first row shaped like the data below it, is corrected to no
     header row (see :func:`_first_row_is_data`). In a one-column file (the
     delimiter splits no head line) the header row holds the only name,
     however many lines the model listed as columns.
     """
+    lines = _split_lines(head_sample.lstrip("﻿"))
     if not result.has_header:
+        rows = [_split_fields(line, result.delimiter, result.quotechar) for line in lines]
+        for index, (fields, next_fields) in enumerate(itertools.pairwise(rows)):
+            if (
+                fields is not None
+                and [field.strip() for field in fields] == result.columns
+                and next_fields is not None
+                and len(next_fields) == len(fields)
+                and not _shaped_alike(fields, next_fields)
+            ):
+                logger.info("The model's column names are line %d: reporting a header row.", index)
+                return {"has_header": True, "header_row_index": index, "columns": fields}
         positional = [f"column_{number}" for number in range(1, len(result.columns) + 1)]
         return {} if result.columns == positional else {"columns": positional}
-    lines = _split_lines(head_sample.lstrip("﻿"))
     index = result.header_row_index or 0
     if (
         len(result.columns) > 1

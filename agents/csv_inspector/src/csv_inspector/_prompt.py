@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-k"
+PROMPT_VERSION = "2026.09-l"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -33,6 +33,8 @@ _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 # Annotation keywords dropped from the response schema: they are prose for
 # humans, and Ollama compiles the schema into a grammar, so every key costs.
 _SCHEMA_ANNOTATIONS = frozenset({"title", "description", "default"})
+# The longest footer anchor the response schema lets a model write.
+_ANCHOR_MAX_CHARS = 300
 
 
 def _strip_annotations(node: object) -> object:
@@ -77,6 +79,10 @@ def response_schema() -> dict[str, Any]:
         raise TypeError("_ModelAnswer must stay flat: Ollama gets no $defs to resolve")
     stripped = cast("dict[str, Any]", _strip_annotations(schema))
     stripped["required"] = list(stripped["properties"])
+    # A small model can loop inside this string until the reply cap, which
+    # leaves invalid JSON. A capped string stays valid, and a cut-off data row
+    # still anchors as a substring.
+    stripped["properties"]["footer_first_line"]["anyOf"][0]["maxLength"] = _ANCHOR_MAX_CHARS
     return stripped
 
 
@@ -141,18 +147,6 @@ guessed by chardet (may be wrong): {detected_encoding!r}.
 {head_sample}
 --- HEAD SAMPLE END ---
 {tail_section}
-Analyze the samples and answer with a JSON object matching the schema you \
-were given. What its fields mean:
-- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
-- "quotechar" is the character that wraps quoted fields: "'" when fields \
-look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
-- "escapechar" and "doublequote": a quote inside a quoted field written \
-with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
-written doubled ("") or never present, "escapechar": null, "doublequote": true.
-- "delimiter" is the real separator: it may also appear inside quoted \
-fields, and rows may have uneven field counts.
-- "columns" holds each name copied character for character from the header row.
-
 HEADER:
 - Preamble lines (export banners, '#' comments, blank lines) come before \
 the column-name row: "header_row_index" is their count (0-based index of \
@@ -168,6 +162,18 @@ holds a real record, like the rows above it):
 "Generado el 2024-01-20 10:00:00"; a blank line before them
 "footer_first_line": the first non-blank footer line, verbatim; null only \
 when the file ends with a data row.
+
+Analyze the samples and answer with a JSON object matching the schema you \
+were given. What its fields mean:
+- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
+- "quotechar" is the character that wraps quoted fields: "'" when fields \
+look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
+- "escapechar" and "doublequote": a quote inside a quoted field written \
+with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
+written doubled ("") or never present, "escapechar": null, "doublequote": true.
+- "delimiter" is the real separator: it may also appear inside quoted \
+fields, and rows may have uneven field counts.
+- "columns" holds each name copied character for character from the header row.
 """
 
 

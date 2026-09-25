@@ -1,27 +1,23 @@
 """One inspection of one fixture, scored: :class:`FileEvaluation` and its run-file line.
 
-Private imports: the harness lives in the repository, not in a host, so it
-may import private names. ``--keep-raw`` wraps
-``csv_inspector._inspect.builtin_invoker`` for the duration of each
-inspection: the public ``model_invoker`` returns plain text, so going
-through it would drop the token counts from ``Usage`` and change which
-errors count as a failed attempt.
+``--keep-raw`` records the answers through :mod:`.recording`, the harness's
+one seam into the library's built-in invoker.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager, nullcontext
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from typing import Any
 
-from csv_inspector import CSVInspectorError, LLMBackend, Settings, _inspect, _invokers, inspect_csv
-from csv_inspector._invokers import _RETRY_WARNING, InvokerResponse
+from csv_inspector import CSVInspectorError, LLMBackend, Settings, _invokers, inspect_csv
+from csv_inspector._invokers import _RETRY_WARNING
 from csv_inspector._models import Usage
 
 from .guards import SAMPLES_DIR, calls_made
+from .recording import recording_invoker
 from .replay import RawAnswers, replaying_invoker
 from .scoring import EXPECTED_ERROR, RESULT_FIELDS, column_diagnostics, compare
 
@@ -143,39 +139,6 @@ class FileEvaluation:
         )
 
 
-_SyncCall = Callable[[str, str, float | None], InvokerResponse]
-# The factory inspect_csv looks up in its module when no model_invoker is given.
-_SEAM = "builtin_invoker"
-
-
-@contextmanager
-def recording_builtin_invoker(raw: RawAnswers) -> Iterator[None]:
-    """Record the raw text of every built-in model call made inside the block.
-
-    Replaces ``csv_inspector._inspect.builtin_invoker`` with a factory whose
-    invokers append ``{"model", "text"}`` to ``raw`` and return the
-    :class:`InvokerResponse` unchanged, so ``Usage`` keeps its token counts.
-    The harness is sequential, so swapping a module attribute is safe here.
-    """
-    original: Callable[..., _SyncCall] = getattr(_inspect, _SEAM)
-
-    def factory(backend: LLMBackend, settings: Settings, *, fields: int | None = None) -> _SyncCall:
-        call = original(backend, settings, fields=fields)
-
-        def recording(prompt: str, model: str, timeout: float | None) -> InvokerResponse:
-            response = call(prompt, model, timeout)
-            raw.append({"model": model, "text": response.text})
-            return response
-
-        return recording
-
-    setattr(_inspect, _SEAM, factory)
-    try:
-        yield
-    finally:
-        setattr(_inspect, _SEAM, original)
-
-
 class _RetryCounter(logging.Handler):
     """Counts the library's retry warnings (``_RETRY_WARNING``) while attached.
 
@@ -243,7 +206,11 @@ def evaluate_file(
     try:
         with (
             counter,
-            recording_builtin_invoker(raw) if keep_raw and invoker is None else nullcontext(),
+            recording_invoker(
+                lambda model, _, answer: raw.append({"model": model, "text": answer.text})
+            )
+            if keep_raw and invoker is None
+            else nullcontext(),
         ):
             result = inspect_csv(
                 SAMPLES_DIR / filename,

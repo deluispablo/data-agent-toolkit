@@ -6,7 +6,7 @@ import copy
 import xml.etree.ElementTree as ET
 from typing import Any
 
-from render_readme_hero import DARK, LIGHT
+from readme_svg import DARK, LIGHT
 from render_walkthrough import alt_text, clip, details_blocks, render
 
 DATA: dict[str, Any] = {

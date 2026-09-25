@@ -9,7 +9,7 @@ answer, grounding, result) with the real data of one inspection. With
 
 Order: capture first, then render. Rendering needs no model and is
 deterministic. Palette, fonts and SVG helpers come from
-``render_readme_hero.py``. Standard library only.
+``readme_svg.py``. Standard library only.
 
 Usage:
     python scripts/render_walkthrough.py [--markdown]
@@ -22,7 +22,7 @@ import json
 from html import escape
 from typing import Any
 
-from render_readme_hero import ASSETS, DARK, FONT, LIGHT, SANS, Palette, pill, text, wrap_names
+from readme_svg import ASSETS, DARK, FONT, LIGHT, SANS, Palette, pill, text, wrap_names
 
 WALKTHROUGH = ASSETS / "walkthrough.json"
 

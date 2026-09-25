@@ -11,9 +11,8 @@ The sample windows are shrunk to 224 and 80 bytes so that the 380-byte
 demo file shows both a head and a mid-line tail, with bytes in between
 that are never read; the library's defaults are 4 KiB each.
 
-The prompt and the raw answer are recorded by wrapping
-``csv_inspector._inspect.builtin_invoker``, the seam
-``eval_samples.py --keep-raw`` uses. Rerun after a prompt, grounding or
+The prompt and the raw answer are recorded by ``eval_harness.recording``,
+the seam ``eval_samples.py --keep-raw`` uses too. Rerun after a prompt, grounding or
 default-model change, then rerun ``render_walkthrough.py``. Needs
 ``ollama serve`` with ``qwen2.5-coder:7b`` (and ``:3b``) pulled.
 
@@ -25,15 +24,13 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Callable, Iterator
-from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
-from csv_inspector import LLMBackend, Settings, _inspect, inspect_csv
-from csv_inspector._invokers import InvokerResponse
+from csv_inspector import Settings, inspect_csv
 from csv_inspector._prompt import parse_and_validate
 from csv_inspector._sampling import sample_source
+from eval_harness.recording import recording_invoker
 
 ASSETS = Path(__file__).resolve().parent.parent / "docs" / "assets"
 DEMO_FILE = ASSETS / "demo_sales.csv"
@@ -53,44 +50,6 @@ _SHARED_FIELDS = (
     "header_row_index",
     "columns",
 )
-
-_SyncCall = Callable[[str, str, float | None], InvokerResponse]
-# The factory inspect_csv looks up in its module when no model_invoker is given.
-_SEAM = "builtin_invoker"
-
-
-@contextmanager
-def _recording_calls(calls: list[dict[str, Any]]) -> Iterator[None]:
-    """Record the prompt and raw answer of every built-in model call in the block.
-
-    Args:
-        calls: The list ``{"model", "prompt", "answer", "prompt_tokens"}`` entries are
-            appended to.
-    """
-    original: Callable[..., _SyncCall] = getattr(_inspect, _SEAM)
-
-    def factory(backend: LLMBackend, settings: Settings, *, fields: int | None = None) -> _SyncCall:
-        call = original(backend, settings, fields=fields)
-
-        def recording(prompt: str, model: str, timeout: float | None) -> InvokerResponse:
-            response = call(prompt, model, timeout)
-            calls.append(
-                {
-                    "model": model,
-                    "prompt": prompt,
-                    "answer": response.text,
-                    "prompt_tokens": response.prompt_tokens,
-                }
-            )
-            return response
-
-        return recording
-
-    setattr(_inspect, _SEAM, factory)
-    try:
-        yield
-    finally:
-        setattr(_inspect, _SEAM, original)
 
 
 def _kept_call(calls: list[dict[str, Any]], model: str) -> dict[str, Any]:
@@ -149,7 +108,16 @@ def capture(source: Path, head_bytes: int, tail_bytes: int, settings: Settings) 
         The walkthrough data, ready for :func:`write_capture`.
     """
     calls: list[dict[str, Any]] = []
-    with _recording_calls(calls):
+    with recording_invoker(
+        lambda model, prompt, answer: calls.append(
+            {
+                "model": model,
+                "prompt": prompt,
+                "answer": answer.text,
+                "prompt_tokens": answer.prompt_tokens,
+            }
+        )
+    ):
         result = inspect_csv(
             source,
             settings=settings,

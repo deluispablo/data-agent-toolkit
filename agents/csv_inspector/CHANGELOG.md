@@ -220,6 +220,15 @@ pipelines consume.
   tends to answer the defaults for these two keys. The prompt also says
   what a single-quoted field looks like (`PROMPT_VERSION` `2026.09-f`)
   ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
+- More small-model slips are read instead of failing or leaking into the
+  result: a line break answered as the delimiter of a one-column file
+  becomes `,`; a null header row index means no header row even with
+  `has_header: true`; a footer anchor copied over several lines keeps its
+  first non-blank line; a quote character that never occurs in the
+  samples is reported as the default `"`; a header-less file always gets
+  `column_1..N` names; and a one-column file keeps the header row as its
+  only column name
+  ([#133](https://github.com/deluispablo/data-agent-toolkit/issues/133)).
 
 ### Documentation
 

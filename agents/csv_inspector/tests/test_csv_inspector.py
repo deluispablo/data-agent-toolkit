@@ -1718,6 +1718,64 @@ def test_grounding_reads_quote_escaping_from_the_samples(
     assert (result.escapechar, result.doublequote) == expected
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("Fecha|Cliente\n2024-01-01|Acme\n2024-01-02|Beta\n", '"'),
+        ("Fecha|Cliente\n2024-01-01|'Acme'\n2024-01-02|Beta\n", "'"),
+    ],
+)
+def test_grounding_resets_a_quote_character_that_never_occurs(
+    tmp_path: Path, content: str, expected: str
+) -> None:
+    """A guessed ``'`` that quotes nothing becomes the default; one in the file stays."""
+    target = tmp_path / "pipes.csv"
+    target.write_text(content, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="|", quotechar="'", columns=["Fecha", "Cliente"], footer_first_line=None
+        ),
+    )
+
+    assert result.quotechar == expected
+
+
+def test_grounding_names_header_less_columns_positionally(tmp_path: Path) -> None:
+    """A model that says "no header" but invents names gets column_1..N."""
+    target = tmp_path / "rows.csv"
+    target.write_text("2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=["Date", "Company", "Amount"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert result.columns == ["column_1", "column_2", "column_3"]
+
+
+def test_grounding_keeps_one_name_in_a_one_column_file(tmp_path: Path) -> None:
+    """A model listing every line as a column of a one-column file gets the header only."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="\n", columns=["Cliente", "Acme S.L.", "Beta Corp"], footer_first_line=None
+        ),
+    )
+
+    assert (result.delimiter, result.columns) == (",", ["Cliente"])
+
+
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     """A blank name the model left out is restored from the header row (issue #153)."""
     target = tmp_path / "indexed.csv"

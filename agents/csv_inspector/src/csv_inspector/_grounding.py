@@ -200,13 +200,25 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
 def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
     """Return the header fields to correct: row index, names, or "no header".
 
-    A header-less file keeps its positional column names. A model that
-    answers a header at row 0 it cannot anchor, over a first row shaped
-    like the data below it, is corrected to no header row (see
-    :func:`_first_row_is_data`).
+    A header-less file gets positional column names, whatever names the
+    model made up. A model that answers a header at row 0 it cannot anchor,
+    over a first row shaped like the data below it, is corrected to no
+    header row (see :func:`_first_row_is_data`). In a one-column file (the
+    delimiter splits no head line) the header row holds the only name,
+    however many lines the model listed as columns.
     """
     if not result.has_header:
-        return {}
+        positional = [f"column_{number}" for number in range(1, len(result.columns) + 1)]
+        return {} if result.columns == positional else {"columns": positional}
+    lines = _split_lines(head_sample.lstrip("﻿"))
+    index = result.header_row_index or 0
+    if (
+        len(result.columns) > 1
+        and index < len(lines)
+        and _agreement_score(lines, result.delimiter, result.quotechar) == 0
+    ):
+        name = (_split_fields(lines[index], result.delimiter, result.quotechar) or [""])[0]
+        return {"columns": [name]}
     header = _locate_header_row(result, head_sample)
     if header is None:
         if result.header_row_index != 0 or not _first_row_is_data(result, head_sample):
@@ -563,7 +575,13 @@ def ground_in_samples(
         # Header and footer grounding split fields with the grounded delimiter.
         result = result.model_copy(update={"delimiter": delimiter})
 
-    updates.update(_ground_quote_escaping(result, head_sample + (tail_sample or "")))
+    text = head_sample + (tail_sample or "")
+    if result.quotechar != '"' and result.quotechar not in text:
+        # A quote character that never occurs quotes nothing: report the
+        # default, which is just as inert, instead of the model's guess.
+        updates["quotechar"] = '"'
+        result = result.model_copy(update={"quotechar": '"'})
+    updates.update(_ground_quote_escaping(result, text))
     updates.update(_ground_header(result, head_sample))
 
     anchor = answer.footer_first_line

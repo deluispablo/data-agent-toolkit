@@ -688,7 +688,7 @@ CASES: list[SampleCase] = [
             "delimiter": None,
             "header_row_index": None,
         },
-        notes="read_sample_bytes and read_tail_bytes must both return b'' without raising; "
+        notes="_sampling._PathReader.head and .tail must both return b'' without raising; "
         "inspect_csv then raises EmptySampleError before invoking any model, since there is "
         "nothing to infer from.",
         # No encoding or delimiter to parse with: there are no columns at all.

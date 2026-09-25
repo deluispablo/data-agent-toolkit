@@ -24,8 +24,7 @@ from csv_inspector._sampling import (
     DEFAULT_TAIL_BYTES,
     MAX_HEAD_LINES,
     MAX_TAIL_LINES,
-    read_sample_bytes,
-    read_tail_bytes,
+    _PathReader,
     sample_source,
 )
 from generate_samples import CASES, SampleCase, build_manifest, derive_columns
@@ -113,8 +112,8 @@ def test_head_and_tail_reads_do_not_raise_for_any_fixture(filename: str) -> None
     """Every fixture, however malformed, must be sampleable without raising."""
     path = SAMPLES_DIR / filename
 
-    head = read_sample_bytes(path, n_bytes=4096)
-    tail = read_tail_bytes(path, n_bytes=4096)
+    head = _PathReader(path).head(4096)
+    tail = _PathReader(path).tail(0, 4096, 1)
 
     assert isinstance(head, bytes)
     assert isinstance(tail, bytes)
@@ -124,8 +123,8 @@ def test_empty_file_reads_as_empty_bytes_from_both_ends() -> None:
     """The zero-byte fixture must yield an empty sample from head and tail."""
     path = SAMPLES_DIR / "empty_file.csv"
 
-    assert read_sample_bytes(path, n_bytes=4096) == b""
-    assert read_tail_bytes(path, n_bytes=4096) == b""
+    assert _PathReader(path).head(4096) == b""
+    assert _PathReader(path).tail(0, 4096, 1) == b""
 
 
 # ---------------------------------------------------------------------
@@ -135,14 +134,14 @@ def test_empty_file_reads_as_empty_bytes_from_both_ends() -> None:
 
 def test_utf8_bom_fixture_starts_with_the_bom_marker() -> None:
     """The UTF-8-BOM fixture must carry the literal BOM byte sequence."""
-    head = read_sample_bytes(SAMPLES_DIR / "encoding_utf8_bom.csv", n_bytes=16)
+    head = _PathReader(SAMPLES_DIR / "encoding_utf8_bom.csv").head(16)
 
     assert head.startswith(b"\xef\xbb\xbf")
 
 
 def test_utf16le_bom_fixture_starts_with_the_bom_marker() -> None:
     """The UTF-16LE fixture must carry its BOM and show the classic null-byte pattern."""
-    head = read_sample_bytes(SAMPLES_DIR / "encoding_utf16le_bom.csv", n_bytes=16)
+    head = _PathReader(SAMPLES_DIR / "encoding_utf16le_bom.csv").head(16)
 
     assert head.startswith(b"\xff\xfe")
     # ASCII-range characters encoded as UTF-16LE are followed by a 0x00 byte.
@@ -151,7 +150,7 @@ def test_utf16le_bom_fixture_starts_with_the_bom_marker() -> None:
 
 def test_latin1_fixture_is_not_valid_utf8() -> None:
     """The Latin-1 fixture's accented characters must not be valid UTF-8 bytes."""
-    raw = read_sample_bytes(SAMPLES_DIR / "encoding_latin1.csv", n_bytes=4096)
+    raw = _PathReader(SAMPLES_DIR / "encoding_latin1.csv").head(4096)
 
     with pytest.raises(UnicodeDecodeError):
         raw.decode("utf-8")
@@ -159,7 +158,7 @@ def test_latin1_fixture_is_not_valid_utf8() -> None:
 
 def test_latin1_fixture_decodes_cleanly_as_latin1() -> None:
     """The Latin-1 fixture must round-trip cleanly once decoded with the right codec."""
-    raw = read_sample_bytes(SAMPLES_DIR / "encoding_latin1.csv", n_bytes=4096)
+    raw = _PathReader(SAMPLES_DIR / "encoding_latin1.csv").head(4096)
 
     text = raw.decode("latin-1")
 
@@ -197,10 +196,10 @@ def test_footer_fixture_is_larger_than_the_default_sampling_budget(filename: str
 def test_footer_is_only_visible_through_the_default_tail_window(filename: str) -> None:
     """Every non-blank footer line sits in the default tail window and never in the head."""
     path = SAMPLES_DIR / filename
-    head_raw = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
+    head_raw = _PathReader(path).head(DEFAULT_SAMPLE_BYTES)
     encoding = detect_encoding(head_raw)
     head_text = decode_sample(head_raw, encoding)
-    tail_text = decode_sample(read_tail_bytes(path, n_bytes=DEFAULT_TAIL_BYTES), encoding)
+    tail_text = decode_sample(_PathReader(path).tail(0, DEFAULT_TAIL_BYTES, 1), encoding)
 
     footer_lines = [line for line in MANIFEST[filename]["expected"]["footer_lines"] if line]
     assert footer_lines, f"{filename} should list at least one non-blank footer line."
@@ -230,7 +229,7 @@ def test_inspect_csv_sends_the_footer_to_the_model_in_the_tail_section(filename:
 def test_combined_fixture_keeps_the_header_preamble_in_the_head() -> None:
     """The header+footer fixture: banner and header in the head, footer only in the tail."""
     path = SAMPLES_DIR / "header_and_footer_combined.csv"
-    head_text = decode_sample(read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES), "utf-8")
+    head_text = decode_sample(_PathReader(path).head(DEFAULT_SAMPLE_BYTES), "utf-8")
     header_row_index = MANIFEST["header_and_footer_combined.csv"]["expected"]["header_row_index"]
 
     lines = head_text.splitlines()
@@ -369,8 +368,8 @@ def test_multiline_record_sits_in_the_intended_window(filename: str, in_head: bo
     """The quoted line break lies only in the head window, or only in the tail window."""
     path = SAMPLES_DIR / filename
     marker = b'"Pedido urgente\nentregado'
-    head = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
-    tail = read_tail_bytes(path, n_bytes=DEFAULT_TAIL_BYTES)
+    head = _PathReader(path).head(DEFAULT_SAMPLE_BYTES)
+    tail = _PathReader(path).tail(0, DEFAULT_TAIL_BYTES, 1)
 
     assert path.stat().st_size > DEFAULT_SAMPLE_BYTES + DEFAULT_TAIL_BYTES
     assert (marker in head, marker in tail) == (in_head, not in_head)
@@ -392,7 +391,7 @@ def test_long_footer_does_not_fit_the_default_tail_window() -> None:
 def test_cp1252_tail_is_detected_although_the_head_is_ascii() -> None:
     """The head is pure ASCII; the accented tail still moves the encoding off UTF-8."""
     path = SAMPLES_DIR / "encoding_cp1252_tail_only.csv"
-    head = read_sample_bytes(path, n_bytes=DEFAULT_SAMPLE_BYTES)
+    head = _PathReader(path).head(DEFAULT_SAMPLE_BYTES)
 
     samples = sample_source(path, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES)
 
@@ -499,7 +498,7 @@ def test_long_line_fixture_has_no_complete_line_in_the_default_head() -> None:
     """Issue #125 case 13: the default head window ends inside the header line."""
     filename = "gen_very_wide_long_lines.csv"
 
-    assert b"\n" not in read_sample_bytes(SAMPLES_DIR / filename, DEFAULT_SAMPLE_BYTES)
+    assert b"\n" not in _PathReader(SAMPLES_DIR / filename).head(DEFAULT_SAMPLE_BYTES)
     assert MANIFEST[filename]["known_limitation"] is True
     assert len(MANIFEST[filename]["expected"]["columns"]) == 200
 

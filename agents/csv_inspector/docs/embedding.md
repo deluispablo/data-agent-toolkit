@@ -223,9 +223,9 @@ with the library's prompt, it gets back what the prompt asks for: a JSON
 object with the dialect, `has_header`, `header_row_index`, `columns`,
 `confidence` and `footer_first_line`, the first non-blank line after the
 data (or `null`); the library then reads the whole footer from the file
-and returns it as `footer_lines`. A hard-coded answer in the older shape,
-with a `footer_lines` list instead, is still accepted: its first
-non-blank line is used as `footer_first_line`.
+and returns it as `footer_lines`. Since 0.6.0 an answer in the pre-0.4
+shape, with a `footer_lines` list instead of `footer_first_line`, gets no
+footer: the list is ignored.
 
 A custom invoker may raise any exception: apart from
 `BackendConfigurationError`, which is re-raised at once, it counts as a

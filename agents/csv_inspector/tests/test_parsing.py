@@ -255,33 +255,13 @@ def test_an_escapechar_equal_to_the_quotechar_means_doubled_quotes() -> None:
     assert result.doublequote is True
 
 
-@pytest.mark.parametrize(
-    ("footer_lines", "expected"),
-    [
-        (["", "TOTAL;;60.00", "--- Fin ---"], "TOTAL;;60.00"),
-        ([""], ""),
-        ([], None),
-    ],
-    ids=["first-non-blank", "blank-only", "empty"],
-)
-def test_an_answer_with_footer_lines_is_still_accepted(
-    footer_lines: list[str], expected: str | None
-) -> None:
-    """A pre-0.4 answer (e.g. a custom invoker) anchors on its first non-blank footer line."""
+def test_a_pre_0_4_footer_lines_answer_anchors_no_footer() -> None:
+    """Since 0.6 a ``footer_lines`` list is ignored: only ``footer_first_line`` anchors a footer."""
     payload = {k: v for k, v in VALID_RESULT_PAYLOAD.items() if k != "footer_first_line"}
 
-    answer = _ModelAnswer.model_validate({**payload, "footer_lines": footer_lines})
+    answer = _ModelAnswer.model_validate({**payload, "footer_lines": ["", "TOTAL;;60.00"]})
 
-    assert answer.footer_first_line == expected
-
-
-def test_an_explicit_footer_first_line_wins_over_footer_lines() -> None:
-    """Both keys: the new one is the answer."""
-    answer = _ModelAnswer.model_validate(
-        {**VALID_RESULT_PAYLOAD, "footer_first_line": "END", "footer_lines": ["TOTAL"]}
-    )
-
-    assert answer.footer_first_line == "END"
+    assert answer.footer_first_line is None
 
 
 @pytest.mark.parametrize(

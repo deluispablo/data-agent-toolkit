@@ -8,6 +8,14 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- An answer in the pre-0.4 shape, with a `footer_lines` list instead of
+  `footer_first_line` (a custom `model_invoker` written for 0.3.x), is no
+  longer read: the list is ignored and no footer is reported. Answer
+  `footer_first_line`, the shape the prompt and the JSON Schema ask for
+  ([#171](https://github.com/deluispablo/data-agent-toolkit/issues/171)).
+
 ## [0.5.0] - 2026-09-25
 
 Leaner input and a measured budget: samples bounded in lines, a reply cap

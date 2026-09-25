@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 1946 characters on PROMPT_VERSION
-# 2026.09-i, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 2141
+# The template with empty samples: 1912 characters on PROMPT_VERSION
+# 2026.09-j, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 2104
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -72,7 +72,7 @@ def test_prompt_matches_its_golden_string(kwargs: dict[str, object], golden: str
 
 # Golden prompts, one literal per line so a wording change reads as a diff.
 _GOLDEN_WITH_TAIL = (
-    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'utf-8'.\n"
     "\n"
     "--- HEAD SAMPLE START (first bytes of the file) ---\n"
     "Fecha,Importe\n"
@@ -86,7 +86,7 @@ _GOLDEN_WITH_TAIL = (
     "\n"
     "--- TAIL SAMPLE END ---\n"
     "\n"
-    "The head sample stops somewhere in the middle of the data: its last line may be truncated and is never a footer. The tail sample is the real end of the file: read footer lines ONLY from its last lines. Its first visible line is very likely a truncated fragment, not a real row: do not use it to infer columns.\n"
+    "The head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file; its first line is likely a cut fragment: do not use it for columns.\n"
     "\n"
     "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
@@ -106,7 +106,7 @@ _GOLDEN_WITH_TAIL = (
 )
 
 _GOLDEN_TRUNCATED_HEAD = (
-    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'utf-8'.\n"
     "\n"
     "--- HEAD SAMPLE START (first bytes of the file) ---\n"
     "Fecha,Importe\n"
@@ -134,7 +134,7 @@ _GOLDEN_TRUNCATED_HEAD = (
 )
 
 _GOLDEN_WHOLE_FILE = (
-    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'utf-8'.\n"
     "\n"
     "--- HEAD SAMPLE START (first bytes of the file) ---\n"
     "Fecha,Importe\n"

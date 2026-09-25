@@ -24,7 +24,7 @@ Output .vhs-frames/
 Set Shell powershell
 Set FontSize 16
 Set Width 1100
-Set Height 640
+Set Height 700
 Set Padding 20
 Set Theme "GitHub Dark"
 Set TypingSpeed 35ms
@@ -58,6 +58,9 @@ Type "r.footer_lines"
 Enter
 Sleep 2s
 Type "r.columns"
+Enter
+Sleep 2s
+Type "r.confidence, r.usage.prompt_version, round(r.usage.latency_seconds, 1)"
 Enter
 Sleep 8s
 
@@ -93,5 +96,8 @@ Type "r.footer_lines"
 Enter
 Sleep 2s
 Type "r.columns"
+Enter
+Sleep 2s
+Type "r.confidence, r.usage.prompt_version, round(r.usage.latency_seconds, 1)"
 Enter
 Sleep 8s

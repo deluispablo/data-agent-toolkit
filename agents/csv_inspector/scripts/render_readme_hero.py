@@ -4,8 +4,9 @@ Writes four files to ``docs/assets/``:
 
 - ``demo_sales.csv``: a Windows-1252 export with a preamble banner, ``;``
   delimiter, decimal commas, a totals row and an end marker.
-- ``demo_stock.tsv``: a UTF-16 (BOM) tab-separated export with a totals row
-  and an export stamp after the data.
+- ``demo_stock.tsv``: a UTF-16 (BOM) tab-separated export with doubled
+  quotes inside quoted fields, a totals row and an export stamp after the
+  data.
 - ``hero-light.svg`` and ``hero-dark.svg``: the same CSS-animated picture
   in GitHub's light and dark palettes, inspecting one file after the other.
   The README picks one with ``<picture>`` and ``prefers-color-scheme``.
@@ -55,17 +56,17 @@ SCENES = [
         filename="demo_sales.csv",
         codec="cp1252",
         lines=[
-            "Informe de ventas - ACME Iberia S.A.",
-            "Generado: 2026-09-24 08:15",
+            "Sales report – ACME Europe Ltd.",  # noqa: RUF001 (a Windows-1252-only byte)
+            "Generated: 2026-09-24 08:15",
             "",
-            "Fecha;Tienda;Producto;Unidades;Importe (€);Devuelto",
-            "2026-07-01;Madrid Centro;Café molido 1kg;12;143,40;no",
-            "2026-07-01;Sevilla;Té verde;7;38,50;no",
-            "2026-07-02;A Coruña;Café en grano;3;41,85;sí",
-            "2026-07-02;Málaga;Cacao puro;20;96,00;no",
-            "2026-07-03;Bilbao;Café molido 1kg;9;107,55;no",
+            "Date;Store;Product;Units;Amount (€);Returned",
+            "2026-07-01;München;Ground coffee 1kg;12;143,40;no",
+            "2026-07-01;Zürich;Green tea;7;38,50;no",
+            "2026-07-02;Malmö;Coffee beans;3;41,85;yes",
+            "2026-07-02;Kraków;Pure cocoa;20;96,00;no",
+            "2026-07-03;Besançon;Ground coffee 1kg;9;107,55;no",
             "TOTAL;;;51;427,30;",
-            "*** Fin del informe ***",
+            "*** End of report ***",
         ],
         header_row_index=3,
         footer_count=2,
@@ -75,24 +76,24 @@ SCENES = [
             ("delimiter", '";"'),
             ("quotechar", '"\\""'),
             ("escapechar", "null"),
-            ("doublequote", "false"),
+            ("doublequote", "true"),
             ("has_header", "true"),
             ("header_row_index", "3"),
             ("footer_rows_to_skip", "2"),
         ],
-        columns=["Fecha", "Tienda", "Producto", "Unidades", "Importe (€)", "Devuelto"],
-        facts="qwen2.5-coder:7b on local Ollama · 1,234 tokens · confidence 0.95 · $0",
+        columns=["Date", "Store", "Product", "Units", "Amount (€)", "Returned"],
+        facts="qwen2.5-coder:7b on local Ollama · 1,053 tokens · confidence 0.95 · $0",
     ),
     Scene(
         filename="demo_stock.tsv",
         codec="utf-16",
         lines=[
             "SKU\tItem\tQty\tUnit price\tUpdated",
-            "A-1001\tHex bolt M8\t1200\t0.12\t2026-08-30",
+            'A-1001\t"Hex bolt ""M8"""\t1200\t0.12\t2026-08-30',
             "A-1002\tWasher, zinc\t5400\t0.03\t2026-08-30",
-            "B-2040\tHinge, heavy duty\t75\t4.80\t2026-08-29",
+            'B-2040\t"Hinge ""heavy duty"""\t75\t4.80\t2026-08-29',
             "C-3100\tCable tie 200 mm\t9800\t0.02\t2026-08-28",
-            "D-0007\tSealant, clear\t140\t6.25\t2026-08-27",
+            'D-0007\t"Sealant ""clear"""\t140\t6.25\t2026-08-27',
             "TOTAL\t\t16615\t\t",
             "Exported 2026-08-30 18:00 by WMS",
         ],
@@ -100,17 +101,17 @@ SCENES = [
         footer_count=2,
         head_count=4,
         result=[
-            ("encoding", '"utf-16"'),
+            ("encoding", '"UTF-16"'),
             ("delimiter", '"\\t"'),
             ("quotechar", '"\\""'),
             ("escapechar", "null"),
-            ("doublequote", "false"),
+            ("doublequote", "true"),
             ("has_header", "true"),
             ("header_row_index", "0"),
             ("footer_rows_to_skip", "2"),
         ],
         columns=["SKU", "Item", "Qty", "Unit price", "Updated"],
-        facts="qwen2.5-coder:7b on local Ollama · 1,194 tokens · confidence 0.95 · $0",
+        facts="qwen2.5-coder:7b on local Ollama · 1,061 tokens · confidence 0.95 · $0",
     ),
 ]
 
@@ -220,9 +221,14 @@ def text(x: float, y: float, content: str, cls: str = "", anchor: str = "start")
     return f'<text x="{x}" y="{y}"{extra}{align}>{body}</text>'
 
 
+def pill_width(label: str) -> float:
+    """Return the drawn width of a tag holding ``label``."""
+    return 6.6 * len(label) + 14
+
+
 def pill(x: float, y: float, label: str, color: str, cls: str) -> str:
     """Return a right-aligned rounded tag ending at ``x``, baseline ``y``."""
-    width = 6.6 * len(label) + 14
+    width = pill_width(label)
     return (
         f'<g class="{cls}"><rect x="{x - width}" y="{y - 12}" width="{width}" height="17" '
         f'rx="8.5" fill="{color}" fill-opacity=".14" stroke="{color}" stroke-opacity=".5"/>'
@@ -304,17 +310,18 @@ def file_panel(scene: Scene, t0: float, pal: Palette, t: Timeline) -> list[str]:
     for line, y in zip(tail, tail_y, strict=True):
         body.append(text(tx, y, line, "line"))
 
-    # Window labels and classification tags, right-aligned inside the panel.
+    # Window labels sit on the gap row, left and right of its caption, so
+    # they never cover a line; classification tags are right-aligned.
     right = fx + fw - 12
-    body.append(pill(right, head_y[0] + 1, "head sample", pal.blue, head_cls))
-    body.append(pill(right, tail_y[0] + 1, "tail sample", pal.blue, tail_cls))
+    label = "▲ head sample"
+    body.append(pill(win_x + 6 + pill_width(label), gap_y + 4, label, pal.blue, head_cls))
+    body.append(pill(right, gap_y + 4, "▼ tail sample", pal.blue, tail_cls))
     if hri:
         label = f"preamble: skip {hri} line{'s' if hri > 1 else ''}"
         body.append(pill(right, head_y[min(1, hri - 1)] + 1, label, pal.muted, pre_cls))
-        hdr_line, arrow = hri - 1, "▼"
+        hdr_line, label = hri - 1, f"▼ header_row_index = {hri}"
     else:
-        hdr_line, arrow = 1, "▲"
-    label = f"{arrow} header_row_index = {hri}"
+        hdr_line, label = 0, "header_row_index = 0"
     body.append(pill(right, head_y[hdr_line] + 1, label, pal.green, hdr_cls))
     label = f"footer: skip {scene.footer_count} lines"
     body.append(pill(right, tail_y[-1] + 1, label, pal.red, ftr_cls))

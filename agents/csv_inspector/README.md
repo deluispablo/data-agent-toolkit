@@ -9,7 +9,7 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
-  <img alt="csv-inspector inspects two messy exports in turn. For a Windows-1252 sales report it samples the head and tail, asks a local LLM, and returns delimiter ';', header_row_index 3 after a 3-line preamble, 2 footer lines and six column names; for a UTF-16 tab-separated stock export it returns delimiter tab, header_row_index 0, 2 footer lines and five column names" src="docs/assets/hero-light.svg" width="900">
+  <img alt="csv-inspector inspects two messy exports in turn. For a Windows-1252 sales report it samples the head and tail, asks a local LLM, and returns delimiter ';', header_row_index 3 after a 3-line preamble, 2 footer lines and six column names; for a UTF-16 tab-separated stock export with doubled quotes it returns delimiter tab, doublequote true, header_row_index 0, 2 footer lines and five column names" src="docs/assets/hero-light.svg" width="900">
 </picture>
 
 `csv-inspector` is an LLM-assisted inspector for large, messy CSV/TSV
@@ -29,9 +29,10 @@ drive downstream ingestion.
 
 Real-world exports are rarely the tidy CSV a reader expects. The file in the
 picture above is a typical one: a report banner and a timestamp before the
-header, `;` as the delimiter, decimal commas, accents in Windows-1252, and a
-totals row plus an "end of report" marker after the data. A default
-`pandas.read_csv` stops at the first accented byte with a
+header, `;` as the delimiter, decimal commas, a dash, a `€` sign and
+accented city names in Windows-1252, and a totals row plus an "end of
+report" marker after the data. A default `pandas.read_csv` stops at the
+first byte that is not UTF-8 with a
 `UnicodeDecodeError`; fix the encoding and it still needs the right
 delimiter, the lines to skip at both ends and the right header row.
 
@@ -78,9 +79,10 @@ picture,
 [`demo_sales.csv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_sales.csv)
 (Windows-1252, `;`, a preamble, a totals row and an end marker) and
 [`demo_stock.tsv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_stock.tsv)
-(UTF-16 with a BOM, tabs, a totals row and an export stamp):
+(UTF-16 with a BOM, tabs, doubled quotes, a totals row and an export
+stamp):
 
-<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, False), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines and six column names. demo_stock.tsv: ('utf-16', '	', '&quot;', None, False), (True, 0, 2), its two footer lines and five column names" src="docs/assets/demo.gif" width="900">
+<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, True), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines, six column names, and confidence 0.95 with prompt version 2026.09-d in 1.6 s. demo_stock.tsv: ('UTF-16', '	', '&quot;', None, True), (True, 0, 2), its two footer lines, five column names, and confidence 0.95 in 1.9 s" src="docs/assets/demo.gif" width="900">
 
 ## Accuracy at a glance
 
@@ -278,9 +280,12 @@ flowchart TD
 | Cost | Free | Pay per token (free tier available) |
 | Retries | Never | One retry on `503` / `429`, see below |
 
-Both backends send the same prompt: JSON output (constrained by
-`CSVInspectionResult`'s JSON Schema on Gemini) at `temperature=0.0`, then
-the same validation and grounding. SDKs are imported lazily; the local
+Both backends send the same prompt and the same JSON Schema of the
+answer, at `temperature=0.0`, then run the same validation and grounding.
+The schema constrains the output (Ollama's structured outputs, Gemini's
+`response_json_schema`), so the prompt only explains what the fields mean.
+An Ollama server older than 0.5, which rejects a schema, is asked again in
+plain JSON mode, with a WARNING. SDKs are imported lazily; the local
 backend never loads the cloud SDK.
 
 **Gemini notes.** Verified against the real Gemini Developer API on
@@ -390,7 +395,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-b`); it changes with every change to the prompt wording |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-d`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is

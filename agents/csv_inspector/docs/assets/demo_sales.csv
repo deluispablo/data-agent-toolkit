@@ -1,11 +1,11 @@
-Informe de ventas - ACME Iberia S.A.
-Generado: 2026-09-24 08:15
+Sales report – ACME Europe Ltd.
+Generated: 2026-09-24 08:15
 
-Fecha;Tienda;Producto;Unidades;Importe (€);Devuelto
-2026-07-01;Madrid Centro;Café molido 1kg;12;143,40;no
-2026-07-01;Sevilla;Té verde;7;38,50;no
-2026-07-02;A Coruña;Café en grano;3;41,85;sí
-2026-07-02;Málaga;Cacao puro;20;96,00;no
-2026-07-03;Bilbao;Café molido 1kg;9;107,55;no
+Date;Store;Product;Units;Amount (€);Returned
+2026-07-01;München;Ground coffee 1kg;12;143,40;no
+2026-07-01;Zürich;Green tea;7;38,50;no
+2026-07-02;Malmö;Coffee beans;3;41,85;yes
+2026-07-02;Kraków;Pure cocoa;20;96,00;no
+2026-07-03;Besançon;Ground coffee 1kg;9;107,55;no
 TOTAL;;;51;427,30;
-*** Fin del informe ***
+*** End of report ***

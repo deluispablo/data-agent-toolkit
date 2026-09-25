@@ -312,7 +312,9 @@ but count and copy lines poorly, so the model's answer is used as a key to
 recompute the delimiter, the header row and literal column names (or "no
 header"), and the verbatim footer from the sampled text. How quotes are
 escaped (`""` or `\"`) is read from the samples too, when they show one
-convention. The exact rules are in
+convention. Common small-model slips are read instead of failing (a
+confidence of `90` as 90 %, a tab written `"tab"`, a line break answered as
+the delimiter of a one-column file). The exact rules are in
 [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
 
 <details>
@@ -423,6 +425,16 @@ flowchart TD
   read just the two windows.
 - **A header-less file with preamble lines** is not described:
   `has_header=False` implies no lines to skip.
+- **A quoted value with a line break inside** (a multi-line record) can
+  throw off the header or footer position: grounding reads the samples
+  line by line.
+- **A footer longer than the tail window** is only partly anchored; pass a
+  larger `tail_bytes`.
+- **Lines longer than the head window** (hundreds of columns) leave no
+  complete header line to read; pass a larger `n_bytes`.
+
+These are the catalog's known limitations, with their fixtures, in
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#known-limitations).
 
 ## Backends
 
@@ -504,6 +516,11 @@ stable API. Every other module and name is internal.
 a threshold you choose (for example 0.7) to human review instead of loading
 them automatically. The dialect, header row, column names and footer are
 grounded in the sampled bytes whatever the model's confidence.
+
+Building or validating a `CSVInspectionResult` by hand is strict: pass the
+real characters (a tab, not `"tab"`; `None`, not `""` or `"null"`) and an
+explicit `has_header`. The lenient reading of small-model spellings applies
+only to a model's answer, including a custom `model_invoker`'s.
 
 ### Sources
 

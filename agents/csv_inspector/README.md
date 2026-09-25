@@ -187,28 +187,178 @@ each option, are in
 
 ## How it works
 
-```mermaid
-flowchart LR
-    S[("CSV / TSV<br/>path, bytes or stream")] --> W["<b>Sample</b><br/>bounded head + tail<br/>4 KiB each by default"]
-    W --> M{{"<b>Ask a model</b><br/>local Ollama or Gemini<br/>primary, then fallback"}}
-    M --> G["<b>Ground</b><br/>recompute positions and<br/>names from the real bytes"]
-    G --> R(["<b>CSVInspectionResult</b><br/>validated and typed"])
+One real inspection of the demo file, step by step. For the picture, the
+windows are shrunk to 224 and 80 bytes so that a 380-byte file shows both;
+the defaults are 4 KiB each.
 
-    style R fill:#2f9e44,color:#fff
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/walkthrough-dark.svg">
+  <img alt="How csv-inspector handled demo_sales.csv (380 bytes). 1 Sample: 224 bytes of head and 80 bytes of tail are read, 76 bytes in between are not. 2 Prompt: 842 tokens, prompt version 2026.09-m, answer shape fixed by a JSON Schema. 3 Model answer from qwen2.5-coder:7b. 4 Ground: header_row_index 0 corrected to 3; footer_lines [&quot;TOTAL;;;51;427,30;&quot;] corrected to [&quot;TOTAL;;;51;427,30;&quot;, &quot;*** End of report ***&quot;]. 5 Result: encoding Windows-1252, delimiter &quot;;&quot;, header_row_index 3, footer_rows_to_skip 2, columns Date, Store, Product, Units, Amount (€), Returned. qwen2.5-coder:7b on local Ollama, $0." src="docs/assets/walkthrough-light.svg" width="900">
+</picture>
 
-1. **Sample.** Read a bounded head window and, when bytes are left past it,
-   a bounded tail window. The middle of the file is never read.
-2. **Ask a model.** Send both samples in one prompt to the primary model,
-   and to the fallback model if the primary fails, within one time budget.
-3. **Ground.** Small local models reliably *recognize* headers and footers
-   but count and copy lines poorly, so the model's answer is used as a key
-   to recompute the delimiter, the header row and literal column names (or
-   "no header"), and the verbatim footer from the sampled text. How quotes
-   are escaped (`""` or `\"`) is read from the samples too, when they show
-   one convention. The exact
-   rules are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
-4. **Validate.** Return a `CSVInspectionResult`, or raise a typed error.
+**1. Sample.** The source (a path, bytes or a stream) is read in two
+bounded windows: the head and, when bytes are left past it, the tail. The
+middle of the file is never read. A truncated head ends on its last line
+break; the tail may start mid-line, and the model is told so.
+
+<details>
+<summary>The samples, as decoded</summary>
+
+224 bytes of head, 80 bytes of tail, 76 bytes never read, of 380 (encoding Windows-1252).
+
+Head:
+
+````text
+Sales report – ACME Europe Ltd.
+Generated: 2026-09-24 08:15
+
+Date;Store;Product;Units;Amount (€);Returned
+2026-07-01;München;Ground coffee 1kg;12;143,40;no
+2026-07-01;Zürich;Green tea;7;38,50;no
+````
+
+Tail (it may start mid-line):
+
+````text
+ançon;Ground coffee 1kg;9;107,55;no
+TOTAL;;;51;427,30;
+*** End of report ***
+````
+
+</details>
+
+**2. Prompt.** Both samples go into one prompt. The answer's shape is fixed
+by a JSON Schema that both backends enforce, so the prompt only explains
+what the fields mean.
+
+<details>
+<summary>The exact prompt (842 tokens, prompt version 2026.09-m)</summary>
+
+````text
+Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'Windows-1252'.
+
+--- HEAD SAMPLE START (first bytes of the file) ---
+Sales report – ACME Europe Ltd.
+Generated: 2026-09-24 08:15
+
+Date;Store;Product;Units;Amount (€);Returned
+2026-07-01;München;Ground coffee 1kg;12;143,40;no
+2026-07-01;Zürich;Green tea;7;38,50;no
+
+--- HEAD SAMPLE END ---
+
+--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---
+ançon;Ground coffee 1kg;9;107,55;no
+TOTAL;;;51;427,30;
+*** End of report ***
+
+--- TAIL SAMPLE END ---
+
+The head stops mid-data: its last line may be cut and is never a footer. The tail is the real end of the file: read footer lines ONLY from its last lines. Its first line is likely a cut fragment: do not use it for columns.
+
+HEADER:
+- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: "header_row_index" is their count (0-based index of that row). Never list them; footer lines are never preamble.
+- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...
+
+FOOTER (end of the file): check the last lines of the TAIL sample independently of the header. A data row holds a real record, with values like the rows above it (a date in the date column, a name in the name column, and so on). Any trailing line after the last data row is a footer line, for example:
+- a totals/summary row: it may have the same number of fields as a data row, but it carries a label instead of a record and leaves other fields empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"
+- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"
+- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"
+- a blank line separating the data from any of the above
+Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row.
+
+Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:
+- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
+- "quotechar" is the character that wraps quoted fields: "'" when fields look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
+- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\") means "escapechar": "\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.
+- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.
+- "columns" holds each name copied character for character from the header row.
+````
+
+</details>
+
+**3. Ask a model.** The primary model answers, and the fallback model if
+the primary fails, within one time budget.
+
+<details>
+<summary>The model's raw answer (qwen2.5-coder:7b)</summary>
+
+````json
+{
+  "encoding": "Windows-1252",
+  "delimiter": ";",
+  "quotechar": "\"",
+  "escapechar": null,
+  "doublequote": true,
+  "has_header": true,
+  "header_row_index": 0,
+  "footer_first_line": "TOTAL;;;51;427,30;",
+  "columns": [
+    "Date",
+    "Store",
+    "Product",
+    "Units",
+    "Amount (€)",
+    "Returned"
+  ],
+  "confidence": 0.95
+}
+````
+
+</details>
+
+**4. Ground.** Small local models reliably *recognize* headers and footers
+but count and copy lines poorly, so the model's answer is used as a key to
+recompute the delimiter, the header row and literal column names (or "no
+header"), and the verbatim footer from the sampled text. How quotes are
+escaped (`""` or `\"`) is read from the samples too, when they show one
+convention. The exact rules are in
+[How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
+
+<details>
+<summary>What grounding changed</summary>
+
+| Field | Model | Result |
+|---|---|---|
+| `header_row_index` | `0` | `3` |
+| `footer_lines` | `["TOTAL;;;51;427,30;"]` | `["TOTAL;;;51;427,30;", "*** End of report ***"]` |
+
+</details>
+
+**5. Validate and read.** The result is validated into a
+`CSVInspectionResult`, or a typed error is raised. Read the file with it
+as shown in [Read the file with the result](#read-the-file-with-the-result).
+
+<details>
+<summary>The final result</summary>
+
+````json
+{
+  "encoding": "Windows-1252",
+  "delimiter": ";",
+  "quotechar": "\"",
+  "escapechar": null,
+  "doublequote": true,
+  "has_header": true,
+  "header_row_index": 3,
+  "footer_lines": [
+    "TOTAL;;;51;427,30;",
+    "*** End of report ***"
+  ],
+  "columns": [
+    "Date",
+    "Store",
+    "Product",
+    "Units",
+    "Amount (€)",
+    "Returned"
+  ],
+  "confidence": 0.95,
+  "footer_rows_to_skip": 2
+}
+````
+
+</details>
 
 <details>
 <summary><b>The full pipeline, step by step</b></summary>

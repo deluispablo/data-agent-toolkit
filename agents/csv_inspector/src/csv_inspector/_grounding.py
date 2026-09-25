@@ -185,6 +185,11 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     names = {name.strip().casefold() for name in result.columns} - {""}
     if any(field.strip().casefold() in names for field in first):
         return False
+    return _shaped_alike(first, second)
+
+
+def _shaped_alike(first: list[str], second: list[str]) -> bool:
+    """Whether two rows of equal width look like two data rows (see :func:`_first_row_is_data`)."""
     first_shape = [_field_shape(field) for field in first]
     second_shape = [_field_shape(field) for field in second]
     if first_shape == second_shape:
@@ -197,16 +202,53 @@ def _first_row_is_data(result: CSVInspectionResult, head_sample: str) -> bool:
     )
 
 
+def _ground_one_column(
+    result: CSVInspectionResult, lines: list[str], rows: list[list[str] | None]
+) -> dict[str, object]:
+    """The header of a one-column file whose answer listed lines as columns (see below)."""
+    at = next((i for i, line in enumerate(lines) if line.strip() == result.columns[0]), None)
+    if at is None and result.has_header:
+        at = result.header_row_index
+    if at is None or at >= len(rows):
+        return {"has_header": False, "header_row_index": None, "columns": ["column_1"]}
+    return {"has_header": True, "header_row_index": at, "columns": [(rows[at] or [""])[0]]}
+
+
 def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
     """Return the header fields to correct: row index, names, or "no header".
 
-    A header-less file keeps its positional column names. A model that
-    answers a header at row 0 it cannot anchor, over a first row shaped
-    like the data below it, is corrected to no header row (see
-    :func:`_first_row_is_data`).
+    In a one-column file (the delimiter splits no head line) models list
+    lines as columns: the line equal to their first name (else the header
+    row they gave) is the header, holding the only name.
+
+    A model that answers "no header" but whose names are, exactly, a line
+    of the head that is the last one or is followed by a line not shaped
+    like it (see :func:`_shaped_alike`) has found the header after all:
+    that line is reported as the header row. Otherwise a header-less file
+    gets positional column names, whatever names the model made up (often
+    the first data row's values). A model that answers a header at row 0
+    it cannot anchor, over a first row shaped like the data below it, is
+    corrected to no header row (see :func:`_first_row_is_data`).
     """
+    lines = _split_lines(head_sample.lstrip("﻿"))
+    rows = [_split_fields(line, result.delimiter, result.quotechar) for line in lines]
+    if len(result.columns) > 1 and _agreement_score(lines, result.delimiter, result.quotechar) == 0:
+        return _ground_one_column(result, lines, rows)
     if not result.has_header:
-        return {}
+        for index, fields in enumerate(rows):
+            next_fields = rows[index + 1] if index + 1 < len(rows) else None
+            if (
+                fields is not None
+                and [field.strip() for field in fields] == result.columns
+                and (
+                    next_fields is None
+                    or (len(next_fields) == len(fields) and not _shaped_alike(fields, next_fields))
+                )
+            ):
+                logger.info("The model's column names are line %d: reporting a header row.", index)
+                return {"has_header": True, "header_row_index": index, "columns": fields}
+        positional = [f"column_{number}" for number in range(1, len(result.columns) + 1)]
+        return {} if result.columns == positional else {"columns": positional}
     header = _locate_header_row(result, head_sample)
     if header is None:
         if result.header_row_index != 0 or not _first_row_is_data(result, head_sample):
@@ -460,6 +502,10 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     best = max(scores.values(), default=0)
     winners = [candidate for candidate, score in scores.items() if score == best]
     if best < max(_MIN_AGREEING_LINES, _DOMINANCE_RATIO * reported) or len(winners) != 1:
+        # A delimiter that never occurs splits nothing: in a one-column file
+        # report the default, which is just as inert, not the model's guess.
+        if result.delimiter not in head_sample and "," not in (result.quotechar, result.escapechar):
+            return ","
         return result.delimiter
     logger.info(
         "Replacing delimiter %r (%d agreeing lines) with %r (%d agreeing lines).",
@@ -563,7 +609,13 @@ def ground_in_samples(
         # Header and footer grounding split fields with the grounded delimiter.
         result = result.model_copy(update={"delimiter": delimiter})
 
-    updates.update(_ground_quote_escaping(result, head_sample + (tail_sample or "")))
+    text = head_sample + (tail_sample or "")
+    if result.quotechar != '"' and result.quotechar not in text:
+        # A quote character that never occurs quotes nothing: report the
+        # default, which is just as inert, instead of the model's guess.
+        updates["quotechar"] = '"'
+        result = result.model_copy(update={"quotechar": '"'})
+    updates.update(_ground_quote_escaping(result, text))
     updates.update(_ground_header(result, head_sample))
 
     anchor = answer.footer_first_line

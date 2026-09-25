@@ -89,7 +89,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-f` today), and the
+  version of the prompt the models were sent (`2026.09-m` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -124,6 +124,14 @@ pipelines consume.
 
 ### Changed
 
+- The prompt is rewritten for the lean contract: the "Keep in mind" list,
+  the role sentence and the header prose are gone, the header rules are
+  bullets, and the field notes come last. The
+  instruction template with a tail section shrinks from 3,274 to 2,567
+  characters, 852 to 701 tokens on `qwen2.5-coder:7b` (`PROMPT_VERSION`
+  `2026.09-m`; the full footer rules stay, since the full catalog lost
+  footers without them). Pass-by-pass numbers are in `docs/evaluation.md`
+  ([#133](https://github.com/deluispablo/data-agent-toolkit/issues/133)).
 - The model is asked for the first footer line only
   (`footer_first_line`: the first non-blank line after the last data row,
   or `null`) instead of copying every footer line; grounding already read
@@ -213,6 +221,27 @@ pipelines consume.
   tends to answer the defaults for these two keys. The prompt also says
   what a single-quoted field looks like (`PROMPT_VERSION` `2026.09-f`)
   ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
+- More small-model slips are read instead of failing or leaking into the
+  result:
+  - a line break answered as the delimiter of a one-column file becomes `,`;
+  - `has_header: true` with a null header row index is read as row 0, and
+    grounding decides (it anchors the names or finds row 0 shaped like
+    data);
+  - a confidence of `90` or `100` is read as a percentage (the response
+    schema cannot enforce its maximum);
+  - a footer anchor copied over several lines keeps its first non-blank
+    line, and the schema caps it at 300 characters, so a model looping
+    inside it can no longer produce invalid JSON;
+  - a quote character that never occurs in the samples is reported as the
+    default `"`;
+  - a "no header" answer whose names are a line of the file, above
+    differently shaped data, gets that line as its header row; any other
+    header-less answer gets `column_1..N` names instead of made-up ones;
+  - a one-column file keeps the header row as its only column name.
+
+  These fixed most errors of `qwen2.5-coder:3b`, which answered
+  `confidence: 100` on nearly every file
+  ([#133](https://github.com/deluispablo/data-agent-toolkit/issues/133)).
 
 ### Documentation
 

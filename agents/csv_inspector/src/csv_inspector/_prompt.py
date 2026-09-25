@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-f"
+PROMPT_VERSION = "2026.09-m"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -33,6 +33,8 @@ _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 # Annotation keywords dropped from the response schema: they are prose for
 # humans, and Ollama compiles the schema into a grammar, so every key costs.
 _SCHEMA_ANNOTATIONS = frozenset({"title", "description", "default"})
+# The longest footer anchor the response schema lets a model write.
+_ANCHOR_MAX_CHARS = 300
 
 
 def _strip_annotations(node: object) -> object:
@@ -77,6 +79,10 @@ def response_schema() -> dict[str, Any]:
         raise TypeError("_ModelAnswer must stay flat: Ollama gets no $defs to resolve")
     stripped = cast("dict[str, Any]", _strip_annotations(schema))
     stripped["required"] = list(stripped["properties"])
+    # A small model can loop inside this string until the reply cap, which
+    # leaves invalid JSON. A capped string stays valid, and a cut-off data row
+    # still anchors as a substring.
+    stripped["properties"]["footer_first_line"]["anyOf"][0]["maxLength"] = _ANCHOR_MAX_CHARS
     return stripped
 
 
@@ -116,11 +122,9 @@ def build_prompt(
 {tail_sample}
 --- TAIL SAMPLE END ---
 
-The head sample stops somewhere in the middle of the data: its last line \
-may be truncated and is never a footer. The tail sample is the real end of \
-the file: read footer lines ONLY from its last lines. Its first visible \
-line is very likely a truncated fragment, not a real row: do not use it to \
-infer columns.
+The head stops mid-data: its last line may be cut and is never a footer. \
+The tail is the real end of the file: read footer lines ONLY from its last \
+lines. Its first line is likely a cut fragment: do not use it for columns.
 """
         file_end = "the last lines of the TAIL sample"
     elif not covers_whole_file:
@@ -136,33 +140,19 @@ infer columns.
         )
         file_end = "the last lines of the sample above"
 
-    return f"""You are an expert data engineering agent specialized in detecting \
-the quirks of "dirty" or non-standard CSV files.
-
-Below are byte samples from a real CSV file. The encoding heuristically \
-detected by chardet is: {detected_encoding!r} (it may be incorrect).
+    return f"""Byte samples of a real, possibly messy CSV file follow. Encoding \
+guessed by chardet (may be wrong): {detected_encoding!r}.
 
 --- HEAD SAMPLE START (first bytes of the file) ---
 {head_sample}
 --- HEAD SAMPLE END ---
 {tail_section}
-Analyze the samples and answer with a JSON object matching the schema you \
-were given. What its fields mean:
-- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
-- "quotechar" is the character that wraps quoted fields: "'" when fields \
-look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
-- "escapechar" and "doublequote": a quote inside a quoted field written \
-with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
-written doubled ("") or never present, "escapechar": null, "doublequote": true.
-- "columns" holds each name copied character for character from the header row.
-
-HEADER (start of the file): lines before the real column-name row, such as \
-export banners, comments (e.g. starting with '#') or blank lines, are \
-preamble. Do not list them anywhere; just count them: "header_row_index" is \
-the 0-based index of the column-name row, i.e. the number of preamble lines. \
-If the file has no column-name row at all (its first line is already a data \
-record, e.g. "17,red,3.5"), answer "has_header": false, \
-"header_row_index": null, and name the columns column_1, column_2, and so on.
+HEADER:
+- Preamble lines (export banners, '#' comments, blank lines) come before \
+the column-name row: "header_row_index" is their count (0-based index of \
+that row). Never list them; footer lines are never preamble.
+- No column-name row (the first line is already data, e.g. "17,red,3.5"): \
+"has_header": false, "header_row_index": null, columns column_1, column_2, ...
 
 FOOTER (end of the file): check {file_end} independently of the header. \
 A data row holds a real record, with values like the rows above it (a date \
@@ -176,15 +166,19 @@ empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"
 - a blank line separating the data from any of the above
 Copy only the first non-blank line after the last data row, verbatim, \
 into "footer_first_line"; the rest of the footer is read from the file. Use \
-null only when the file really ends with a data row. Footer lines are never \
-part of the header preamble.
+null only when the file really ends with a data row.
 
-Keep in mind:
-- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.
-- Column names may contain accented characters and other special characters.
-- Check how quotes are escaped inside quoted fields: doubled ("") or \
-backslash-escaped (\\"); see "escapechar" and "doublequote" above.
-- Rows may have an inconsistent number of fields; do not let that block your analysis.
+Analyze the samples and answer with a JSON object matching the schema you \
+were given. What its fields mean:
+- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
+- "quotechar" is the character that wraps quoted fields: "'" when fields \
+look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
+- "escapechar" and "doublequote": a quote inside a quoted field written \
+with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
+written doubled ("") or never present, "escapechar": null, "doublequote": true.
+- "delimiter" is the real separator: it may also appear inside quoted \
+fields, and rows may have uneven field counts.
+- "columns" holds each name copied character for character from the header row.
 """
 
 

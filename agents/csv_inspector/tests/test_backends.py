@@ -672,6 +672,11 @@ def test_response_schema_is_small_flat_and_bounded() -> None:
     assert "footer_rows_to_skip" not in schema["properties"]
     # A grammar lets a model skip optional keys; every one is required.
     assert schema["required"] == list(schema["properties"])
+    # A looping model cannot run past a short anchor string.
+    assert schema["properties"]["footer_first_line"]["anyOf"][0] == {
+        "type": "string",
+        "maxLength": 300,
+    }
     assert schema["properties"]["confidence"] == {
         "maximum": 1.0,
         "minimum": 0.0,

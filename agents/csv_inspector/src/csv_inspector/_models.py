@@ -25,6 +25,9 @@ _NO_ESCAPE_SPELLINGS = frozenset({"", "null", "none"})
 # Characters that end a row: csv and pandas reject them as dialect characters.
 _LINE_BREAKS = frozenset({"\r", "\n"})
 
+# A confidence above 1 and up to this is a percentage (see _ModelAnswer).
+_PERCENT = 100
+
 
 class Usage(BaseModel):
     """What the model phase of one successful inspection cost.
@@ -151,7 +154,10 @@ class _ModelAnswer(_StrictDialect):
 
         Small models often write a tab as ``"tab"`` or as a backslash followed
         by ``t``, and "no escape character" as ``""`` or ``"null"``.
-        Those are mapped to a real tab and to ``None``. For unquoted files the
+        Those are mapped to a real tab and to ``None``. A line break given
+        as the delimiter (a one-column file read as "one field per line")
+        maps to ``,``, which splits nothing there; grounding still replaces
+        it when another delimiter splits the head. For unquoted files the
         same spellings (and JSON ``null``) come back as the quote character;
         they map to the default ``'"'``, which is inert for ``csv``, pandas,
         PySpark and BigQuery when it never occurs in the file. Anything else
@@ -166,6 +172,8 @@ class _ModelAnswer(_StrictDialect):
             return value
         if value.lower() in _TAB_SPELLINGS:
             return "\t"
+        if info.field_name == "delimiter" and value and not value.strip("\r\n"):
+            value = ","
         if info.field_name == "escapechar" and value.strip().lower() in _NO_ESCAPE_SPELLINGS:
             return None
         # Strip spaces only: a line break stays a (rejected) quote character.
@@ -229,8 +237,11 @@ class _ModelAnswer(_StrictDialect):
 
         Models answer ``null`` or ``-1`` for a header-less file, often
         without ``has_header``. ``-1`` is taken as ``null``, and a missing
-        ``has_header`` follows the header row index. An explicit
-        ``has_header`` is kept, so a contradiction still fails validation.
+        ``has_header`` follows the header row index. ``has_header: true``
+        with a null index is ambiguous (models answer it for real headers
+        and for header-less files alike): it is read as row 0, and grounding
+        decides, anchoring the names or finding row 0 shaped like data.
+        ``has_header: false`` with an index still fails validation.
         """
         if not isinstance(data, dict) or "header_row_index" not in data:
             return data
@@ -239,7 +250,33 @@ class _ModelAnswer(_StrictDialect):
             data = {**data, "header_row_index": None}
         if "has_header" not in data:
             data = {**data, "has_header": data["header_row_index"] is not None}
+        elif data["has_header"] is True and data["header_row_index"] is None:
+            data = {**data, "header_row_index": 0}
         return data
+
+    @field_validator("confidence", mode="before")
+    @classmethod
+    def _percent_confidence(cls, value: object) -> object:
+        """Read a confidence above 1 and up to 100 as a percentage.
+
+        A response schema cannot make a model respect ``maximum``; small
+        models answer ``90`` or ``100``.
+        """
+        if isinstance(value, int | float) and not isinstance(value, bool) and 1 < value <= _PERCENT:
+            return value / _PERCENT
+        return value
+
+    @field_validator("footer_first_line", mode="before")
+    @classmethod
+    def _first_line_only(cls, value: object) -> object:
+        """Keep the first non-blank line of an anchor that spans several lines.
+
+        Asked for one line, models sometimes copy the whole footer. The first
+        non-blank line is the anchor; blank lines only are a blank anchor.
+        """
+        if not isinstance(value, str) or ("\n" not in value and "\r" not in value):
+            return value
+        return next((line for line in value.splitlines() if line.strip()), "")
 
 
 class CSVInspectionResult(_StrictDialect):

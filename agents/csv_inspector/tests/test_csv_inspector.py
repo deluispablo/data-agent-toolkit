@@ -348,7 +348,7 @@ def test_build_prompt_gives_concrete_footer_rules(tail_sample: str | None) -> No
     assert "FOOTER (end of the file)" in prompt
     for example in ("TOTAL,,4241.25", "--- Fin del informe ---", "Generado el 2024-01-20"):
         assert example in prompt
-    assert "Footer lines are never part of the header preamble" in prompt
+    assert "footer lines are never preamble" in prompt
 
 
 def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
@@ -356,7 +356,7 @@ def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
     prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample="9,9\n")
 
     assert "check the last lines of the TAIL sample" in prompt
-    assert "read footer lines ONLY from its last lines" in prompt
+    assert "The tail is the real end of the file" in prompt
 
 
 def test_build_prompt_no_longer_requests_derived_or_removed_fields() -> None:
@@ -427,9 +427,6 @@ def test_header_less_answers_validate(
 @pytest.mark.parametrize(
     ("answer", "message"),
     [
-        pytest.param(
-            {"has_header": True, "header_row_index": None}, "required when has_header", id="null"
-        ),
         pytest.param({"has_header": False, "header_row_index": 0}, "must be null when", id="index"),
         pytest.param({"header_row_index": -2}, "greater than or equal to 0", id="negative"),
     ],
@@ -438,6 +435,24 @@ def test_contradictory_header_answers_fail(answer: dict[str, object], message: s
     """has_header and header_row_index must agree, with a clear message."""
     with pytest.raises(ValidationError, match=message):
         _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+
+
+@pytest.mark.parametrize("index", [None, -1])
+def test_has_header_with_a_null_index_is_read_as_row_0(index: int | None) -> None:
+    """Ambiguous, not a contradiction: grounding decides from the sample."""
+    answer = _ModelAnswer.model_validate(
+        {**VALID_RESULT_PAYLOAD, "has_header": True, "header_row_index": index}
+    )
+
+    assert (answer.has_header, answer.header_row_index) == (True, 0)
+
+
+@pytest.mark.parametrize(("value", "expected"), [(90, 0.9), (100, 1.0), (0.8, 0.8), (1, 1)])
+def test_a_percentage_confidence_is_read_as_a_fraction(value: float, expected: float) -> None:
+    """Small models answer 90 or 100; the schema's maximum cannot stop them."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "confidence": value})
+
+    assert answer.confidence == pytest.approx(expected)
 
 
 def test_a_missing_header_row_index_still_fails() -> None:
@@ -1711,6 +1726,150 @@ def test_grounding_reads_quote_escaping_from_the_samples(
     assert (result.escapechar, result.doublequote) == expected
 
 
+@pytest.mark.parametrize(
+    ("content", "expected"),
+    [
+        ("Fecha|Cliente\n2024-01-01|Acme\n2024-01-02|Beta\n", '"'),
+        ("Fecha|Cliente\n2024-01-01|'Acme'\n2024-01-02|Beta\n", "'"),
+    ],
+)
+def test_grounding_resets_a_quote_character_that_never_occurs(
+    tmp_path: Path, content: str, expected: str
+) -> None:
+    """A guessed ``'`` that quotes nothing becomes the default; one in the file stays."""
+    target = tmp_path / "pipes.csv"
+    target.write_text(content, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="|", quotechar="'", columns=["Fecha", "Cliente"], footer_first_line=None
+        ),
+    )
+
+    assert result.quotechar == expected
+
+
+def test_grounding_names_header_less_columns_positionally(tmp_path: Path) -> None:
+    """A model that says "no header" but invents names gets column_1..N."""
+    target = tmp_path / "rows.csv"
+    target.write_text("2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=["Date", "Company", "Amount"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert result.columns == ["column_1", "column_2", "column_3"]
+
+
+@pytest.mark.parametrize(
+    ("names", "expected"),
+    [
+        (["Fecha", "Cliente", "Importe"], (True, 0, ["Fecha", "Cliente", "Importe"])),
+        (["2024-01-01", "Acme", "10.00"], (False, None, ["column_1", "column_2", "column_3"])),
+    ],
+)
+def test_grounding_finds_the_header_a_no_header_answer_named(
+    tmp_path: Path, names: list[str], expected: tuple[bool, int | None, list[str]]
+) -> None:
+    """Names equal to a line above differently shaped data are a header; data values are not."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha,Cliente,Importe\n2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8"
+    )
+    if names[0] == "2024-01-01":
+        target.write_text("2024-01-01,Acme,10.00\n2024-01-02,Beta,20.00\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=names,
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index, result.columns) == expected
+
+
+@pytest.mark.parametrize("has_header", [True, False])
+def test_grounding_finds_the_header_of_a_one_column_file_listed_line_by_line(
+    tmp_path: Path, has_header: bool
+) -> None:
+    """Every line listed as a column, header or not: the line of the first name is the header."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=has_header,
+            header_row_index=0 if has_header else None,
+            columns=["Cliente", "Acme S.L.", "Beta Corp"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index, result.columns) == (True, 0, ["Cliente"])
+
+
+def test_grounding_takes_a_header_only_file_for_a_header(tmp_path: Path) -> None:
+    """A "no header" answer naming the file's only line: that line is the header."""
+    target = tmp_path / "empty_table.csv"
+    target.write_text("Fecha,Cliente,Importe\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=["Fecha", "Cliente", "Importe"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
+def test_grounding_reports_the_default_for_a_delimiter_that_never_occurs(tmp_path: Path) -> None:
+    """A tab guessed for a one-column file splits nothing: the default ``,`` is reported."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter="\t", columns=["Cliente"], footer_first_line=None),
+    )
+
+    assert (result.delimiter, result.columns) == (",", ["Cliente"])
+
+
+def test_grounding_keeps_one_name_in_a_one_column_file(tmp_path: Path) -> None:
+    """A model listing every line as a column of a one-column file gets the header only."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="\n", columns=["Cliente", "Acme S.L.", "Beta Corp"], footer_first_line=None
+        ),
+    )
+
+    assert (result.delimiter, result.columns) == (",", ["Cliente"])
+
+
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     """A blank name the model left out is restored from the header row (issue #153)."""
     target = tmp_path / "indexed.csv"
@@ -1847,7 +2006,7 @@ def test_no_quoting_spellings_map_quotechar_to_default(value: str | None) -> Non
     [
         {"delimiter": ",", "quotechar": ","},
         {"delimiter": ",", "escapechar": ","},
-        {"delimiter": "\n"},
+        {"quotechar": "\n"},
         {"quotechar": "\r"},
     ],
 )
@@ -1855,6 +2014,34 @@ def test_a_dialect_csv_cannot_read_fails_validation(dialect: dict[str, str]) -> 
     """Characters that are valid alone but conflict fail validation (issue #48)."""
     with pytest.raises(ValidationError, match=r"line break|must differ"):
         _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **dialect})
+
+
+@pytest.mark.parametrize("value", ["\n", "\r\n"])
+def test_a_line_break_delimiter_in_the_answer_means_one_column(value: str) -> None:
+    """A model reading a one-column file as one field per line answers a line break."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": value})
+
+    assert answer.delimiter == ","
+    with pytest.raises(ValidationError, match="line break"):
+        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": "\n"})
+
+
+@pytest.mark.parametrize(
+    ("anchor", "expected"),
+    [
+        ("--- Fin ---\nGenerado el 2024-08-08\n\n", "--- Fin ---"),
+        ("\r\n\r\nTOTAL;;1", "TOTAL;;1"),
+        ("\n\n", ""),
+        ("TOTAL;;1", "TOTAL;;1"),
+    ],
+)
+def test_a_multi_line_footer_anchor_keeps_its_first_non_blank_line(
+    anchor: str, expected: str
+) -> None:
+    """Asked for one line, a model that copies the whole footer still anchors on its first."""
+    answer = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "footer_first_line": anchor})
+
+    assert answer.footer_first_line == expected
 
 
 def test_an_escapechar_equal_to_the_quotechar_means_doubled_quotes() -> None:

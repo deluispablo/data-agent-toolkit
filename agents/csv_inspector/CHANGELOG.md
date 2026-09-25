@@ -80,7 +80,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-b` today), and the
+  version of the prompt the models were sent (`2026.09-c` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -115,6 +115,16 @@ pipelines consume.
 
 ### Changed
 
+- The local backend sends the answer's JSON Schema to Ollama
+  (`format=<schema>`, structured outputs) instead of plain JSON mode, and
+  the cloud backend sends the same schema, stripped of titles,
+  descriptions and defaults. The prompt no longer spells out the JSON
+  shape, only what the fields mean: the instruction template shrinks from
+  3,291 to 2,813 characters (`PROMPT_VERSION` `2026.09-c`). An Ollama
+  server older than 0.5 that rejects a schema is asked again with
+  `format="json"`, with a WARNING. No dependency change: `ollama` 0.6.2
+  already accepts a schema
+  ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
 - Grounding decides that a claimed header at row 0 is really data with a
   deterministic shape test on the sample instead of the model's
   `example_values`. When the model's names cannot be anchored in the head,

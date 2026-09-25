@@ -141,9 +141,9 @@ Modules prefixed with `_` are internal.
 | `_config.py` | The frozen `Settings` model, which never reads the environment when constructed. `load_settings(env_file=None)` reads the environment and an optional `.env` with the standard library. `resolve_settings`, `CloudCredentials`, and `ensure_backend_ready`, which checks a backend before any source is read. |
 | `_sampling.py` | Bounded I/O: the head window (4 KiB by default) and a tail of the bytes the head did not cover (each window at most 16 KiB), from a path, a buffer, a seekable stream or a forward-only stream (64 KiB chunks, at most 64 MiB scanned past the head). A truncated head is trimmed to its last line break. An empty source raises `EmptySampleError` before any model call. |
 | `_encoding.py` | Encoding detection (chardet) and decoding; BOM-less, code-unit-aligned tail codecs; the shared line-break pattern. No I/O. |
-| `_prompt.py` | The system prompt and `build_prompt`, plus `parse_and_validate`: lenient JSON extraction (fenced or bare) into `CSVInspectionResult`. |
+| `_prompt.py` | The system prompt, `build_prompt` (the fields' semantics, no JSON shape), `response_schema()` (the cached, annotation-free JSON Schema both backends send), and `parse_and_validate`: lenient JSON extraction (fenced or bare) into `CSVInspectionResult`. |
 | `_models.py` | `CSVInspectionResult` (`columns` is a list of names) and `Usage` (attached as `result.usage`, excluded from dumps and the JSON Schema), with the validators that normalize small-model spellings (tab, "no escape", "no quoting", `null`/`-1` header index) and strip column names. |
-| `_invokers.py` | Sync and async Ollama and Gemini invokers. They create a new client per call (thread-safe) and import SDKs lazily. Ollama's `num_ctx` is sized to the prompt. Secrets are redacted from errors, and Gemini gets one retry on 429/503. `builtin_invoker` returns an `InvokerResponse` (raw text plus token counts, retries, load time) that feeds `Usage`. |
+| `_invokers.py` | Sync and async Ollama and Gemini invokers. They create a new client per call (thread-safe) and import SDKs lazily. Both send `response_schema()` (Ollama as `format`, retried once as `"json"` on a server that rejects a schema). Ollama's `num_ctx` is sized to the prompt. Secrets are redacted from errors, and Gemini gets one retry on 429/503. `builtin_invoker` returns an `InvokerResponse` (raw text plus token counts, retries, load time) that feeds `Usage`. |
 | `_inspect.py` | `inspect_csv` / `ainspect_csv`: plan, sample, prompt, then the primary and fallback models within one time budget (`PRIMARY_SHARE` for a model followed by another), then grounding. |
 | `_grounding.py` | Recomputes delimiter, header row, literal column names, header-less files and the verbatim footer from the samples, using the model's answer as the key. |
 | `_exceptions.py` | `CSVInspectorError` and its hierarchy. |
@@ -288,6 +288,11 @@ One line per notable design choice, with the issue that records it.
   model's line is a key, matched tolerantly** (trailing empty fields
   ignored, a long enough substring accepted)
   ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+- **The schema is the contract; the prompt carries semantics**: both
+  backends send the same JSON Schema of the answer, so the prompt no longer
+  describes the JSON shape, only what the schema cannot say (preamble vs
+  header, what counts as footer, what to copy verbatim)
+  ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
 - **One time budget per inspection**, enforced by the library even for
   custom invokers. With a fallback, the primary gets 70 % of it
   ([#12](https://github.com/deluispablo/data-agent-toolkit/issues/12),

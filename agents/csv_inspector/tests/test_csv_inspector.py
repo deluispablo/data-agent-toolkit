@@ -1312,7 +1312,7 @@ def test_prompt_asks_for_column_names_only() -> None:
     """The prompt asks for a list of names, with no types, examples or notes (issue #129)."""
     prompt = build_prompt("a\n1\n", "utf-8")
 
-    assert '"columns": ["<name copied character for character' in prompt
+    assert '"columns" holds each name copied character for character' in prompt
     for removed in ("inferred_type", "nullable", "example_values", '"notes"', "boolean"):
         assert removed not in prompt
 

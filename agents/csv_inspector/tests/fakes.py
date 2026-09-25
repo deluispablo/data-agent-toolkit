@@ -10,6 +10,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from ollama import ResponseError
 
 ChatHandler = Callable[..., Any]
 
@@ -89,7 +90,9 @@ class FakeOllama:
                     await asyncio.sleep(fake._delay)
                 return fake._chat(**kwargs)
 
-        self.module = SimpleNamespace(Client=Client, AsyncClient=AsyncClient)
+        self.module = SimpleNamespace(
+            Client=Client, AsyncClient=AsyncClient, ResponseError=ResponseError
+        )
 
 
 def install_fake_ollama(

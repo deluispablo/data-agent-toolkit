@@ -10,8 +10,10 @@ key, and random markers or escaping would cost tokens on every call.
 
 from __future__ import annotations
 
+import functools
 import json
 import re
+from typing import Any, cast
 
 from pydantic import ValidationError
 
@@ -22,11 +24,60 @@ from ._models import CSVInspectionResult
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-b"
+PROMPT_VERSION = "2026.09-c"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
+
+# Annotation keywords dropped from the response schema: they are prose for
+# humans, and Ollama compiles the schema into a grammar, so every key costs.
+_SCHEMA_ANNOTATIONS = frozenset({"title", "description", "default"})
+_DEFS_PREFIX = "#/$defs/"
+
+
+def _strip_schema(node: object, defs: dict[str, Any]) -> object:
+    """Return ``node`` without annotation keywords and with every ``$ref`` inlined.
+
+    Args:
+        node: A JSON Schema fragment.
+        defs: The schema's ``$defs``, used to resolve local references.
+    """
+    if isinstance(node, list):
+        return [_strip_schema(item, defs) for item in node]
+    if not isinstance(node, dict):
+        return node
+    ref = node.get("$ref")
+    if isinstance(ref, str) and ref.startswith(_DEFS_PREFIX):
+        return _strip_schema(defs[ref.removeprefix(_DEFS_PREFIX)], defs)
+    stripped: dict[str, Any] = {}
+    for key, value in node.items():
+        if key in _SCHEMA_ANNOTATIONS or key == "$defs":
+            continue
+        if key == "properties" and isinstance(value, dict):
+            # Property names are data, not keywords: keep every one.
+            stripped[key] = {name: _strip_schema(sub, defs) for name, sub in value.items()}
+        else:
+            stripped[key] = _strip_schema(value, defs)
+    return stripped
+
+
+@functools.lru_cache(maxsize=1)
+def response_schema() -> dict[str, Any]:
+    """The JSON Schema both backends send to constrain the model's answer.
+
+    Built from the result model's JSON Schema, without ``title``,
+    ``description`` and ``default`` keys and with any ``$defs`` inlined, so
+    it is small enough for Ollama to compile into a grammar. Numeric bounds
+    stay. The schema is the contract of the answer's shape; the prompt only
+    carries what the schema cannot say (see ``build_prompt``). Cached: treat
+    the returned dict as read-only.
+
+    Returns:
+        The JSON Schema, as a dict.
+    """
+    schema = CSVInspectionResult.model_json_schema()
+    return cast("dict[str, Any]", _strip_schema(schema, schema.get("$defs", {})))
 
 
 def build_prompt(
@@ -54,7 +105,10 @@ def build_prompt(
 
     Returns:
         A complete prompt instructing the model to respond with a single
-        JSON object matching the ``CSVInspectionResult`` schema.
+        JSON object matching :func:`response_schema`. The prompt names no
+        JSON shape: the schema sent with the request is the contract, and
+        the prompt carries only what the schema cannot say (what counts as
+        preamble or footer, what to copy verbatim).
     """
     if tail_sample is not None:
         tail_section = f"""
@@ -92,21 +146,14 @@ detected by chardet is: {detected_encoding!r} (it may be incorrect).
 {head_sample}
 --- HEAD SAMPLE END ---
 {tail_section}
-Analyze the samples and respond ONLY with a JSON object (no extra text, no \
-markdown, no backticks) with exactly this shape:
-
-{{
-  "encoding": "<real encoding, e.g. utf-8, latin-1, cp1252>",
-  "delimiter": "<field separator character, e.g. ',' or ';'>",
-  "quotechar": "<character used to quote fields, or null if fields are never quoted>",
-  "escapechar": "<"\\\\" if quotes inside fields are written as \\", otherwise null>",
-  "doublequote": <true if quotes inside fields are written as "", false if as \\">,
-  "has_header": <true if a row holds the column names, false if the first row is already data>,
-  "header_row_index": <0-based index of the column-name row, or null if has_header is false>,
-  "footer_lines": ["<every footer line after the last data row, in file order>", "..."],
-  "columns": ["<name copied character for character from the header row; column_N if none>", "..."],
-  "confidence": <number between 0.0 and 1.0 indicating your confidence>
-}}
+Analyze the samples and answer with a JSON object matching the schema you \
+were given. What its fields mean:
+- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
+- "quotechar" is '"' if fields are never quoted.
+- "escapechar" and "doublequote": quotes inside fields written as "" mean \
+"escapechar": null, "doublequote": true; written as \\" they mean \
+"escapechar": "\\\\", "doublequote": false.
+- "columns" holds each name copied character for character from the header row.
 
 HEADER (start of the file): lines before the real column-name row, such as \
 export banners, comments (e.g. starting with '#') or blank lines, are \

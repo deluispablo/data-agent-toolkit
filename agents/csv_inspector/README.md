@@ -242,9 +242,12 @@ failure, or any other error goes to the fallback model. The retry costs the
 same tokens as the first request; it avoids discarding the primary model's
 answer for a transient error. The local backend never retries.
 
-Both backends send the same prompt: JSON output (constrained by
-`CSVInspectionResult`'s JSON Schema on Gemini) at `temperature=0.0`, then
-the same validation and grounding. SDKs are imported lazily; the local
+Both backends send the same prompt and the same JSON Schema of the
+answer, at `temperature=0.0`, then run the same validation and grounding.
+The schema constrains the output (Ollama's structured outputs, Gemini's
+`response_json_schema`), so the prompt only explains what the fields mean.
+An Ollama server older than 0.5, which rejects a schema, is asked again in
+plain JSON mode, with a WARNING. SDKs are imported lazily; the local
 backend never loads the cloud SDK.
 
 ## Settings

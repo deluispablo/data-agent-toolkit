@@ -19,6 +19,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "delimiter_semicolon.csv": {
@@ -41,6 +42,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "delimiter_tab.tsv": {
@@ -63,6 +65,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "delimiter_pipe.csv": {
@@ -85,6 +88,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "delimiter_inside_quoted_field.csv": {
@@ -106,6 +110,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "The model must not mistake the comma inside the quoted field for a fourth column."
   },
   "encoding_utf8_bom.csv": {
@@ -124,6 +129,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "chardet typically reports this as 'UTF-8-SIG'; the BOM itself must not leak into the first column name."
   },
   "encoding_latin1.csv": {
@@ -142,6 +148,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "These bytes are not valid UTF-8; the agent must not silently mangle accented characters."
   },
   "encoding_utf16le_bom.csv": {
@@ -161,6 +168,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "A classic 'unexpected file' gotcha: every other byte is 0x00 when misread as a single-byte encoding."
   },
   "header_metadata_banner.csv": {
@@ -182,6 +190,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "header_none_data_only.csv": {
@@ -200,6 +209,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "There is no real header row: the agent should answer has_header=false and header_row_index=null, not assert a fabricated header row."
   },
   "header_duplicated_mid_file.csv": {
@@ -217,6 +227,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "The duplicated header mid-file is a structural anomaly the agent should flag in 'notes', not treat as a data row."
   },
   "footer_summary_totals.csv": {
@@ -239,6 +250,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Larger than the default head + tail budget, so the footer is only visible in the tail sample."
   },
   "footer_end_marker.csv": {
@@ -263,6 +275,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Regression case: the timestamp line used to be misclassified as a header/metadata line."
   },
   "header_and_footer_combined.csv": {
@@ -287,6 +300,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "The banner is only visible in the head sample and the footer only in the tail sample."
   },
   "quoting_doubled_quotes.csv": {
@@ -307,6 +321,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "quoting_backslash_escape.csv": {
@@ -328,6 +343,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "quoting_embedded_newline.csv": {
@@ -346,6 +362,7 @@
     },
     "known_limitation": true,
     "generated": false,
+    "expected_error": null,
     "notes": "Byte-prefix/suffix sampling cannot reliably parse multi-line quoted records: a head or tail window may cut this field mid-record. Documented as a known limitation rather than solved by this iteration."
   },
   "quoting_inconsistent.csv": {
@@ -365,6 +382,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "quoting_trailing_empty_field.csv": {
@@ -383,6 +401,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "ragged_rows_inconsistent_columns.csv": {
@@ -401,6 +420,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Row 2 is missing a field, row 3 has an extra one; the agent should note this rather than error out."
   },
   "line_endings_mixed_crlf_lf.csv": {
@@ -418,6 +438,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "no_trailing_newline_eof.csv": {
@@ -435,6 +456,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "blank_lines_between_rows.csv": {
@@ -452,6 +474,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "empty_file.csv": {
@@ -465,6 +488,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": "EmptySampleError",
     "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
   },
   "header_only_no_data.csv": {
@@ -482,6 +506,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "numeric_european_format.csv": {
@@ -499,6 +524,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "'Importe' should ideally be inferred as a numeric type despite the European formatting, not as a plain string; worth tracking separately as a column-typing quality metric."
   },
   "null_representations_mixed.csv": {
@@ -516,6 +542,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "'Observaciones' should be flagged nullable=True; the mix of null markers is worth a mention in 'notes'."
   },
   "whitespace_padded_fields.csv": {
@@ -533,6 +560,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": null
   },
   "header_none_after_preamble.csv": {
@@ -554,6 +582,7 @@
     },
     "known_limitation": true,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._first_row_is_data: it checks line 0 only, and the result cannot describe preamble lines without a header row (#94)."
   },
   "quoting_newline_in_head_window.csv": {
@@ -575,6 +604,7 @@
     },
     "known_limitation": true,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._split_lines: grounding splits the head on every line break, so the record reads as two short rows."
   },
   "quoting_newline_in_tail_window.csv": {
@@ -596,6 +626,7 @@
     },
     "known_limitation": true,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._split_lines on the tail: the second half of the record looks like a short trailing line."
   },
   "footer_longer_than_tail_window.csv": {
@@ -658,6 +689,7 @@
     },
     "known_limitation": true,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._locate_footer_lines: footer exceeds tail window, so only its last lines can be anchored; a larger tail_bytes is the workaround."
   },
   "footer_like_data_row_numeric_label.csv": {
@@ -678,6 +710,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._extends_footer: a year is not a totals label, so the row is never pulled into a footer."
   },
   "footer_after_total_energies_row.csv": {
@@ -701,6 +734,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards the _grounding._extends_footer label rule: 'Total Energies SA' is not a bare totals label and its other fields are filled, so the row stays data."
   },
   "delimiter_semicolon_decimal_comma.csv": {
@@ -723,6 +757,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._ground_delimiter: ',' agrees on every data row too, so a reported ',' is kept; only ';' splits the header."
   },
   "delimiter_tab_commas_quoted_header.tsv": {
@@ -744,6 +779,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._ground_delimiter: commas in the values must not beat the tab."
   },
   "delimiter_pipe_inside_quotes.csv": {
@@ -765,6 +801,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._agreement_score: fields are split with the quotechar, so quoted pipes do not change the field count."
   },
   "encoding_cp1252_tail_only.csv": {
@@ -786,6 +823,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _sampling.sample_source tail re-detection: an ASCII head must not settle the encoding as utf-8."
   },
   "single_column.csv": {
@@ -804,6 +842,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._ground_delimiter boundary: no candidate splits a line, so the reported delimiter is kept; ',' is the conventional answer."
   },
   "single_data_row.csv": {
@@ -824,6 +863,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._ground_delimiter and _locate_header_row boundaries: only two lines exist to agree on a shape."
   },
   "exactly_head_window_size.csv": {
@@ -845,6 +885,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _sampling.sample_source boundary: a full head window with nothing past it covers the whole file and is not trimmed."
   },
   "header_duplicate_and_blank_names.csv": {
@@ -866,6 +907,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._locate_header_row named-set rule: names are kept verbatim, the blank one included, and duplicates are not merged."
   },
   "data_contains_sample_marker.csv": {
@@ -887,6 +929,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards grounding against the plain-text sample markers (#105): the dialect comes from the real bytes, not from where the model thinks the sample ends."
   },
   "header_years.csv": {
@@ -908,6 +951,7 @@
     },
     "known_limitation": false,
     "generated": false,
+    "expected_error": null,
     "notes": "Guards _grounding._first_row_is_data (#131): a numeric header row is still a header; the no-header rule must not fire."
   },
   "gen_footer_none_wide.csv": {
@@ -965,6 +1009,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_totals_wide.csv": {
@@ -1024,6 +1069,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_marker_wide.csv": {
@@ -1083,6 +1129,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_timestamp_wide.csv": {
@@ -1142,6 +1189,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_blank_totals_wide.csv": {
@@ -1202,6 +1250,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_none_narrow.csv": {
@@ -1222,6 +1271,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_totals_narrow.csv": {
@@ -1244,6 +1294,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_marker_narrow.csv": {
@@ -1266,6 +1317,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_timestamp_narrow.csv": {
@@ -1288,6 +1340,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_footer_blank_totals_narrow.csv": {
@@ -1311,6 +1364,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf8_lf.csv": {
@@ -1335,6 +1389,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf8_crlf.csv": {
@@ -1360,6 +1415,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf8_bom_lf.csv": {
@@ -1382,6 +1438,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf8_bom_crlf.csv": {
@@ -1409,6 +1466,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_cp1252_lf.csv": {
@@ -1434,6 +1492,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_cp1252_crlf.csv": {
@@ -1459,6 +1518,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf16le_lf.csv": {
@@ -1481,6 +1541,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_encoding_utf16le_crlf.csv": {
@@ -1506,6 +1567,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_preamble_1.csv": {
@@ -1528,6 +1590,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_preamble_5_crlf.csv": {
@@ -1552,6 +1615,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_preamble_5_footer.csv": {
@@ -1578,6 +1642,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_headerless_narrow.csv": {
@@ -1599,6 +1664,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_headerless_marker.csv": {
@@ -1625,6 +1691,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_quoted_header.csv": {
@@ -1650,6 +1717,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_quotechar_single.csv": {
@@ -1673,6 +1741,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_ragged_comma.csv": {
@@ -1696,6 +1765,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_ragged_tab_wide.csv": {
@@ -1753,6 +1823,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_decimal_comma_semicolon.csv": {
@@ -1775,6 +1846,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_decimal_comma_comma.csv": {
@@ -1796,6 +1868,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_large_ledger.csv": {
@@ -1820,6 +1893,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_large_wide.csv": {
@@ -1879,6 +1953,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_combo_eu_legacy.csv": {
@@ -1905,6 +1980,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_combo_bom_crlf_preamble.csv": {
@@ -1932,6 +2008,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_combo_pipe_ragged.csv": {
@@ -1961,6 +2038,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": null
   },
   "gen_utf16le_bom_crlf_wide.csv": {
@@ -2020,6 +2098,7 @@
     },
     "known_limitation": false,
     "generated": true,
+    "expected_error": null,
     "notes": "Guards _encoding.code_unit_size: the UTF-16 tail window must be aligned to 2-byte code units, or the footer decodes as garbage."
   },
   "gen_very_wide_long_lines.csv": {
@@ -2237,6 +2316,7 @@
     },
     "known_limitation": true,
     "generated": true,
+    "expected_error": null,
     "notes": "Each line is ~8 KB, so the default head window holds less than one complete line; byte windows cannot show a header, line-based windows (#134) would."
   }
 }

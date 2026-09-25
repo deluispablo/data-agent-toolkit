@@ -69,6 +69,10 @@ class SampleCase:
             its bytes by :func:`build_manifest`.
         generated: True for fixtures rendered from a ``matrix.py`` spec
             rather than written by hand.
+        expected_error: The exception class ``inspect_csv`` must raise for
+            this fixture (for example ``"EmptySampleError"``), or ``None``
+            when it is expected to return a result. The harness scores the
+            expected exception as a pass, not as a pipeline error.
     """
 
     filename: str
@@ -80,6 +84,7 @@ class SampleCase:
     notes: str | None = None
     columns: list[str] | None = None
     generated: bool = False
+    expected_error: str | None = None
 
 
 def _encode(text: str, encoding: str, *, bom: bytes = b"") -> bytes:
@@ -681,6 +686,7 @@ CASES: list[SampleCase] = [
         "nothing to infer from.",
         # No encoding or delimiter to parse with: there are no columns at all.
         columns=[],
+        expected_error="EmptySampleError",
     ),
     SampleCase(
         filename="header_only_no_data.csv",
@@ -1160,8 +1166,8 @@ def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
 
     Returns:
         A mapping of fixture filename to its category, description,
-        expected ground truth, known-limitation and generated flags and
-        notes.
+        expected ground truth, known-limitation and generated flags,
+        expected exception and notes.
     """
     return {
         case.filename: {
@@ -1173,6 +1179,7 @@ def build_manifest(cases: Sequence[SampleCase]) -> dict[str, dict[str, Any]]:
             },
             "known_limitation": case.known_limitation,
             "generated": case.generated,
+            "expected_error": case.expected_error,
             "notes": case.notes,
         }
         for case in cases

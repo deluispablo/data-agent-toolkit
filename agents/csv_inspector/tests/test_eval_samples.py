@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 import runpy
 import sys
+import time
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -20,6 +22,7 @@ from csv_inspector import (
     ModelInvocationError,
     ResponseParsingError,
     Settings,
+    load_settings,
 )
 from csv_inspector import _inspect as inspect_module
 from csv_inspector._invokers import builtin_invoker
@@ -28,6 +31,8 @@ from csv_inspector._prompt import PROMPT_VERSION
 from csv_inspector.cli import DEFAULT_CLI_TIMEOUT_SECONDS
 from eval_samples import (
     HARNESS_VERSION,
+    MANIFEST_PATH,
+    SUBSETS,
     CallBudget,
     FileEvaluation,
     RateLimiter,
@@ -45,6 +50,7 @@ from eval_samples import (
     run_info,
     select_fixtures,
     summarize,
+    summarize_file,
 )
 from fakes import install_fake_ollama, ollama_reply
 
@@ -340,6 +346,7 @@ def test_line_record_has_the_documented_schema(monkeypatch: pytest.MonkeyPatch) 
         "calls",
         "error",
         "attempt_errors",
+        "retries",
     }
     assert record["repeat"] == 2
     assert record["model_used"] == "primary"
@@ -486,6 +493,7 @@ def test_summary_aggregates_scores_cost_and_errors() -> None:
             matched=["delimiter", "columns"],
             category="delimiter",
             usage=_usage(attempts=2, retries=1),
+            retries=1,
             latency_seconds=1.0,
             calls=3,
             columns_recall=1.0,
@@ -524,6 +532,7 @@ def test_summary_aggregates_scores_cost_and_errors() -> None:
         repeat=1,
         started_at="2026-09-24T00:00:00+00:00",
         stopped_early=None,
+        fixtures_planned=4,
     )
 
     summary = json.loads(json.dumps(summarize(evaluations, info)))
@@ -569,6 +578,7 @@ def test_report_shows_repeats_agreement_and_an_early_stop(
         repeat=2,
         started_at="now",
         stopped_early="--max-calls 2 reached",
+        fixtures_planned=1,
     )
 
     print_report(
@@ -690,11 +700,13 @@ def test_repeat_and_out_write_one_line_per_fixture_and_repeat(
 
     lines = _read_run(out)
     assert len(calls) == 9
-    assert len(lines) == 3 * len(FIXTURES) + 1
-    assert [line["repeat"] for line in lines[:3]] == [1, 2, 3]
+    assert len(lines) == 1 + 3 * len(FIXTURES) + 1
+    assert lines[0]["run"]["fixtures_planned"] == len(FIXTURES)
+    assert [line["repeat"] for line in lines[1:4]] == [1, 2, 3]
     summary = lines[-1]["summary"]
     assert (summary["repeat"], summary["fixtures_run"], summary["model"]) == (3, 3, "primary")
     assert summary["stopped_early"] is None
+    assert summary["incomplete"] is False
     assert "Wrote 9 line(s)" in capsys.readouterr().out
 
 
@@ -718,7 +730,7 @@ def test_several_models_run_in_sequence_into_separate_files(
     )
 
     assert [call["model"] for call in calls] == ["a", "b"]
-    assert _read_run(tmp_path / "a.jsonl")[0]["model_used"] == "a"
+    assert _read_run(tmp_path / "a.jsonl")[1]["model_used"] == "a"
     assert _read_run(tmp_path / "b.jsonl")[-1]["summary"]["model"] == "b"
 
 
@@ -744,7 +756,7 @@ def test_max_calls_stops_the_run_before_the_budget_is_exceeded(
 
     lines = _read_run(out)
     assert len(calls) == 2
-    assert len(lines) == 3
+    assert len(lines) == 4
     assert lines[-1]["summary"]["calls"] == 2
     assert "--max-calls 3 reached" in lines[-1]["summary"]["stopped_early"]
 
@@ -816,3 +828,168 @@ def test_run_script_as_main(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(SystemExit) as exit_info:
         runpy.run_path(eval_samples.__file__, run_name="__main__")
     assert exit_info.value.code == 0
+
+
+# ---------------------------------------------------------------------
+# Streamed runs, --summarize, subsets, expected errors, retries (issue #149)
+# ---------------------------------------------------------------------
+
+
+def test_an_interrupted_run_keeps_its_finished_lines_and_can_be_summarized(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """Lines are flushed as they finish; --summarize appends an incomplete summary."""
+    finished = 0
+
+    def answer_then_interrupt(**kwargs: Any) -> CSVInspectionResult:
+        nonlocal finished
+        if finished == 2:
+            raise KeyboardInterrupt
+        finished += 1
+        return _answer()
+
+    _fake_inspect(monkeypatch, answer_then_interrupt)
+    out = tmp_path / "cut.jsonl"
+
+    with pytest.raises(SystemExit) as exit_info:
+        main(_main_args("--model", "primary", "--out", str(out)))
+
+    assert exit_info.value.code == 130
+    lines = _read_run(out)
+    assert [set(line) & {"run", "fixture"} for line in lines] == [{"run"}, {"fixture"}, {"fixture"}]
+
+    main(["--summarize", str(out)])
+
+    summary = _read_run(out)[-1]["summary"]
+    assert summary["incomplete"] is True
+    assert (summary["fixtures_run"], summary["fixtures_planned"]) == (2, len(FIXTURES))
+    assert summary["stopped_early"] == "interrupted"
+    assert summary["model"] == "primary"
+    assert "Appended an incomplete summary" in capsys.readouterr().out
+
+
+def test_summarize_refuses_a_finished_run_and_a_file_without_run_line(tmp_path: Path) -> None:
+    """Only an interrupted harness-version-2 run can be summarized."""
+    finished = tmp_path / "done.jsonl"
+    finished.write_text('{"run": {}}\n{"summary": {}}\n', encoding="utf-8")
+    legacy = tmp_path / "v1.jsonl"
+    legacy.write_text('{"fixture": "a.csv"}\n', encoding="utf-8")
+    empty = tmp_path / "empty.jsonl"
+    empty.write_text("\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="already has a summary"):
+        summarize_file(finished)
+    with pytest.raises(ValueError, match="version 2"):
+        summarize_file(legacy)
+    with pytest.raises(ValueError, match="no run line"):
+        summarize_file(empty)
+    with pytest.raises(SystemExit) as exit_info:
+        main(["--summarize", str(legacy)])
+    assert exit_info.value.code == 2
+
+
+def test_subsets_name_manifest_fixtures() -> None:
+    """The quick subset covers every category; cloud is the documented 15 regular fixtures."""
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    for names in SUBSETS.values():
+        assert set(names) <= manifest.keys()
+        assert len(set(names)) == len(names)
+    assert {manifest[name]["category"] for name in SUBSETS["quick"]} == {
+        entry["category"] for entry in manifest.values()
+    }
+    assert len(SUBSETS["cloud"]) == 15
+    assert not any(manifest[name]["known_limitation"] for name in SUBSETS["cloud"])
+
+
+def test_subset_selects_its_fixtures(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """``--subset cloud`` runs exactly the cloud list."""
+    calls = _fake_inspect(monkeypatch, _answer())
+
+    main(["--no-env-file", "--log-level", "ERROR", "--subset", "cloud"])
+
+    assert sorted(Path(str(call["source"])).name for call in calls) == sorted(SUBSETS["cloud"])
+
+
+def test_the_expected_error_scores_as_a_pass_not_as_an_error() -> None:
+    """``empty_file.csv`` raises EmptySampleError before any model call: a pass."""
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+
+    evaluation = evaluate_file(
+        "empty_file.csv",
+        manifest["empty_file.csv"],
+        backend=LLMBackend.LOCAL,
+        settings=Settings(),
+        model="primary",
+        fallback_model="fallback",
+        n_bytes=4096,
+        tail_bytes=4096,
+    )
+
+    assert evaluation.error is None
+    assert evaluation.matched_fields == ["expected_error"]
+    assert (evaluation.score, evaluation.calls) == (1.0, 0)
+    summary = summarize([evaluation], {})
+    assert summary["errors"] == {}
+    assert summary["errored_lines"] == 0
+    assert summary["fixture_verdicts"] == {"empty_file.csv": "pass"}
+
+
+def test_a_missing_expected_error_is_a_mismatch(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A result where an exception was expected fails on that pseudo-field."""
+    _fake_inspect(monkeypatch, _answer())
+
+    evaluation = evaluate_file(
+        "f.csv",
+        {"category": "c", "known_limitation": False, "expected": {}, "expected_error": "X"},
+        backend=LLMBackend.LOCAL,
+        settings=Settings(),
+        model="primary",
+        fallback_model="fallback",
+        n_bytes=4096,
+        tail_bytes=4096,
+    )
+
+    assert evaluation.mismatched_fields == [("expected_error", "X", None)]
+
+
+def test_the_retries_of_a_failed_cloud_fixture_reach_the_summary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Gemini answering 503 twice: the inspection fails, and its one retry is counted."""
+    genai = pytest.importorskip("google.genai")
+    import httpx  # noqa: PLC0415
+    from google.genai import errors  # noqa: PLC0415
+
+    def unavailable(**kwargs: Any) -> Any:
+        body = {"error": {"code": 503, "message": "overloaded", "status": "UNAVAILABLE"}}
+        raise errors.ServerError(503, body, httpx.Response(503))
+
+    class Client:
+        def __init__(self, **kwargs: Any) -> None:
+            self.models = SimpleNamespace(generate_content=unavailable)
+
+        def __enter__(self) -> Client:
+            return self
+
+        def __exit__(self, *exc_info: object) -> None:
+            pass
+
+    monkeypatch.setattr(genai, "Client", Client)
+    monkeypatch.setattr(time, "sleep", lambda seconds: None)
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-tests")
+
+    evaluation = evaluate_file(
+        "delimiter_comma.csv",
+        {"category": "delimiter", "known_limitation": False, "expected": {}},
+        backend=LLMBackend.API,
+        settings=load_settings(),
+        model="gemini-x",
+        fallback_model="gemini-x",
+        n_bytes=4096,
+        tail_bytes=4096,
+    )
+
+    assert evaluation.error is not None
+    assert "503" in evaluation.attempt_errors["gemini-x"]
+    assert evaluation.retries == 1
+    assert summarize([evaluation], {})["retries"] == 1

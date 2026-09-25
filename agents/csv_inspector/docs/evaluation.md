@@ -37,7 +37,9 @@ sampling or default-model change) shows a before/after table:
 
 5. Paste the Markdown table and the verdict changes into the pull request.
 
-Use the same model, `--bytes`, `--tail-bytes`, `--timeout` and `--repeat`
+While iterating, run the [quick subset](#quick-subset) with `--repeat 2`;
+the table that goes in the pull request is a full-catalog `--repeat 3`
+run. Use the same model, `--bytes`, `--tail-bytes`, `--timeout` and `--repeat`
 for both runs; the summary line records all of them, and the table shows
 the model and prompt version of each run so mixed comparisons are visible.
 Local runs cost nothing but time; for cloud runs read
@@ -50,7 +52,11 @@ Each fixture's answer is compared field by field with the manifest's
 allowed), `delimiter`, `quotechar`, `escapechar`, `doublequote`,
 `has_header`, `header_row_index`, `footer_lines` (surrounding whitespace
 ignored), `footer_rows_to_skip` and `columns`. A field without ground truth
-is skipped. A fixture's score is matched / compared; the aggregate score is
+is skipped. A fixture whose manifest entry names an `expected_error`
+(`empty_file.csv`: `EmptySampleError`, raised before any model call) is
+scored on that one pseudo-field instead: raising exactly that exception is
+a pass, charged no model call and not counted as an error; returning a
+result is a mismatch. A fixture's score is matched / compared; the aggregate score is
 the mean over fixtures, leaving out known limitations and fixtures whose
 inspection failed (both are reported separately).
 
@@ -88,13 +94,15 @@ or `unscored`; `compare_runs.py` lists the fixtures whose verdict changed.
 | `--timeout S` | Time budget per fixture (default 300; 0 disables). |
 | `--category C` | Only fixtures of one manifest category. |
 | `--fixture NAME` | Only this fixture (repeatable). An unknown name is an error. |
+| `--subset quick\|cloud` | Only the [quick subset](#quick-subset) or the [cloud subset](#cloud-subset) (the lists live in `SUBSETS` in the script). Combines with `--fixture`. |
 | `--max-fixtures N` | At most N fixtures: the first N by name, after the filters. |
 | `--repeat N` | Run each fixture N times (default 1). |
 | `--out PATH` | Write a JSONL run. `PATH` is a `.jsonl` file (one model only), a template containing `{model}` (e.g. `runs/{model}.jsonl`), or a directory that receives `<UTC timestamp>-<model>.jsonl`. An existing file is never overwritten. |
 | `--keep-raw` | Store every model answer's raw text in the JSONL lines (`raw_response`). |
 | `--rpm N` | Never exceed N model requests per minute (the harness sleeps). |
 | `--max-calls N` | Hard stop: never more than N model requests in total, over all models. |
-| `--dry-run` | Build the prompts, print each fixture's size and the planned call count, call no model. Needs no credentials. |
+| `--dry-run` | Build the prompts, print each fixture's size and the planned call count, call no model. Needs no credentials. The token estimate assumes 1.81 characters per token (measured on `qwen2.5-coder:7b`). |
+| `--summarize RUN` | Recover an interrupted run: recompute the summary from the finished lines of `RUN` and append it, marked incomplete. Calls no model; every other flag is ignored. |
 | `--env-file`, `--no-env-file`, `--log-level` | As in the CLI. |
 
 `compare_runs.py RUN RUN [RUN ...]`: the first run is the reference; columns
@@ -102,7 +110,12 @@ are labelled with the file names.
 
 ## Run files
 
-`--out` writes one JSON object per line, one line per (fixture, repeat):
+`--out` writes one JSON object per line. The first line is
+`{"run": {...}}`: the run's settings (harness and prompt versions, backend,
+models, `n_bytes`, `tail_bytes`, timeout, repeat, start time,
+`fixtures_planned`). Then comes one line per (fixture, repeat), appended
+and flushed as soon as that inspection finishes, so an interrupted run
+keeps every finished line:
 
 ```json
 {"fixture": "delimiter_semicolon.csv", "category": "delimiter", "repeat": 1,
@@ -112,22 +125,43 @@ are labelled with the file names.
  "usage": {"model": "qwen2.5-coder:7b", "prompt_tokens": 1450, "completion_tokens": 210,
            "latency_seconds": 4.1, "attempts": 1, "retries": 0, "load_seconds": 0.01,
            "prompt_version": "2026.09-a"},
- "latency_seconds": 4.2, "calls": 1, "error": null, "attempt_errors": {}}
+ "latency_seconds": 4.2, "calls": 1, "error": null, "attempt_errors": {}, "retries": 0}
 ```
 
 `usage` is the inspection's `result.usage` (`null` when it failed; then
 `error` and, per model, `attempt_errors` say why). The top-level
 `latency_seconds` is measured by the harness around the whole inspection,
 failures included. `raw_response` (with `--keep-raw`) is a list of
-`{"model", "text"}`, one per model answer in call order.
+`{"model", "text"}`, one per model answer in call order. `retries` counts
+the transient-error (429/503) retries of the inspection: from `usage` when
+it succeeded, and otherwise counted from the library's "retrying once"
+warnings, so a cloud fixture that failed after its retry shows it too.
+`calls` stays the conservative charge used by `--max-calls` (a failure is
+charged its worst case).
 
-The last line is `{"summary": {...}}`: harness and prompt versions, backend,
-models, `n_bytes`, `tail_bytes`, timeout, repeat, start time, whether the
-run stopped early, the aggregate, per-category and per-field scores,
-majority-vote scores, agreement, verdicts, token totals and means, latency
-p50/p95, model calls, fallback uses, retries, error counts by exception
-class (the inspection's and each failed attempt's) and the number of 429
-and 503 answers seen in failed attempts.
+The last line is `{"summary": {...}}`: the settings of the `run` line,
+whether the run stopped early and whether it is `incomplete`, the
+aggregate, per-category and per-field scores, majority-vote scores,
+agreement, verdicts, token totals and means, latency p50/p95, model calls,
+fallback uses, retries (every line's `retries`, failed inspections
+included), error counts by exception class (the inspection's and each
+failed attempt's) and the number of 429 and 503 answers seen in failed
+attempts. `fixtures_run` against `fixtures_planned` shows how far the run
+got.
+
+A file with no summary line is an interrupted run (the harness was killed,
+or stopped with Ctrl+C, which prints the recovery command).
+`compare_runs.py` refuses it. Recover it with:
+
+```bash
+uv run --directory agents/csv_inspector python scripts/eval_samples.py --summarize runs/x.jsonl
+```
+
+which recomputes the summary from the finished lines, appends it with
+`"incomplete": true` and `"stopped_early": "interrupted"`, and prints the
+report. `compare_runs.py` then labels its column
+`x (incomplete, N/M fixtures)`. Only harness version 2 files (those with a
+`run` line) can be recovered.
 
 ## Quota notes
 
@@ -147,8 +181,8 @@ at least 80 requests per repeat and model; a fixture can need up to four
   limit; it stops early and says so in the report and the summary.
 - `--rpm` spaces requests on the harness side (the library itself has no
   rate limiter yet).
-- Use `--fixture` (or `--max-fixtures`) to run the [cloud subset](#cloud-subset)
-  instead of the whole catalog.
+- Use `--subset cloud` to run the [cloud subset](#cloud-subset) instead of
+  the whole catalog.
 
 ## Adding a fixture: hand-written vs matrix spec
 
@@ -207,6 +241,35 @@ checklist in one pull request:
 4. Update the golden prompt strings in `tests/test_prompt_budget.py` and,
    if the template grew, `PROMPT_TEMPLATE_MAX_CHARS` there, deliberately.
 
+## Quick subset
+
+A full-catalog `--repeat 3` run takes about 30 minutes per 7-8B model on
+the reference machine. The rule: **iterate on `--subset quick` with
+`--repeat 2`, prove on the full catalog with `--repeat 3`** (the table in
+the pull request is the full run).
+
+```bash
+uv run --directory agents/csv_inspector python scripts/eval_samples.py --no-env-file \
+  --model qwen2.5-coder:7b --subset quick --repeat 2 --out "runs/{model}-quick.jsonl"
+```
+
+Twenty-one fixtures: every category, every footer kind, header-less files,
+a 40-column file, the tab-with-commas files, the blank-name header, the
+expected-error file and the misses of the [0.3.0 baseline](#baseline-030).
+The list lives in `SUBSETS["quick"]` in `scripts/eval_samples.py`; change
+it there and here together.
+
+| Category | Fixtures | Why |
+|---|---|---|
+| `delimiter` | `delimiter_semicolon_decimal_comma.csv`, `delimiter_tab_commas_quoted_header.tsv` | decimal comma; tab with commas in values |
+| `encoding` | `encoding_cp1252_tail_only.csv`, `gen_encoding_utf16le_lf.csv`, `gen_encoding_utf8_lf.csv` | tail-only cp1252; UTF-16 tab with commas (#151); `TOTAL` footer with trailing delimiters (#153) |
+| `header_footer` | `gen_footer_none_narrow.csv`, `gen_footer_totals_narrow.csv`, `gen_footer_marker_narrow.csv`, `gen_footer_timestamp_narrow.csv`, `gen_footer_blank_totals_wide.csv`, `footer_end_marker.csv` | every footer kind; a 40-column file (#147); a multi-line footer |
+| `header_footer` | `header_none_data_only.csv`, `gen_headerless_marker.csv`, `header_years.csv`, `header_duplicate_and_blank_names.csv`, `header_metadata_banner.csv` | header-less files (#131); a header of years; a blank name (#153); a preamble |
+| `quoting` | `quoting_backslash_escape.csv` | escape character |
+| `structural` | `single_column.csv`, `empty_file.csv` | one column; the expected `EmptySampleError` |
+| `data_format` | `numeric_european_format.csv` | European numbers |
+| `combo` | `gen_combo_eu_legacy.csv` | semicolon + decimal comma + cp1252 + preamble + totals |
+
 ## Cloud subset
 
 Fifteen fixtures, one or two per category, none a known limitation, for
@@ -221,22 +284,8 @@ a free-tier key.
 
 ```bash
 uv run --directory agents/csv_inspector python scripts/eval_samples.py --backend api \
-  --model MODEL --fallback-model MODEL --max-calls 18 --rpm 10 --out "runs/{model}.jsonl" \
-  --fixture delimiter_semicolon_decimal_comma.csv \
-  --fixture delimiter_tab_commas_quoted_header.tsv \
-  --fixture encoding_cp1252_tail_only.csv \
-  --fixture encoding_utf16le_bom.csv \
-  --fixture header_and_footer_combined.csv \
-  --fixture footer_like_data_row_numeric_label.csv \
-  --fixture header_none_data_only.csv \
-  --fixture quoting_backslash_escape.csv \
-  --fixture quoting_doubled_quotes.csv \
-  --fixture ragged_rows_inconsistent_columns.csv \
-  --fixture single_column.csv \
-  --fixture numeric_european_format.csv \
-  --fixture null_representations_mixed.csv \
-  --fixture gen_combo_eu_legacy.csv \
-  --fixture gen_combo_bom_crlf_preamble.csv
+  --model MODEL --fallback-model MODEL --subset cloud --max-calls 18 --rpm 10 \
+  --out "runs/{model}.jsonl"
 ```
 
 | Category | Fixtures |
@@ -276,7 +325,7 @@ uv run python scripts/eval_samples.py --no-env-file --model qwen2.5-coder:7b \
 uv run python scripts/eval_samples.py --backend api --env-file .env \
   --model gemini-flash-lite-latest --fallback-model gemini-flash-lite-latest \
   --max-calls 18 --rpm 10 --keep-raw --out "runs/{model}-cloud.jsonl" \
-  <the 15 --fixture flags of the cloud subset>
+  <the 15 --fixture flags of the cloud subset; today: --subset cloud>
 ```
 
 The breakdowns below are arithmetic on those run files (raw answers,
@@ -399,7 +448,7 @@ fallback.
 |---|---|
 | Failed inspections (`InspectionFailedError`) | 30 (27 regular, 3 on a known limitation) |
 | of which every attempt was cut off by the 1,024-token reply cap (40-column files) | 24 ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)) |
-| `EmptySampleError` on `empty_file.csv` (expected, but counted as an error by the harness: [#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)) | 3 |
+| `EmptySampleError` on `empty_file.csv` (expected, but counted as an error by harness version 1; scored as a pass since [#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)) | 3 |
 | Failed attempts with `ResponseParsingError` | 60 |
 | `SchemaValidationError`, `InspectionTimeoutError` | 0 |
 | Fallback used successfully | 9 |

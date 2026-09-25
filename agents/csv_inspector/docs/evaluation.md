@@ -372,7 +372,7 @@ latency and cost, and the weakest fields and known failure modes it names.
 Everyday before/after runs from [the ritual](#the-ritual) do not touch the
 README.
 
-If the demo file's result changes too (a prompt, grounding or default-model
+If a demo file's result changes too (a prompt, grounding or default-model
 change), regenerate the README's hero and terminal recording: see
 "Development" in the README.
 

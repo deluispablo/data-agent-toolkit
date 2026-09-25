@@ -9,13 +9,13 @@
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
-  <img alt="csv-inspector samples the head and tail of a messy Windows-1252 export, sends them to a local LLM, and returns encoding Windows-1252, delimiter ';', header_row_index 3, footer_rows_to_skip 2 and six typed columns" src="docs/assets/hero-light.svg" width="900">
+  <img alt="csv-inspector inspects two messy exports in turn. For a Windows-1252 sales report it samples the head and tail, asks a local LLM, and returns delimiter ';', header_row_index 3 after a 3-line preamble, 2 footer lines and six column names; for a UTF-16 tab-separated stock export it returns delimiter tab, header_row_index 0, 2 footer lines and five column names" src="docs/assets/hero-light.svg" width="900">
 </picture>
 
 `csv-inspector` is an LLM-assisted inspector for large, messy CSV/TSV
 sources. It reads **small, bounded head and tail samples**, never the whole
 file, and tells you the encoding, the dialect, where the header is, which
-footer lines to drop and what the columns look like. It runs on a **free,
+footer lines to drop and what the columns are called. It runs on a **free,
 local Ollama model by default** (no credentials) or on **Google Gemini** as
 an opt-in, and returns a Pydantic-validated `CSVInspectionResult` ready to
 drive downstream ingestion.
@@ -46,7 +46,11 @@ too large to open:
 | Whether the file has a header row at all | `has_header` |
 | Where the header is: the number of preamble lines, such as export banners or comments, to skip | `header_row_index` (`None` for a header-less file) |
 | The footer lines after the data: totals rows, "end of report" markers, generation timestamps, blank separators | `footer_lines`, and `footer_rows_to_skip` derived from them |
-| A preliminary column schema | `columns`: name, inferred type, nullability, examples |
+| The column names, as written in the header row | `columns` |
+
+Column types are not inferred: the engine that loads the file reads all of
+it and infers them better than a 4 KB sample can (see
+[Using the result](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#column-types)).
 
 ### What makes it different
 
@@ -58,8 +62,9 @@ too large to open:
 - **Grounded, not trusted.** The model's answer is re-checked against the
   real bytes: the delimiter, the header row, the literal column names and
   the verbatim footer are recomputed from the sample.
-- **A validated contract.** A Pydantic v2 model with a closed vocabulary of
-  six column types, not free text.
+- **A validated contract.** A small Pydantic v2 model with exactly what a
+  reader needs, not free text; `confidence` tells you which files to send
+  to human review.
 - **Built to embed.** A library for your own application or API (FastAPI,
   Flask, Django, a worker, any cloud), with sync and async entry points,
   one time budget for the whole model phase, typed errors, and the cost of
@@ -68,10 +73,14 @@ too large to open:
 
 ## See it run
 
-A real session with the local backend on the demo file from the picture
-([`docs/assets/demo_sales.csv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_sales.csv)):
+A real session with the local backend on the two demo files from the
+picture,
+[`demo_sales.csv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_sales.csv)
+(Windows-1252, `;`, a preamble, a totals row and an end marker) and
+[`demo_stock.tsv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_stock.tsv)
+(UTF-16 with a BOM, tabs, a totals row and an export stamp):
 
-<img alt="Terminal recording: Get-Content shows the messy demo file; in Python, inspect_csv returns ('Windows-1252', ';', 3, 2), the six column names with their types, the two footer lines, and the model qwen2.5-coder:7b" src="docs/assets/demo.gif" width="900">
+<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, False), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines and six column names. demo_stock.tsv: ('utf-16', '	', '&quot;', None, False), (True, 0, 2), its two footer lines and five column names" src="docs/assets/demo.gif" width="900">
 
 ## Accuracy at a glance
 
@@ -94,11 +103,14 @@ header-less files, structural oddities). Baseline 0.3.0, measured on
 
 Each fixture scores the share of its fields that match the ground truth;
 accuracy is the mean over fixtures, known limitations and failed
-inspections excluded. `encoding`, `quotechar` and `escapechar` are always
-right; the weakest fields are the footer (`footer_lines`, 77.1 %) and
-header-less detection (`has_header`, 75.0 %).
-Very wide files (the catalog's 40-column ones) currently fail on the local
-models: the answer outgrows the model's reply cap ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
+inspections excluded. On 0.3.0, `encoding`, `quotechar` and `escapechar`
+were always right; the weakest fields were the footer (`footer_lines`,
+77.1 %) and header-less detection (`has_header`, 75.0 %), and very wide
+files (the catalog's 40-column ones) failed on the local models. The
+grounding fixes and the lean contract of the next release target exactly
+those misses, and wide files no longer fail
+([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)); its
+baseline will replace these figures.
 Method, per-field scores, machine and every miss:
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-030).
 
@@ -129,7 +141,7 @@ with open("exports/ledger.csv", "rb") as f:
     result = inspect_csv(f)  # ...or a binary stream
 
 print(result.delimiter, result.header_row_index, result.footer_rows_to_skip)
-print([column.name for column in result.columns])
+print(result.columns)  # ["Fecha", "Cliente", "Importe"]
 ```
 
 In asyncio code, await `ainspect_csv` instead. **Never call `inspect_csv`
@@ -159,7 +171,7 @@ df = pd.read_csv(
     doublequote=result.doublequote,
     skiprows=result.header_row_index or 0,  # physical lines: NOT header=
     header=0 if result.has_header else None,
-    names=None if result.has_header else [column.name for column in result.columns],
+    names=None if result.has_header else result.columns,
     skipfooter=result.footer_rows_to_skip,
     engine="python" if result.footer_rows_to_skip else "c",
 )
@@ -307,8 +319,8 @@ stable API. Every other module and name is internal.
 | `inspect_csv(source, /, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)` | Synchronous inspection |
 | `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
 | `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
-| `CSVInspectionResult`, `ColumnSchema` | The validated output contract. An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
-| `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
+| `CSVInspectionResult` | The validated output contract (see [The result](#the-result)). An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
+| `Usage` | The type of `result.usage`: what the model phase cost (see [Usage](#usage)) |
 | `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
 | `Settings` | Explicit configuration; constructing it never reads the environment |
 | `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
@@ -318,22 +330,21 @@ stable API. Every other module and name is internal.
 | `CSVInspectorError` and subclasses | See [Errors](#errors) |
 | `__version__` | The installed version |
 
-### Column types
+### The result
 
-`ColumnSchema.inferred_type` is always one of `string`, `integer`, `float`,
-`date` (no time part), `datetime` or `boolean`, so a downstream type mapping
-only has to cover these six values. Small models often answer with other
-words; common aliases are mapped (case-insensitively), and any other word
-becomes `string`, the safe type:
-
-| Model answer | `inferred_type` |
+| Field | Meaning |
 |---|---|
-| `int`, `bigint`, `int64` | `integer` |
-| `number`, `decimal`, `double`, `numeric` | `float` |
-| `text`, `str`, `varchar` | `string` |
-| `bool` | `boolean` |
-| `timestamp` | `datetime` |
-| anything else | `string` |
+| `encoding` | The character encoding, checked against the one detected from the bytes |
+| `delimiter`, `quotechar`, `escapechar`, `doublequote` | The dialect, ready for `csv`, pandas, PySpark or BigQuery |
+| `has_header`, `header_row_index` | Whether the file has a row of column names, and how many physical lines precede it (`None` for a header-less file) |
+| `footer_lines`, `footer_rows_to_skip` | The trailing non-data lines, verbatim, and how many there are |
+| `columns` | The column names as written in the header row, in file order (`column_1`, `column_2`, ... for a header-less file). Empty names (a pandas index column) and duplicate names are kept, as they are in the file |
+| `confidence` | The model's self-reported confidence, from 0.0 to 1.0 |
+
+`confidence` is a routing signal, not a guarantee: send inspections below
+a threshold you choose (for example 0.7) to human review instead of loading
+them automatically. The dialect, header row, column names and footer are
+grounded in the sampled bytes whatever the model's confidence.
 
 ### Sources
 
@@ -379,7 +390,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-a`); it changes with every change to the prompt wording |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-b`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is
@@ -481,10 +492,10 @@ compare models or prompt versions, see
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md).
 
 The picture and the recording at the top of this page are generated:
-`scripts/render_readme_hero.py` writes the demo file and both hero SVGs,
+`scripts/render_readme_hero.py` writes the demo files and both hero SVGs,
 and [`docs/assets/demo.tape`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo.tape)
 records the terminal session with [VHS](https://github.com/charmbracelet/vhs).
-Regenerate both after a change that alters the demo file's result.
+Regenerate both after a change that alters a demo file's result.
 
 ## License
 

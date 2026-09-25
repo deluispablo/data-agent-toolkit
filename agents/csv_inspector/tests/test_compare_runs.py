@@ -205,3 +205,18 @@ def test_run_script_as_main(
     runpy.run_path(compare_runs.__file__, run_name="__main__")
 
     assert "| metric |" in capsys.readouterr().out
+
+
+def test_a_replay_is_labelled_and_its_source_shown(two_runs: tuple[Path, Path]) -> None:
+    """A replayed column says so in its header and names the run it replayed."""
+    baseline, candidate = (load_summary(path) for path in two_runs)
+    candidate["replay_of"] = "runs/base.jsonl"
+
+    labels = [
+        compare_runs.run_label(path, summary)
+        for path, summary in zip(two_runs, (baseline, candidate), strict=True)
+    ]
+    report = render(labels, [baseline, candidate])
+
+    assert "| metric | baseline | candidate (replay) |" in report
+    assert "| answers | live | replay of runs/base.jsonl |" in report

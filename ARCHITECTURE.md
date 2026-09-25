@@ -157,7 +157,8 @@ Around the package:
   latency, a summary line; `--summarize` recovers an interrupted one),
   `--repeat` measures drift, `--subset quick|cloud` selects the documented
   lists, and quota guards (`--max-calls`, `--rpm`, `--dry-run`, ...)
-  protect cloud quotas. It may import private
+  protect cloud quotas. `--replay` re-scores a `--keep-raw` run's recorded
+  answers on the current code, with no model. It may import private
   names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts
   still reach `Usage`. Not run by pytest or CI.
 - `scripts/compare_runs.py`: stdlib-only Markdown table of two or more

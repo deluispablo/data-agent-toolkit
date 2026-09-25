@@ -37,7 +37,10 @@ fixture lists (:data:`SUBSETS`). ``--repeat N`` runs each fixture N times and re
 accuracy and agreement per field, since answers drift even at
 ``temperature=0``. Quota guards (``--rpm``, ``--max-calls``,
 ``--max-fixtures``, ``--fixture``, ``--dry-run``) keep a cloud run from
-burning a day's free-tier quota by accident. See ``docs/evaluation.md``.
+burning a day's free-tier quota by accident. ``--replay RUN`` feeds a
+``--keep-raw`` run's recorded answers back through the pipeline, calling no
+model, to measure a grounding, validation or parsing change exactly. See
+``docs/evaluation.md``.
 
 Private imports: this script lives in the repository, not in a host, so it
 may import private names. ``--dry-run`` builds prompts with
@@ -62,6 +65,7 @@ Usage:
     python eval_samples.py --subset quick --repeat 2 --out "runs/{model}-quick.jsonl"
     python eval_samples.py --backend api --subset cloud --max-calls 18 --rpm 10
     python eval_samples.py --summarize runs/interrupted.jsonl
+    python eval_samples.py --replay runs/baseline.jsonl --out runs/replay.jsonl
 """
 
 from __future__ import annotations
@@ -418,6 +422,37 @@ def _recording_builtin_invoker(raw: list[dict[str, str]]) -> Iterator[None]:
         setattr(_inspect, _SEAM, original)
 
 
+class ReplayMissError(RuntimeError):
+    """The replayed run holds no (more) answers from the model the pipeline asked."""
+
+
+def _replaying_invoker(
+    recorded: list[dict[str, str]], consumed: list[dict[str, str]]
+) -> Callable[[str, str], str]:
+    """A ``model_invoker`` that answers with a run's recorded raw texts, in call order.
+
+    Each call returns the first recorded attempt not yet used whose model is
+    the one asked, and appends it to ``consumed``. An attempt that timed out
+    or failed to answer left no text, so its model finds nothing and the
+    call raises :class:`ReplayMissError`, which the pipeline counts as a
+    failed attempt, as it did live.
+
+    Args:
+        recorded: The ``raw_response`` of one (fixture, repeat) line.
+        consumed: The list the used attempts are appended to.
+    """
+    pending = list(recorded)
+
+    def invoke(prompt: str, model: str) -> str:
+        for index, attempt in enumerate(pending):
+            if attempt["model"] == model:
+                consumed.append(pending.pop(index))
+                return attempt["text"]
+        raise ReplayMissError(f"The replayed run holds no answer left from '{model}'.")
+
+    return invoke
+
+
 class _RetryCounter(logging.Handler):
     """Counts the library's retry warnings (``_RETRY_WARNING``) while attached.
 
@@ -480,6 +515,7 @@ def evaluate_file(
     timeout_seconds: float | None = None,
     repeat: int = 1,
     keep_raw: bool = False,
+    replayed: list[dict[str, str]] | None = None,
 ) -> FileEvaluation:
     """Run the real inspection pipeline against one fixture and score it.
 
@@ -497,6 +533,9 @@ def evaluate_file(
             errored, like any other pipeline error.
         repeat: Which repeat of the fixture this is, from 1.
         keep_raw: Record the raw text of every model answer.
+        replayed: Answer with these recorded attempts (a ``raw_response``)
+            instead of calling a model; the attempts used are recorded as
+            the raw answers.
 
     Returns:
         The resulting :class:`FileEvaluation`. When the manifest names an
@@ -512,12 +551,14 @@ def evaluate_file(
     )
     expected_error: str | None = entry.get(_EXPECTED_ERROR)
     raw: list[dict[str, str]] = []
+    invoker = _replaying_invoker(replayed, raw) if replayed is not None else None
+    keep_raw = keep_raw or invoker is not None
     counter = _RetryCounter()
     started = time.monotonic()
     try:
         with (
             counter,
-            _recording_builtin_invoker(raw) if keep_raw else nullcontext(),
+            _recording_builtin_invoker(raw) if keep_raw and invoker is None else nullcontext(),
         ):
             result = inspect_csv(
                 SAMPLES_DIR / filename,
@@ -528,6 +569,7 @@ def evaluate_file(
                 n_bytes=n_bytes,
                 tail_bytes=tail_bytes,
                 timeout_seconds=timeout_seconds,
+                model_invoker=invoker,
             )
     except CSVInspectorError as exc:
         if type(exc).__name__ == expected_error:
@@ -1166,11 +1208,14 @@ def run_model(
     budget: CallBudget,
     limiter: RateLimiter,
     on_evaluation: Callable[[FileEvaluation], None] | None = None,
+    replay: dict[tuple[str, int], list[dict[str, str]]] | None = None,
 ) -> tuple[list[FileEvaluation], str | None]:
     """Evaluate every fixture ``repeat`` times with one model, within the quota guards.
 
     ``on_evaluation`` is called with each evaluation as soon as it finishes
-    (the run file's streaming writer).
+    (the run file's streaming writer). With ``replay`` (raw answers by
+    fixture and repeat), each (fixture, repeat) is answered from it and one
+    it does not hold is skipped.
 
     Returns:
         The evaluations, and why the run stopped early (``None`` if it did not).
@@ -1179,6 +1224,8 @@ def run_model(
     evaluations: list[FileEvaluation] = []
     for filename, entry in fixtures:
         for index in range(1, repeat + 1):
+            if replay is not None and (filename, index) not in replay:
+                continue
             if not budget.allows(worst_case):
                 reason = (
                     f"--max-calls {budget.max_calls} reached ({budget.used} call(s) made, "
@@ -1206,6 +1253,7 @@ def run_model(
                 timeout_seconds=timeout_seconds,
                 repeat=index,
                 keep_raw=keep_raw,
+                replayed=replay[filename, index] if replay is not None else None,
             )
             budget.charge(evaluation.calls)
             limiter.record(evaluation.calls)
@@ -1332,14 +1380,16 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--bytes",
         type=HEAD_BYTES,
-        default=DEFAULT_SAMPLE_BYTES,
-        help="Head sample size, in bytes.",
+        default=None,
+        help=f"Head sample size, in bytes (default: {DEFAULT_SAMPLE_BYTES}; with --replay, "
+        "the run's).",
     )
     parser.add_argument(
         "--tail-bytes",
         type=TAIL_BYTES,
-        default=DEFAULT_TAIL_BYTES,
-        help="Tail sample size, in bytes (0 disables).",
+        default=None,
+        help=f"Tail sample size, in bytes, 0 disables (default: {DEFAULT_TAIL_BYTES}; with "
+        "--replay, the run's).",
     )
     parser.add_argument(
         "--timeout",
@@ -1411,6 +1461,14 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="Build the prompts and print their sizes and the planned calls; call no model.",
     )
+    parser.add_argument(
+        "--replay",
+        type=Path,
+        default=None,
+        metavar="RUN",
+        help="Answer each fixture with the raw answers recorded in a --keep-raw run instead "
+        "of calling a model (valid for grounding, validation and parsing changes only).",
+    )
     add_settings_arguments(parser)
     add_log_level_argument(parser)
     return parser.parse_args(argv)
@@ -1423,6 +1481,11 @@ def main(argv: Sequence[str] | None = None) -> None:
     if args.summarize is not None:
         _summarize_command(args.summarize)
         return
+    if args.replay is not None:
+        _replay_command(args)
+        return
+    n_bytes = DEFAULT_SAMPLE_BYTES if args.bytes is None else args.bytes
+    tail_bytes = DEFAULT_TAIL_BYTES if args.tail_bytes is None else args.tail_bytes
 
     try:
         settings = load_cli_settings(args.env_file, no_env_file=args.no_env_file)
@@ -1438,13 +1501,9 @@ def main(argv: Sequence[str] | None = None) -> None:
         logger.error("Cannot run the evaluation: %s", exc)
         sys.exit(1)
 
-    manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:
-        names = [*(args.fixture or []), *(SUBSETS[args.subset] if args.subset else ())]
-        fixtures = select_fixtures(
-            manifest, category=args.category, names=names, max_fixtures=args.max_fixtures
-        )
+        fixtures = _selected_fixtures(args)
         paths = [
             output_path(args.out, model, several_models=len(models) > 1, stamp=stamp)
             for model in models
@@ -1459,7 +1518,7 @@ def main(argv: Sequence[str] | None = None) -> None:
         * sum(_worst_case_calls(backend, model, fallback_model) for model in models)
     )
     if args.dry_run:
-        dry_run(fixtures, n_bytes=args.bytes, tail_bytes=args.tail_bytes, planned_calls=planned)
+        dry_run(fixtures, n_bytes=n_bytes, tail_bytes=tail_bytes, planned_calls=planned)
         return
     if backend is LLMBackend.API and args.max_calls is None:
         print(
@@ -1475,55 +1534,201 @@ def main(argv: Sequence[str] | None = None) -> None:
             backend=backend,
             model=model,
             fallback_model=fallback_model,
-            n_bytes=args.bytes,
-            tail_bytes=args.tail_bytes,
+            n_bytes=n_bytes,
+            tail_bytes=tail_bytes,
             timeout_seconds=args.timeout,
             repeat=args.repeat,
             started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
             stopped_early=None,
             fixtures_planned=len(fixtures),
         )
-        writer = RunWriter(path, info) if path is not None else None
-        try:
-            evaluations, stopped = run_model(
-                fixtures,
-                backend=backend,
-                settings=settings,
-                model=model,
-                fallback_model=fallback_model,
-                n_bytes=args.bytes,
-                tail_bytes=args.tail_bytes,
-                timeout_seconds=args.timeout,
-                repeat=args.repeat,
-                keep_raw=args.keep_raw,
-                budget=budget,
-                limiter=limiter,
-                on_evaluation=writer.add if writer is not None else None,
-            )
-        except KeyboardInterrupt:
-            if writer is not None:
-                writer.close()
-                logger.error(
-                    "Interrupted: %d finished line(s) kept in %s; recover the summary with "
-                    "--summarize %s",
-                    writer.lines,
-                    writer.path,
-                    writer.path,
-                )
-            sys.exit(130)
-        summary = summarize(evaluations, {**info, "stopped_early": stopped})
-        print_report(
-            evaluations,
-            backend=backend,
-            model=model,
-            fallback_model=fallback_model,
-            summary=summary,
+        stopped = _run_and_report(
+            fixtures,
+            info,
+            path,
+            settings=settings,
+            keep_raw=args.keep_raw,
+            budget=budget,
+            limiter=limiter,
         )
-        if writer is not None:
-            writer.finish(summary)
-            print(f"Wrote {len(evaluations)} line(s) and the summary to {writer.path}\n")
         if stopped:
             break
+
+
+def _selected_fixtures(args: argparse.Namespace) -> list[tuple[str, dict[str, Any]]]:
+    """The manifest fixtures picked by ``--category``/``--fixture``/``--subset``/``--max-fixtures``.
+
+    Raises:
+        ValueError: As :func:`select_fixtures`.
+    """
+    manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
+    names = [*(args.fixture or []), *(SUBSETS[args.subset] if args.subset else ())]
+    return select_fixtures(
+        manifest, category=args.category, names=names, max_fixtures=args.max_fixtures
+    )
+
+
+def _run_and_report(
+    fixtures: list[tuple[str, dict[str, Any]]],
+    info: dict[str, Any],
+    path: Path | None,
+    *,
+    settings: Settings,
+    keep_raw: bool,
+    budget: CallBudget,
+    limiter: RateLimiter,
+    replay: dict[tuple[str, int], list[dict[str, str]]] | None = None,
+) -> str | None:
+    """Run one model over ``fixtures`` as ``info`` describes, report it, write its file.
+
+    Returns:
+        Why the run stopped early, or ``None``.
+    """
+    backend = LLMBackend(info["backend"])
+    writer = RunWriter(path, info) if path is not None else None
+    try:
+        evaluations, stopped = run_model(
+            fixtures,
+            backend=backend,
+            settings=settings,
+            model=info["model"],
+            fallback_model=info["fallback_model"],
+            n_bytes=info["n_bytes"],
+            tail_bytes=info["tail_bytes"],
+            timeout_seconds=info["timeout_seconds"],
+            repeat=info["repeat"],
+            keep_raw=keep_raw,
+            budget=budget,
+            limiter=limiter,
+            on_evaluation=writer.add if writer is not None else None,
+            replay=replay,
+        )
+    except KeyboardInterrupt:
+        if writer is not None:
+            writer.close()
+            logger.error(
+                "Interrupted: %d finished line(s) kept in %s; recover the summary with "
+                "--summarize %s",
+                writer.lines,
+                writer.path,
+                writer.path,
+            )
+        sys.exit(130)
+    summary = summarize(evaluations, {**info, "stopped_early": stopped})
+    print_report(
+        evaluations,
+        backend=backend,
+        model=info["model"],
+        fallback_model=info["fallback_model"],
+        summary=summary,
+    )
+    if writer is not None:
+        writer.finish(summary)
+        print(f"Wrote {len(evaluations)} line(s) and the summary to {writer.path}\n")
+    return stopped
+
+
+def load_replay(
+    path: Path, *, n_bytes: int | None, tail_bytes: int | None
+) -> tuple[dict[str, Any], dict[tuple[str, int], list[dict[str, str]]]]:
+    """Read a ``--keep-raw`` run for ``--replay``.
+
+    Args:
+        path: The run file.
+        n_bytes: The requested head window, or ``None`` for the run's.
+        tail_bytes: The requested tail window, or ``None`` for the run's.
+
+    Returns:
+        The run's ``run`` line, and each (fixture, repeat) line's
+        ``raw_response``.
+
+    Raises:
+        ValueError: If the file has no ``run`` line or no raw answers, or a
+            window differs from the run's (its answers were given for the
+            samples of those windows).
+    """
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    if not records or "run" not in records[0]:
+        raise ValueError(f"'{path}' has no run line; only harness version 2 runs can be replayed.")
+    info: dict[str, Any] = records[0]["run"]
+    windows = (("--bytes", n_bytes, "n_bytes"), ("--tail-bytes", tail_bytes, "tail_bytes"))
+    for flag, value, key in windows:
+        if value is not None and value != info[key]:
+            raise ValueError(
+                f"{flag} {value} differs from the run's {info[key]}: its answers were given "
+                "for other samples."
+            )
+    answers = {
+        (record["fixture"], record["repeat"]): record["raw_response"]
+        for record in records[1:]
+        if "fixture" in record and "raw_response" in record
+    }
+    if not answers:
+        raise ValueError(
+            f"'{path}' holds no raw answers; replay needs a run written with --keep-raw."
+        )
+    return info, answers
+
+
+def _replay_command(args: argparse.Namespace) -> None:
+    """``--replay``: re-run the pipeline on a run's recorded answers; call no model."""
+    flags = (
+        ("--backend", args.backend),
+        ("--rpm", args.rpm),
+        ("--max-calls", args.max_calls),
+        ("--dry-run", args.dry_run or None),
+    )
+    rejected = [flag for flag, value in flags if value is not None]
+    try:
+        if rejected:
+            raise ValueError(f"--replay calls no model; drop {', '.join(rejected)}.")
+        if args.model is not None and len(args.model) > 1:
+            raise ValueError("--replay takes at most one --model.")
+        source, answers = load_replay(args.replay, n_bytes=args.bytes, tail_bytes=args.tail_bytes)
+        selected = _selected_fixtures(args)
+        held = {fixture for fixture, _ in answers}
+        fixtures = [(name, entry) for name, entry in selected if name in held]
+        if not fixtures:
+            raise ValueError(f"'{args.replay}' holds none of the selected fixtures.")
+        model = args.model[0] if args.model else source["model"]
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        path = output_path(args.out, model, several_models=False, stamp=stamp)
+    except (OSError, ValueError) as exc:
+        logger.error("Cannot replay the run: %s", exc)
+        sys.exit(2)
+    skipped = len(selected) - len(fixtures)
+    if skipped:
+        logger.warning("Skipping %d selected fixture(s) the replayed run does not hold.", skipped)
+    info = {
+        **run_info(
+            backend=LLMBackend(source["backend"]),
+            model=model,
+            fallback_model=args.fallback_model or source["fallback_model"],
+            n_bytes=source["n_bytes"],
+            tail_bytes=source["tail_bytes"],
+            timeout_seconds=source["timeout_seconds"],
+            repeat=source["repeat"],
+            started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            stopped_early=None,
+            fixtures_planned=len(fixtures),
+        ),
+        # The answers came from the source run's prompt, not this checkout's.
+        "prompt_version": source["prompt_version"],
+        "replay_of": str(args.replay),
+        "replay_skipped": skipped,
+    }
+    _run_and_report(
+        fixtures,
+        info,
+        path,
+        settings=Settings(),
+        keep_raw=True,
+        budget=CallBudget(None),
+        limiter=RateLimiter(None),
+        replay=answers,
+    )
 
 
 def _summarize_command(path: Path) -> None:

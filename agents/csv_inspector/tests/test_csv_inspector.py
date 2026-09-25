@@ -345,7 +345,7 @@ def test_build_prompt_gives_concrete_footer_rules(tail_sample: str | None) -> No
         head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample=tail_sample
     )
 
-    assert "FOOTER:" in prompt
+    assert "FOOTER (end of the file)" in prompt
     for example in ("TOTAL,,4241.25", "--- Fin del informe ---", "Generado el 2024-01-20"):
         assert example in prompt
     assert "footer lines are never preamble" in prompt
@@ -355,7 +355,7 @@ def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
     """With a tail sample, the head's (mid-file) last line must not be read as a footer."""
     prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8", tail_sample="9,9\n")
 
-    assert "FOOTER: in the last lines of the TAIL sample" in prompt
+    assert "check the last lines of the TAIL sample" in prompt
     assert "The tail is the real end of the file" in prompt
 
 
@@ -1799,6 +1799,19 @@ def test_grounding_finds_the_header_a_no_header_answer_named(
     )
 
     assert (result.has_header, result.header_row_index, result.columns) == expected
+
+
+def test_grounding_reports_the_default_for_a_delimiter_that_never_occurs(tmp_path: Path) -> None:
+    """A tab guessed for a one-column file splits nothing: the default ``,`` is reported."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter="\t", columns=["Cliente"], footer_first_line=None),
+    )
+
+    assert (result.delimiter, result.columns) == (",", ["Cliente"])
 
 
 def test_grounding_keeps_one_name_in_a_one_column_file(tmp_path: Path) -> None:

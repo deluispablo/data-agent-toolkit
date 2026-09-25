@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-l"
+PROMPT_VERSION = "2026.09-m"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -154,14 +154,19 @@ that row). Never list them; footer lines are never preamble.
 - No column-name row (the first line is already data, e.g. "17,red,3.5"): \
 "has_header": false, "header_row_index": null, columns column_1, column_2, ...
 
-FOOTER: in {file_end}, every line after the last data row (a data row \
-holds a real record, like the rows above it):
-- a totals row: a label instead of a record, other fields empty, e.g. \
-"TOTAL,,4241.25" or "Total registros: 250"
-- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. \
-"Generado el 2024-01-20 10:00:00"; a blank line before them
-"footer_first_line": the first non-blank footer line, verbatim; null only \
-when the file ends with a data row.
+FOOTER (end of the file): check {file_end} independently of the header. \
+A data row holds a real record, with values like the rows above it (a date \
+in the date column, a name in the name column, and so on). Any trailing \
+line after the last data row is a footer line, for example:
+- a totals/summary row: it may have the same number of fields as a data \
+row, but it carries a label instead of a record and leaves other fields \
+empty, e.g. "TOTAL,,4241.25", "TOTAL;;;98765.40" or "Total registros: 250"
+- an end-of-report marker, e.g. "--- Fin del informe ---" or "*** END ***"
+- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"
+- a blank line separating the data from any of the above
+Copy only the first non-blank line after the last data row, verbatim, \
+into "footer_first_line"; the rest of the footer is read from the file. Use \
+null only when the file really ends with a data row.
 
 Analyze the samples and answer with a JSON object matching the schema you \
 were given. What its fields mean:

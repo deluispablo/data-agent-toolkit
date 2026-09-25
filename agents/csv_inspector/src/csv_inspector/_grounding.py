@@ -492,6 +492,10 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     best = max(scores.values(), default=0)
     winners = [candidate for candidate, score in scores.items() if score == best]
     if best < max(_MIN_AGREEING_LINES, _DOMINANCE_RATIO * reported) or len(winners) != 1:
+        # A delimiter that never occurs splits nothing: in a one-column file
+        # report the default, which is just as inert, not the model's guess.
+        if result.delimiter not in head_sample and "," not in (result.quotechar, result.escapechar):
+            return ","
         return result.delimiter
     logger.info(
         "Replacing delimiter %r (%d agreeing lines) with %r (%d agreeing lines).",

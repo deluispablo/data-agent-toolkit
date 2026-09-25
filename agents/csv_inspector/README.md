@@ -57,7 +57,7 @@ it and infers them better than a 4 KB sample can (see
 
 - **Never loads the source.** One bounded read of the head and one of the
   tail (4 KiB each by default, 16 KiB at most), whether the file is 4 KB or
-  40 GB.
+  40 GB. Only their first and last few lines reach the model.
 - **Free and local by default.** Ollama with `qwen2.5-coder:7b`, falling
   back to `qwen2.5-coder:3b`. Gemini is an opt-in extra.
 - **Grounded, not trusted.** The model's answer is re-checked against the
@@ -199,7 +199,20 @@ the defaults are 4 KiB each.
 **1. Sample.** The source (a path, bytes or a stream) is read in two
 bounded windows: the head and, when bytes are left past it, the tail. The
 middle of the file is never read. A truncated head ends on its last line
-break; the tail may start mid-line, and the model is told so.
+break; the tail may start mid-line, and the model is told so. The bytes
+bound memory; lines bound tokens: only the first 15 lines of the head and
+the last 10 of the tail reach the prompt and grounding (`MAX_HEAD_LINES`,
+`MAX_TAIL_LINES` in `_sampling.py`). A file of up to 25 lines is sent
+whole; a longer one that fits in the head window is sent as its first 15
+and last 10 lines, so the footer is still read at the real end.
+
+If your loader never has footers, pass `tail_bytes=0` (`--tail-bytes 0`
+on the CLI, `?tail_bytes=0` on the example API): one read instead of two,
+no tail tokens in the prompt, and `footer_lines` is always `[]`. On a file
+larger than the head window, `covers_whole_file` is then `False`: the end
+was never seen, so no footer can be reported. The head keeps its line
+bound. Measured cost and accuracy of this mode are in
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#cost-levers).
 
 <details>
 <summary>The samples, as decoded</summary>

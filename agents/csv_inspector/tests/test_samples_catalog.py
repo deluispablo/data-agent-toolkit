@@ -22,6 +22,8 @@ from csv_inspector._encoding import decode_sample, detect_encoding
 from csv_inspector._sampling import (
     DEFAULT_SAMPLE_BYTES,
     DEFAULT_TAIL_BYTES,
+    MAX_HEAD_LINES,
+    MAX_TAIL_LINES,
     read_sample_bytes,
     read_tail_bytes,
     sample_source,
@@ -401,17 +403,19 @@ def test_cp1252_tail_is_detected_although_the_head_is_ascii() -> None:
 
 
 def test_file_of_exactly_the_head_window_is_sampled_whole() -> None:
-    """A file exactly one head window long is fully covered and not trimmed."""
+    """A file exactly one head window long is fully covered, and cut only by the line bounds."""
     path = SAMPLES_DIR / "exactly_head_window_size.csv"
     raw = path.read_bytes()
+    lines = raw.decode("utf-8").splitlines(keepends=True)
 
     samples = sample_source(path, DEFAULT_SAMPLE_BYTES, DEFAULT_TAIL_BYTES)
 
     assert len(raw) == DEFAULT_SAMPLE_BYTES
     assert raw.endswith(b"\n")
-    assert samples.tail_text is None
     assert samples.covers_whole_file is True
-    assert samples.head_text == raw.decode("utf-8")
+    assert samples.head_text == "".join(lines[:MAX_HEAD_LINES])
+    assert samples.tail_text == "".join(lines[-MAX_TAIL_LINES:])
+    assert samples.lines_omitted == len(lines) - MAX_HEAD_LINES - MAX_TAIL_LINES
 
 
 def test_duplicate_and_blank_column_names_are_kept_verbatim() -> None:

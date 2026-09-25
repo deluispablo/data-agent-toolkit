@@ -11,6 +11,7 @@ import json
 import tracemalloc
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -20,7 +21,10 @@ from csv_inspector import (
     FileSampleReadError,
     inspect_csv,
 )
+from csv_inspector import _inspect as inspect_module
 from csv_inspector._sampling import (
+    MAX_HEAD_LINES,
+    MAX_TAIL_LINES,
     STREAM_CHUNK_BYTES,
     CSVSource,
     describe_source,
@@ -401,7 +405,8 @@ def test_non_utf8_bytes_past_an_ascii_head_set_the_encoding() -> None:
     assert samples.encoding.lower().replace("-", "") not in {"utf8", "ascii"}
     assert samples.tail_text is not None
     assert "�" not in samples.tail_text
-    assert data[4096:].decode(samples.encoding) == samples.tail_text
+    assert data[4096:].decode(samples.encoding).endswith(samples.tail_text)
+    assert samples.tail_text.endswith(data[-9:].decode(samples.encoding))
 
 
 @pytest.mark.parametrize("tail_bytes", [4096, 4097, 4098])
@@ -511,3 +516,118 @@ def test_source_descriptions_never_include_content(tmp_path: Path) -> None:
     assert describe_source(secret) == f"<{len(secret)} bytes in memory>"
     assert describe_source(io.BytesIO(secret)) == "<BytesIO stream>"
     assert describe_source(tmp_path / "x.csv") == str(tmp_path / "x.csv")
+
+
+def _rows(count: int, start: int = 0) -> str:
+    return "".join(f"{n};fila {n}\n" for n in range(start, start + count))
+
+
+def test_a_truncated_head_keeps_its_first_lines_and_the_tail_its_last() -> None:
+    """Both windows are cut in lines; the tail still ends at the real end."""
+    data = ("id;name\n" + _rows(2000) + "TOTAL;2000\n").encode()
+
+    samples = sample_source(data, 4096, 4096)
+
+    assert samples.head_text == "id;name\n" + _rows(MAX_HEAD_LINES - 1)
+    assert samples.tail_text == _rows(MAX_TAIL_LINES - 1, start=2001 - MAX_TAIL_LINES) + (
+        "TOTAL;2000\n"
+    )
+    assert samples.covers_whole_file is True
+    assert samples.lines_omitted > 0
+
+
+def test_a_whole_file_over_the_bounds_gets_a_synthesized_tail() -> None:
+    """The head covers the file: its last lines become the tail, ending at EOF."""
+    text = "id;name\n" + _rows(99) + "TOTAL;99\n"
+
+    samples = sample_source(text.encode(), 4096, 4096)
+
+    lines = text.splitlines(keepends=True)
+    assert samples.covers_whole_file is True
+    assert samples.head_text == "".join(lines[:MAX_HEAD_LINES])
+    assert samples.tail_text == "".join(lines[-MAX_TAIL_LINES:])
+    assert samples.lines_omitted == len(lines) - MAX_HEAD_LINES - MAX_TAIL_LINES
+
+
+@pytest.mark.parametrize("extra", [0, 1])
+def test_a_file_within_the_bounds_is_sent_whole(extra: int) -> None:
+    """Up to MAX_HEAD_LINES + MAX_TAIL_LINES lines, nothing is cut or synthesized."""
+    count = MAX_HEAD_LINES + MAX_TAIL_LINES - 1 - extra
+    text = "id;name\n" + _rows(count)
+
+    samples = sample_source(text.encode(), 4096, 4096)
+
+    assert (samples.head_text, samples.tail_text, samples.lines_omitted) == (text, None, 0)
+
+
+def test_the_line_bounds_count_every_line_break_and_keep_them() -> None:
+    """CRLF and CR rows are counted as lines and kept byte for byte."""
+    text = "id;name\r\n" + "".join(f"{n};x\r" for n in range(100))
+
+    samples = sample_source(text.encode(), 4096, 4096)
+
+    assert samples.head_text.count("\r") == MAX_HEAD_LINES
+    assert samples.head_text.startswith("id;name\r\n")
+    assert samples.tail_text is not None
+    assert samples.tail_text.endswith("99;x\r")
+
+
+def test_a_utf16_file_with_a_bom_is_bounded_after_decoding() -> None:
+    """Lines are counted on the decoded text: no BOM, no broken code unit."""
+    text = "id\tname\n" + "".join(f"{n}\tfila {n}\n" for n in range(200))
+    data = "\ufeff".encode("utf-16-le") + text.encode("utf-16-le")
+
+    samples = sample_source(data, 4096, 4096)
+
+    assert samples.head_text.startswith("id\tname\n")
+    assert samples.head_text.count("\n") == MAX_HEAD_LINES
+    assert samples.tail_text is not None
+    assert samples.tail_text.endswith("199\tfila 199\n")
+    assert samples.tail_text.count("\n") == MAX_TAIL_LINES
+    assert "�" not in samples.head_text + samples.tail_text
+
+
+def test_without_a_tail_window_the_head_is_still_bounded() -> None:
+    """``tail_bytes=0`` (the no-footer mode, #136): a bounded head, end not sampled."""
+    data = ("id;name\n" + _rows(2000)).encode()
+
+    samples = sample_source(data, 4096, 0)
+
+    assert samples.head_text == "id;name\n" + _rows(MAX_HEAD_LINES - 1)
+    assert samples.tail_text is None
+    assert samples.covers_whole_file is False
+
+
+def test_grounding_receives_the_texts_the_prompt_got(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The prompt and grounding see the same bounded head and tail."""
+    data = ("id;name\n" + _rows(300) + "TOTAL;300\n").encode()
+    prompts: list[str] = []
+    grounded: list[tuple[str, str | None]] = []
+    original = inspect_module.ground_in_samples  # type: ignore[attr-defined]
+
+    def spy(answer: Any, head: str, tail: str | None, **kwargs: Any) -> CSVInspectionResult:
+        grounded.append((head, tail))
+        return original(answer, head, tail, **kwargs)
+
+    def invoker(prompt: str, model: str) -> str:
+        prompts.append(prompt)
+        return json.dumps(
+            {
+                "encoding": "utf-8",
+                "delimiter": ";",
+                "header_row_index": 0,
+                "footer_first_line": "TOTAL;300",
+                "columns": ["id", "name"],
+                "confidence": 0.9,
+            }
+        )
+
+    monkeypatch.setattr(inspect_module, "ground_in_samples", spy)
+
+    result = inspect_csv(data, model_invoker=invoker, model="m", fallback_model="m")
+
+    head, tail = grounded[0]
+    assert tail is not None
+    assert f"---\n{head}\n--- HEAD SAMPLE END" in prompts[0]
+    assert f"\n{tail}\n--- TAIL SAMPLE END" in prompts[0]
+    assert result.footer_lines == ["TOTAL;300"]

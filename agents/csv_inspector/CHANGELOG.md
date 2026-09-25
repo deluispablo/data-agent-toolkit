@@ -8,6 +8,14 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/eval_samples.py --replay RUN` re-scores the catalog on the raw
+  answers recorded by a `--keep-raw` run, calling no model: a grounding,
+  validation or parsing change is measured in about a second, exactly.
+  The summary records `replay_of`, and `compare_runs.py` labels a replayed
+  column `(replay)`. See "Replaying a run" in `docs/evaluation.md`.
+
 ### Documentation
 
 - The README is reorganized to show what the library does before how it

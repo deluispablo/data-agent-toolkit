@@ -9,8 +9,9 @@ the ritual.
 
 Reads only each run's final ``{"summary": {...}}`` line. A run recovered
 with ``eval_samples.py --summarize`` (an interrupted run) is labelled
-"(incomplete, N/M fixtures)". Standard library only, so it runs without the
-package installed.
+"(incomplete, N/M fixtures)", and a replay of recorded answers
+(``eval_samples.py --replay``, no model called) "(replay)". Standard
+library only, so it runs without the package installed.
 
 Usage:
     python compare_runs.py runs/baseline.jsonl runs/candidate.jsonl
@@ -80,6 +81,12 @@ def _text(value: object) -> str:
     return "n/a" if value is None else str(value).replace("|", "\\|")
 
 
+def _answers(summary: dict[str, Any]) -> str:
+    """Where a run's answers came from: a live model, or a replayed run file."""
+    source = summary.get("replay_of")
+    return "live" if source is None else f"replay of {_text(source)}"
+
+
 def _union(summaries: Sequence[dict[str, Any]], key: str) -> list[str]:
     """The keys of a per-category or per-field mapping over every run, in first-seen order."""
     names: dict[str, None] = {}
@@ -103,6 +110,7 @@ def render_table(labels: Sequence[str], summaries: Sequence[dict[str, Any]]) -> 
         ("fallback model", [_text(s.get("fallback_model")) for s in summaries]),
         ("prompt version", [_text(s.get("prompt_version")) for s in summaries]),
         ("backend", [_text(s.get("backend")) for s in summaries]),
+        ("answers", [_answers(s) for s in summaries]),
         (
             "fixtures x repeat",
             [f"{s.get('fixtures_run', 0)} x {s.get('repeat', 1)}" for s in summaries],
@@ -161,11 +169,16 @@ def verdict_changes(first: dict[str, Any], later: dict[str, Any]) -> list[str]:
 
 
 def run_label(path: Path, summary: dict[str, Any]) -> str:
-    """A run's column header: the file stem, flagged when the run is incomplete."""
+    """A run's column header: the file stem, flagged when the run is a replay or incomplete.
+
+    A replay (``eval_samples.py --replay``) called no model: its tokens and
+    latency are not a live run's.
+    """
+    label = f"{path.stem} (replay)" if summary.get("replay_of") else path.stem
     if not summary.get("incomplete"):
-        return path.stem
+        return label
     run = summary.get("fixtures_run", 0)
-    return f"{path.stem} (incomplete, {run}/{summary.get('fixtures_planned', '?')} fixtures)"
+    return f"{label} (incomplete, {run}/{summary.get('fixtures_planned', '?')} fixtures)"
 
 
 def render(labels: Sequence[str], summaries: Sequence[dict[str, Any]]) -> str:

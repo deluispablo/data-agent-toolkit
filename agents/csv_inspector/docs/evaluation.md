@@ -45,6 +45,39 @@ the model and prompt version of each run so mixed comparisons are visible.
 Local runs cost nothing but time; for cloud runs read
 [Quota notes](#quota-notes) first.
 
+### Replaying a run
+
+A change to grounding, validation or parsing does not change what the
+model answers, only what the library makes of it. Measure it without a
+model: replay a `--keep-raw` run on the new code.
+
+```bash
+uv run --directory agents/csv_inspector python scripts/eval_samples.py   --replay runs/qwen2.5-coder-7b-040.jsonl --out runs/replay.jsonl
+uv run --directory agents/csv_inspector python scripts/compare_runs.py   runs/qwen2.5-coder-7b-040.jsonl runs/replay.jsonl
+```
+
+Each (fixture, repeat) of the run is inspected again with a
+`model_invoker` that answers with the text recorded for it: the
+primary's, then the fallback's on the next call, as live. An attempt that
+left no text (it timed out) fails again. No model is called, Ollama need
+not be running, the whole catalog takes about a second, and the result is
+deterministic: replaying the 0.4.0 7b run on the code that recorded it
+gives back its 99.7 % and every verdict.
+
+The replay uses the run's models, windows (`--bytes`/`--tail-bytes` may
+only repeat them), timeout and repeats; `--category`, `--fixture` and
+`--subset` narrow it, and fixtures the run does not hold are skipped and
+counted (`replay_skipped`). `--backend`, `--rpm`, `--max-calls` and
+`--dry-run` are refused. The summary records `replay_of` and the source
+run's `prompt_version`; its prompt tokens are `null` (a custom invoker
+reports none) and its latency is not a model's. `compare_runs.py` labels
+the column `(replay)` and names the source in its `answers` row. The
+replay's lines keep the answers they used, so a replay can be replayed.
+
+**Not valid** for a prompt, schema, sampling or model change: the recorded
+answers were given to the old prompt and samples, so replaying them
+measures nothing. Those need a live run.
+
 ## What is scored
 
 Each fixture's answer is compared field by field with the manifest's
@@ -102,11 +135,12 @@ or `unscored`; `compare_runs.py` lists the fixtures whose verdict changed.
 | `--rpm N` | Never exceed N model requests per minute (the harness sleeps). |
 | `--max-calls N` | Hard stop: never more than N model requests in total, over all models. |
 | `--dry-run` | Build the prompts, print each fixture's size and the planned call count, call no model. Needs no credentials. The token estimate assumes 1.81 characters per token (measured on `qwen2.5-coder:7b`). |
+| `--replay RUN` | Answer each fixture with the raw answers of a `--keep-raw` run instead of a model (see [Replaying a run](#replaying-a-run)). Refuses `--backend`, `--rpm`, `--max-calls`, `--dry-run` and other windows. |
 | `--summarize RUN` | Recover an interrupted run: recompute the summary from the finished lines of `RUN` and append it, marked incomplete. Calls no model; every other flag is ignored. |
 | `--env-file`, `--no-env-file`, `--log-level` | As in the CLI. |
 
 `compare_runs.py RUN RUN [RUN ...]`: the first run is the reference; columns
-are labelled with the file names.
+are labelled with the file names, and a replay with `(replay)`.
 
 ## Run files
 

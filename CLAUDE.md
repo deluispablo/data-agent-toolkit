@@ -45,6 +45,7 @@ uv lock                                                    # after any pyproject
 - Tests hermetic: no Ollama, network, credentials.
 - Live run: `ollama serve` + `qwen2.5-coder:7b`, `:3b`. `uv run agents/csv_inspector/main_demo.py`, `uv run csv-inspector file.csv [--backend api]`.
 - Pytest not measure LLM accuracy. Prompt/grounding change: `uv run --directory agents/csv_inspector python scripts/eval_samples.py [--category X]` before + after, both scores in PR.
+- New baseline in `docs/evaluation.md`: same PR update README "Accuracy at a glance". Demo result change: rerun `scripts/render_readme_hero.py` + `docs/assets/demo.tape` + `scripts/capture_walkthrough.py` then `scripts/render_walkthrough.py --markdown` (paste into README).
 - Dependency change: also build wheel, install in clean venv, run `scripts/smoke_test_installed.py` outside repo.
 
 ## Rules

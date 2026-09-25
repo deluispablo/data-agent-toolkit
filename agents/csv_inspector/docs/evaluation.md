@@ -361,6 +361,21 @@ What the passes taught:
   `footer_first_line` at 300 characters, but a list of names cannot be
   capped without a per-file bound; #138 re-sizes the reply cap.
 
+## Publishing a baseline
+
+A baseline is a full local run (`--repeat 3`) plus the cloud subset,
+written up below as `## Baseline <version>`, usually once per release.
+The package README quotes it in "Accuracy at a glance", so a pull request
+that publishes a new baseline also updates that section in the same PR:
+the catalog size, the date and version, the local and cloud accuracy,
+latency and cost, and the weakest fields and known failure modes it names.
+Everyday before/after runs from [the ritual](#the-ritual) do not touch the
+README.
+
+If a demo file's result changes too (a prompt, grounding or default-model
+change), regenerate the README's hero, terminal recording and walkthrough: see
+"Development" in the README.
+
 ## Baseline 0.4.0
 
 The reference every M6 pull request compares against

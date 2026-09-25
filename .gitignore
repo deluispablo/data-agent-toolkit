@@ -14,5 +14,8 @@ dist/
 # Evaluation runs written by scripts/eval_samples.py --out
 agents/*/runs/
 
+# Frames written by agents/*/docs/assets/demo.tape (VHS)
+agents/*/.vhs-frames/
+
 # Claude Code agent worktrees (each one a full checkout of another branch)
 .claude/worktrees/

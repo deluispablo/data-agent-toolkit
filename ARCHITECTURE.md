@@ -284,6 +284,10 @@ One line per notable design choice, with the issue that records it.
   usual candidate agreeing on at least 2 head lines and at least twice as
   many as the model's answer; a wrong `,` on the tab fixtures lost by 4x to
   13x ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
+- **A footer starts at the first non-data line the model pointed at; the
+  model's line is a key, matched tolerantly** (trailing empty fields
+  ignored, a long enough substring accepted)
+  ([#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 - **One time budget per inspection**, enforced by the library even for
   custom invokers. With a fallback, the primary gets 70 % of it
   ([#12](https://github.com/deluispablo/data-agent-toolkit/issues/12),

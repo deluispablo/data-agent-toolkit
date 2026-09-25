@@ -1492,6 +1492,164 @@ def test_grounding_keeps_a_data_row_named_like_a_totals_label_out_of_the_footer(
     assert result.footer_lines == ["--- Fin del informe ---"]
 
 
+_MARKED_LEDGER = (
+    "Fecha;Cliente;Importe\n"
+    "2024-01-01;Acme;10.00\n"
+    "2024-01-02;Beta;20.00\n"
+    "\n"
+    "--- Fin del informe ---\n"
+    "Generado el 2024-08-08 10:00:00\n"
+)
+
+
+def test_grounding_drops_data_rows_the_model_reported_as_footer(tmp_path: Path) -> None:
+    """A data row is never a footer line: the footer starts past it (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            footer_lines=["2024-01-02;Beta;20.00", "Generado el 2024-08-08 10:00:00"]
+        ),
+    )
+
+    assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
+
+
+def test_grounding_discards_a_footer_made_only_of_data_rows(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """The last data rows reported as a footer leave no footer at all (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\n", encoding="utf-8"
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            footer_lines=["2024-01-01;Acme;10.00", "2024-01-02;Beta;20.00"]
+        ),
+    )
+
+    assert result.footer_lines == []
+    assert "do not occur at the end of the file" in caplog.text
+
+
+def test_grounding_includes_a_marker_above_the_anchor(tmp_path: Path) -> None:
+    """Non-data lines above the reported footer line belong to the footer (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(footer_lines=["Generado el 2024-08-08 10:00:00"])
+    )
+
+    assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
+
+
+def test_grounding_keeps_a_totals_row_with_the_data_width(tmp_path: Path) -> None:
+    """A fully filled totals row has the data shape but is not a data row (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n2024-01-02;Beta;20.00\nTOTAL;2;30.00\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;2;30.00"]))
+
+    assert result.footer_lines == ["TOTAL;2;30.00"]
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected"),
+    [
+        (
+            ["2024-08-08 10:00:00"],
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+        ),
+        (["Fin del"], []),
+    ],
+)
+def test_grounding_anchors_on_a_substring_of_the_footer_line(
+    tmp_path: Path, reported: list[str], expected: list[str]
+) -> None:
+    """Reported text of 8 characters or more anchors the line it occurs in (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(_MARKED_LEDGER, encoding="utf-8")
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=reported))
+
+    assert result.footer_lines == expected
+
+
+def test_grounding_ignores_trailing_empty_fields_in_an_anchor(tmp_path: Path) -> None:
+    """A totals row copied with one trailing delimiter too few still anchors (issue #153)."""
+    target = tmp_path / "ledger.csv"
+    target.write_text(
+        "Fecha;Cliente;Importe;Nota;Extra\n"
+        "2024-01-01;Acme;10.00;a;b\n"
+        "2024-01-02;Beta;20.00;c;d\n"
+        "TOTAL;;30.00;;\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;;30.00;"]))
+
+    assert result.footer_lines == ["TOTAL;;30.00;;"]
+
+
+def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
+    """A blank name the model left out is restored from the header row (issue #153)."""
+    target = tmp_path / "indexed.csv"
+    target.write_text(",id,id,value\n0,1,2,a\n1,3,4,b\n", encoding="utf-8")
+    columns = [
+        {"name": "id", "inferred_type": "integer"},
+        {"name": "id", "inferred_type": "integer"},
+        {"name": "value", "inferred_type": "string"},
+    ]
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",", columns=columns, header_row_index=1, footer_lines=[]
+        ),
+    )
+
+    assert result.header_row_index == 0
+    assert [column.name for column in result.columns] == ["", "id", "id", "value"]
+    assert [column.inferred_type for column in result.columns] == [
+        "string",
+        "integer",
+        "integer",
+        "string",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("fixture", "expected"),
+    [
+        # "2024,,4241.25": a numeric label, so a data row, never a footer.
+        ("footer_like_data_row_numeric_label.csv", []),
+        ("footer_summary_totals.csv", ["TOTAL,,,274887.10"]),
+    ],
+)
+def test_grounding_of_totals_shaped_last_rows_in_the_catalog(
+    fixture: str, expected: list[str]
+) -> None:
+    """Totals-shaped data rows are dropped and real totals rows kept (issue #153)."""
+    lines = (SAMPLE_CSV_PATH.parent / "samples" / fixture).read_text(encoding="utf-8").splitlines()
+    columns = [{"name": name, "inferred_type": "string"} for name in lines[0].split(",")]
+
+    result = inspect_csv(
+        SAMPLE_CSV_PATH.parent / "samples" / fixture,
+        model_invoker=_sloppy_answer(delimiter=",", columns=columns, footer_lines=[lines[-1]]),
+    )
+
+    assert result.footer_lines == expected
+
+
 def test_grounding_counts_lines_like_csv_does(tmp_path: Path) -> None:
     """Characters str.splitlines() breaks on, but csv does not, never shift line indexes.
 

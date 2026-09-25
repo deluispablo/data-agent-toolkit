@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 2046 characters on PROMPT_VERSION
-# 2026.09-h, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 2251
+# The template with empty samples: 1946 characters on PROMPT_VERSION
+# 2026.09-i, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 2141
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -72,65 +72,61 @@ def test_prompt_matches_its_golden_string(kwargs: dict[str, object], golden: str
 
 # Golden prompts, one literal per line so a wording change reads as a diff.
 _GOLDEN_WITH_TAIL = (
-    'You are an expert data engineering agent specialized in detecting the quirks of "dirty" or non-standard CSV files.\n'
-    '\n'
-    "Below are byte samples from a real CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
-    '\n'
-    '--- HEAD SAMPLE START (first bytes of the file) ---\n'
-    'Fecha,Importe\n'
-    '2024-01-15,1250.50\n'
-    '\n'
-    '--- HEAD SAMPLE END ---\n'
-    '\n'
-    '--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---\n'
-    '15,890.00\n'
-    'TOTAL,2140.50\n'
-    '\n'
-    '--- TAIL SAMPLE END ---\n'
-    '\n'
-    'The head sample stops somewhere in the middle of the data: its last line may be truncated and is never a footer. The tail sample is the real end of the file: read footer lines ONLY from its last lines. Its first visible line is very likely a truncated fragment, not a real row: do not use it to infer columns.\n'
-    '\n'
-    'Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n'
+    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "\n"
+    "--- HEAD SAMPLE START (first bytes of the file) ---\n"
+    "Fecha,Importe\n"
+    "2024-01-15,1250.50\n"
+    "\n"
+    "--- HEAD SAMPLE END ---\n"
+    "\n"
+    "--- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---\n"
+    "15,890.00\n"
+    "TOTAL,2140.50\n"
+    "\n"
+    "--- TAIL SAMPLE END ---\n"
+    "\n"
+    "The head sample stops somewhere in the middle of the data: its last line may be truncated and is never a footer. The tail sample is the real end of the file: read footer lines ONLY from its last lines. Its first visible line is very likely a truncated fragment, not a real row: do not use it to infer columns.\n"
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
-    '\n'
-    'HEADER:\n'
-    '- Preamble lines (export banners, \'#\' comments, blank lines) come before the column-name row: "header_row_index" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n'
+    "\n"
+    "HEADER:\n"
+    "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
-    '\n'
-    'FOOTER: in the last lines of the TAIL sample, every line after the last data row (a data row holds a real record, like the rows above it):\n'
+    "\n"
+    "FOOTER: in the last lines of the TAIL sample, every line after the last data row (a data row holds a real record, like the rows above it):\n"
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
     '"footer_first_line": the first non-blank footer line, verbatim; null only when the file ends with a data row.\n'
 )
 
 _GOLDEN_TRUNCATED_HEAD = (
-    'You are an expert data engineering agent specialized in detecting the quirks of "dirty" or non-standard CSV files.\n'
-    '\n'
-    "Below are byte samples from a real CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
-    '\n'
-    '--- HEAD SAMPLE START (first bytes of the file) ---\n'
-    'Fecha,Importe\n'
-    '2024-01-15,1250.50\n'
-    '\n'
-    '--- HEAD SAMPLE END ---\n'
-    '\n'
-    '(The sample above is only the START of the file; its end was not sampled. Its last line may be truncated and is never a footer.)\n'
-    '\n'
-    'Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n'
+    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "\n"
+    "--- HEAD SAMPLE START (first bytes of the file) ---\n"
+    "Fecha,Importe\n"
+    "2024-01-15,1250.50\n"
+    "\n"
+    "--- HEAD SAMPLE END ---\n"
+    "\n"
+    "(The sample above is only the START of the file; its end was not sampled. Its last line may be truncated and is never a footer.)\n"
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
-    '\n'
-    'HEADER:\n'
-    '- Preamble lines (export banners, \'#\' comments, blank lines) come before the column-name row: "header_row_index" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n'
+    "\n"
+    "HEADER:\n"
+    "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
-    '\n'
+    "\n"
     'FOOTER: in the end of the file (not sampled here, so "footer_first_line" must be null), every line after the last data row (a data row holds a real record, like the rows above it):\n'
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
@@ -138,30 +134,28 @@ _GOLDEN_TRUNCATED_HEAD = (
 )
 
 _GOLDEN_WHOLE_FILE = (
-    'You are an expert data engineering agent specialized in detecting the quirks of "dirty" or non-standard CSV files.\n'
-    '\n'
-    "Below are byte samples from a real CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
-    '\n'
-    '--- HEAD SAMPLE START (first bytes of the file) ---\n'
-    'Fecha,Importe\n'
-    '2024-01-15,1250.50\n'
-    '\n'
-    '--- HEAD SAMPLE END ---\n'
-    '\n'
-    '(The sample above contains the ENTIRE file; there is no separate tail. Its last lines are the real end of the file.)\n'
-    '\n'
-    'Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n'
+    "Below are byte samples from a real, possibly messy CSV file. The encoding heuristically detected by chardet is: 'utf-8' (it may be incorrect).\n"
+    "\n"
+    "--- HEAD SAMPLE START (first bytes of the file) ---\n"
+    "Fecha,Importe\n"
+    "2024-01-15,1250.50\n"
+    "\n"
+    "--- HEAD SAMPLE END ---\n"
+    "\n"
+    "(The sample above contains the ENTIRE file; there is no separate tail. Its last lines are the real end of the file.)\n"
+    "\n"
+    "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
-    '\n'
-    'HEADER:\n'
-    '- Preamble lines (export banners, \'#\' comments, blank lines) come before the column-name row: "header_row_index" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n'
+    "\n"
+    "HEADER:\n"
+    "- Preamble lines (export banners, '#' comments, blank lines) come before the column-name row: \"header_row_index\" is their count (0-based index of that row). Never list them; footer lines are never preamble.\n"
     '- No column-name row (the first line is already data, e.g. "17,red,3.5"): "has_header": false, "header_row_index": null, columns column_1, column_2, ...\n'
-    '\n'
-    'FOOTER: in the last lines of the sample above, every line after the last data row (a data row holds a real record, like the rows above it):\n'
+    "\n"
+    "FOOTER: in the last lines of the sample above, every line after the last data row (a data row holds a real record, like the rows above it):\n"
     '- a totals row: a label instead of a record, other fields empty, e.g. "TOTAL,,4241.25" or "Total registros: 250"\n'
     '- an end marker, e.g. "--- Fin del informe ---"; a timestamp, e.g. "Generado el 2024-01-20 10:00:00"; a blank line before them\n'
     '"footer_first_line": the first non-blank footer line, verbatim; null only when the file ends with a data row.\n'

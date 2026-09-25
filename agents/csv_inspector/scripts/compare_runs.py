@@ -7,8 +7,10 @@ changed against the first run. Paste the output into the pull request of
 any change that could move the numbers; ``docs/evaluation.md`` describes
 the ritual.
 
-Reads only each run's final ``{"summary": {...}}`` line. Standard library
-only, so it runs without the package installed.
+Reads only each run's final ``{"summary": {...}}`` line. A run recovered
+with ``eval_samples.py --summarize`` (an interrupted run) is labelled
+"(incomplete, N/M fixtures)". Standard library only, so it runs without the
+package installed.
 
 Usage:
     python compare_runs.py runs/baseline.jsonl runs/candidate.jsonl
@@ -55,7 +57,10 @@ def load_summary(path: Path) -> dict[str, Any]:
         if isinstance(record, dict) and isinstance(record.get("summary"), dict):
             summary = record["summary"]
     if summary is None:
-        raise RunFileError(f"'{path}' has no summary line; was the run interrupted?")
+        raise RunFileError(
+            f"'{path}' has no summary line; was the run interrupted? Recover it with "
+            f"'eval_samples.py --summarize {path}'."
+        )
     return summary
 
 
@@ -155,6 +160,14 @@ def verdict_changes(first: dict[str, Any], later: dict[str, Any]) -> list[str]:
     return changes
 
 
+def run_label(path: Path, summary: dict[str, Any]) -> str:
+    """A run's column header: the file stem, flagged when the run is incomplete."""
+    if not summary.get("incomplete"):
+        return path.stem
+    run = summary.get("fixtures_run", 0)
+    return f"{path.stem} (incomplete, {run}/{summary.get('fixtures_planned', '?')} fixtures)"
+
+
 def render(labels: Sequence[str], summaries: Sequence[dict[str, Any]]) -> str:
     """The full Markdown report: the table, then the verdict changes of each later run."""
     parts = [render_table(labels, summaries)]
@@ -177,7 +190,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     except RunFileError as exc:
         print(f"compare_runs: {exc}", file=sys.stderr)
         sys.exit(1)
-    print(render([path.stem for path in args.runs], summaries))
+    labels = [run_label(path, summary) for path, summary in zip(args.runs, summaries, strict=True)]
+    print(render(labels, summaries))
 
 
 if __name__ == "__main__":

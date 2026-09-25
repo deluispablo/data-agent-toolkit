@@ -74,6 +74,18 @@ listed under **Changed (breaking)**.
   more runs as a Markdown table plus the fixtures whose verdict changed.
   `runs/` is git-ignored
   ([#122](https://github.com/deluispablo/data-agent-toolkit/issues/122)).
+- Evaluation harness follow-ups (harness version 2). Run files start with
+  a `run` line and stream one line per inspection as it finishes, so an
+  interrupted run keeps its finished lines; `--summarize RUN` appends an
+  `incomplete` summary to such a file, and `compare_runs.py` labels it
+  "(incomplete, N/M fixtures)". `--subset quick` (21 fixtures, for
+  iterating) and `--subset cloud` (the 15-fixture free-tier list) select
+  documented lists. Manifest entries gain a generator-owned
+  `expected_error`: `empty_file.csv`'s `EmptySampleError` now scores as a
+  pass instead of a pipeline error. The summary's `retries` counts the
+  retries of failed cloud inspections too, and `--dry-run` estimates
+  tokens at the measured 1.81 characters per token
+  ([#149](https://github.com/deluispablo/data-agent-toolkit/issues/149)).
 
 ### Documentation
 

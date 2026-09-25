@@ -25,11 +25,15 @@ with an embedded real newline, which byte-window sampling cannot reliably
 parse) are reported separately and excluded from the aggregate score: they
 are not expected to pass today.
 
-Machine-readable runs: ``--out`` writes one JSON line per (fixture, repeat)
-with the verdicts, the ``Usage`` of the inspection and the harness-measured
-latency, plus a final ``{"summary": {...}}`` line with the aggregates;
-``scripts/compare_runs.py`` turns two or more such files into a Markdown
-table. ``--repeat N`` runs each fixture N times and reports majority-vote
+Machine-readable runs: ``--out`` writes a ``{"run": {...}}`` line with the
+run's settings, then one JSON line per (fixture, repeat) with the verdicts,
+the ``Usage`` of the inspection and the harness-measured latency, appended
+and flushed as each inspection finishes, and a final ``{"summary": {...}}``
+line with the aggregates. A file without a summary line is an interrupted
+run; ``--summarize FILE`` recomputes the summary from its finished lines,
+marked incomplete. ``scripts/compare_runs.py`` turns two or more run files
+into a Markdown table. ``--subset quick|cloud`` selects the documented
+fixture lists (:data:`SUBSETS`). ``--repeat N`` runs each fixture N times and reports majority-vote
 accuracy and agreement per field, since answers drift even at
 ``temperature=0``. Quota guards (``--rpm``, ``--max-calls``,
 ``--max-fixtures``, ``--fixture``, ``--dry-run``) keep a cloud run from
@@ -55,7 +59,9 @@ Usage:
     python eval_samples.py --model qwen3:8b --bytes 8192 --category encoding
     python eval_samples.py --repeat 3 --out runs/
     python eval_samples.py --model a --model b --out "runs/{model}.jsonl"
-    python eval_samples.py --backend api --model gemini-3.6-flash --max-calls 20 --rpm 5
+    python eval_samples.py --subset quick --repeat 2 --out "runs/{model}-quick.jsonl"
+    python eval_samples.py --backend api --subset cloud --max-calls 18 --rpm 10
+    python eval_samples.py --summarize runs/interrupted.jsonl
 """
 
 from __future__ import annotations
@@ -108,18 +114,72 @@ logger = logging.getLogger(__name__)
 SAMPLES_DIR = Path(__file__).resolve().parent.parent / "samples"
 MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
 
-HARNESS_VERSION = "1"
+HARNESS_VERSION = "2"
 """Version of the JSONL run format; bump it when a line or summary field changes meaning."""
 
-CHARS_PER_TOKEN = 2
-"""``--dry-run`` token estimate: numeric CSV text tokenizes poorly (see ``_ollama_num_ctx``)."""
+CHARS_PER_TOKEN = 1.81
+"""``--dry-run`` token estimate: characters per token measured on ``qwen2.5-coder:7b``.
+
+CSV text tokenizes densely (the 0.3.0 baseline, ``docs/evaluation.md``).
+The library's ``num_ctx`` sizing still assumes 2 until #138 adds a shared
+constant; import that one then.
+"""
+
+SUBSETS: dict[str, tuple[str, ...]] = {
+    # Iterate here (--repeat 2), prove on the full catalog (--repeat 3). Every
+    # category, every footer kind, header-less files, a 40-column file, the
+    # tab-with-commas files, the blank-name header and the 0.3.0 baseline misses.
+    "quick": (
+        "delimiter_semicolon_decimal_comma.csv",
+        "delimiter_tab_commas_quoted_header.tsv",
+        "empty_file.csv",
+        "encoding_cp1252_tail_only.csv",
+        "footer_end_marker.csv",
+        "gen_combo_eu_legacy.csv",
+        "gen_encoding_utf16le_lf.csv",
+        "gen_encoding_utf8_lf.csv",
+        "gen_footer_blank_totals_wide.csv",
+        "gen_footer_marker_narrow.csv",
+        "gen_footer_none_narrow.csv",
+        "gen_footer_timestamp_narrow.csv",
+        "gen_footer_totals_narrow.csv",
+        "gen_headerless_marker.csv",
+        "header_duplicate_and_blank_names.csv",
+        "header_metadata_banner.csv",
+        "header_none_data_only.csv",
+        "header_years.csv",
+        "numeric_european_format.csv",
+        "quoting_backslash_escape.csv",
+        "single_column.csv",
+    ),
+    # One or two fixtures per category, none a known limitation: fits a day
+    # of a free-tier cloud key with --max-calls 18 (docs/evaluation.md).
+    "cloud": (
+        "delimiter_semicolon_decimal_comma.csv",
+        "delimiter_tab_commas_quoted_header.tsv",
+        "encoding_cp1252_tail_only.csv",
+        "encoding_utf16le_bom.csv",
+        "header_and_footer_combined.csv",
+        "footer_like_data_row_numeric_label.csv",
+        "header_none_data_only.csv",
+        "quoting_backslash_escape.csv",
+        "quoting_doubled_quotes.csv",
+        "ragged_rows_inconsistent_columns.csv",
+        "single_column.csv",
+        "numeric_european_format.csv",
+        "null_representations_mixed.csv",
+        "gen_combo_eu_legacy.csv",
+        "gen_combo_bom_crlf_preamble.csv",
+    ),
+}
+"""Named fixture lists for ``--subset``; ``docs/evaluation.md`` explains when to use each."""
 
 _TRANSIENT_STATUS = re.compile(r"\b(429|503)\b")
 _ERROR_ANSWER = "<error>"
 _MATCH_ANSWER = "<match>"
 
 # CSVInspectionResult fields the harness knows how to score against the manifest.
-_COMPARABLE_FIELDS: tuple[str, ...] = (
+_RESULT_FIELDS: tuple[str, ...] = (
     "encoding",
     "delimiter",
     "quotechar",
@@ -131,6 +191,13 @@ _COMPARABLE_FIELDS: tuple[str, ...] = (
     "footer_rows_to_skip",
     "columns",
 )
+# The manifest's ``expected_error`` is scored like a field: matched when the
+# inspection raised that exception class.
+_EXPECTED_ERROR = "expected_error"
+_COMPARABLE_FIELDS: tuple[str, ...] = (*_RESULT_FIELDS, _EXPECTED_ERROR)
+# The library logs this (at WARNING) each time a cloud request is retried.
+_RETRY_LOGGER = "csv_inspector._invokers"
+_RETRY_MESSAGE = "retrying once"
 
 
 @dataclass
@@ -167,6 +234,9 @@ class FileEvaluation:
             each model attempt that failed, keyed by model.
         raw_responses: With ``--keep-raw``, ``{"model", "text"}`` for every
             model call that answered, in call order; else ``None``.
+        retries: Transient-error retries made by the inspection: from
+            ``Usage`` when it succeeded, else counted from the library's
+            retry warnings, so a failed cloud fixture shows its retries too.
     """
 
     filename: str
@@ -184,6 +254,7 @@ class FileEvaluation:
     calls: int = 0
     attempt_errors: dict[str, str] = field(default_factory=dict)
     raw_responses: list[dict[str, str]] | None = None
+    retries: int = 0
 
     @property
     def comparable_count(self) -> int:
@@ -290,7 +361,7 @@ def _compare(
     mismatched: list[tuple[str, Any, Any]] = []
     skipped: list[str] = []
 
-    for field_name in _COMPARABLE_FIELDS:
+    for field_name in _RESULT_FIELDS:
         if field_name not in expected or expected[field_name] is None:
             skipped.append(field_name)
             continue
@@ -350,6 +421,36 @@ def _recording_builtin_invoker(raw: list[dict[str, str]]) -> Iterator[None]:
         yield
     finally:
         setattr(_inspect, _SEAM, original)
+
+
+class _RetryCounter(logging.Handler):
+    """Counts the library's "retrying once" warnings while attached.
+
+    A failed inspection has no ``Usage``, so this is the only place its
+    cloud retries show. It needs WARNING enabled on the library's logger,
+    which is the default.
+    """
+
+    def __init__(self) -> None:
+        """Start at zero retries."""
+        super().__init__(logging.WARNING)
+        self.count = 0
+
+    def emit(self, record: logging.LogRecord) -> None:
+        """Count one retry warning; ignore every other record."""
+        if _RETRY_MESSAGE in str(record.msg):
+            self.count += 1
+
+
+@contextmanager
+def _counting_retries(counter: _RetryCounter) -> Iterator[None]:
+    """Attach ``counter`` to the library's invoker logger for the block."""
+    retry_logger = logging.getLogger(_RETRY_LOGGER)
+    retry_logger.addHandler(counter)
+    try:
+        yield
+    finally:
+        retry_logger.removeHandler(counter)
 
 
 @contextmanager
@@ -413,7 +514,10 @@ def evaluate_file(
         keep_raw: Record the raw text of every model answer.
 
     Returns:
-        The resulting :class:`FileEvaluation`.
+        The resulting :class:`FileEvaluation`. When the manifest names an
+        ``expected_error`` and the inspection raises it, the fixture matches
+        on that pseudo-field and is charged no call (the manifest's expected
+        errors, such as ``EmptySampleError``, come before any model call).
     """
     evaluation = FileEvaluation(
         filename=filename,
@@ -421,10 +525,15 @@ def evaluate_file(
         known_limitation=entry["known_limitation"],
         repeat=repeat,
     )
+    expected_error: str | None = entry.get(_EXPECTED_ERROR)
     raw: list[dict[str, str]] = []
+    counter = _RetryCounter()
     started = time.monotonic()
     try:
-        with _recording_builtin_invoker(raw) if keep_raw else _no_recording():
+        with (
+            _counting_retries(counter),
+            _recording_builtin_invoker(raw) if keep_raw else _no_recording(),
+        ):
             result = inspect_csv(
                 SAMPLES_DIR / filename,
                 backend=backend,
@@ -436,6 +545,10 @@ def evaluate_file(
                 timeout_seconds=timeout_seconds,
             )
     except CSVInspectorError as exc:
+        if type(exc).__name__ == expected_error:
+            evaluation.matched_fields = [_EXPECTED_ERROR]
+            evaluation.skipped_fields = list(_RESULT_FIELDS)
+            return evaluation
         evaluation.error = f"{type(exc).__name__}: {exc}"
         attempts: dict[str, Exception] = getattr(exc, "attempts", None) or {}
         evaluation.attempt_errors = {
@@ -448,11 +561,14 @@ def evaluate_file(
             evaluation.raw_responses = list(raw)
 
     evaluation.usage = result.usage if result is not None else None
+    evaluation.retries = evaluation.usage.retries if evaluation.usage else counter.count
     evaluation.calls = _calls_made(evaluation.usage, backend, model, fallback_model)
     if result is None:
         return evaluation
 
     matched, mismatched, skipped = _compare(entry["expected"], result)
+    if expected_error is not None:
+        mismatched.append((_EXPECTED_ERROR, expected_error, None))
     evaluation.matched_fields = matched
     evaluation.mismatched_fields = mismatched
     evaluation.skipped_fields = skipped
@@ -721,7 +837,7 @@ def summarize(evaluations: list[FileEvaluation], info: dict[str, Any]) -> dict[s
         },
         "calls": sum(e.calls for e in evaluations),
         "fallback_used": sum(u.attempts > 1 for u in usages),
-        "retries": sum(u.retries for u in usages),
+        "retries": sum(e.retries for e in evaluations),
         "errors": dict(Counter(_error_class(e.error) for e in evaluations if e.error)),
         "attempt_errors": dict(Counter(_error_class(m) for m in attempt_messages)),
         "http_429": statuses.get("429", 0),
@@ -740,8 +856,14 @@ def run_info(
     repeat: int,
     started_at: str,
     stopped_early: str | None,
+    fixtures_planned: int,
+    incomplete: bool = False,
 ) -> dict[str, Any]:
-    """The settings of one model's run, recorded first in its summary line."""
+    """The settings of one model's run: its ``run`` line, and the start of its summary.
+
+    ``incomplete`` marks a summary recomputed by ``--summarize`` from an
+    interrupted run's lines.
+    """
     return {
         "harness_version": HARNESS_VERSION,
         "prompt_version": PROMPT_VERSION,
@@ -754,6 +876,8 @@ def run_info(
         "repeat": repeat,
         "started_at": started_at,
         "stopped_early": stopped_early,
+        "fixtures_planned": fixtures_planned,
+        "incomplete": incomplete,
     }
 
 
@@ -780,20 +904,117 @@ def line_record(evaluation: FileEvaluation) -> dict[str, Any]:
         "calls": evaluation.calls,
         "error": evaluation.error,
         "attempt_errors": evaluation.attempt_errors,
+        "retries": evaluation.retries,
     }
     if evaluation.raw_responses is not None:
         record["raw_response"] = evaluation.raw_responses
     return record
 
 
-def write_run(path: Path, evaluations: list[FileEvaluation], summary: dict[str, Any]) -> None:
-    """Write one JSON line per evaluation, then the ``{"summary": ...}`` line."""
-    path.parent.mkdir(parents=True, exist_ok=True)
-    lines = [line_record(evaluation) for evaluation in evaluations]
-    lines.append({"summary": summary})
-    with path.open("w", encoding="utf-8", newline="\n") as handle:
-        for line in lines:
-            handle.write(json.dumps(line, ensure_ascii=False, default=str) + "\n")
+def evaluation_from_record(record: dict[str, Any]) -> FileEvaluation:
+    """Rebuild a :class:`FileEvaluation` from its :func:`line_record` line."""
+    usage = record.get("usage")
+    return FileEvaluation(
+        filename=record["fixture"],
+        category=record["category"],
+        known_limitation=record["known_limitation"],
+        matched_fields=list(record["matched"]),
+        mismatched_fields=[(m["field"], m["expected"], m["actual"]) for m in record["mismatched"]],
+        skipped_fields=list(record["skipped"]),
+        error=record["error"],
+        columns_recall=record["columns_recall"],
+        columns_count_match=record["columns_count_match"],
+        repeat=record["repeat"],
+        usage=Usage.model_validate(usage) if usage is not None else None,
+        latency_seconds=record["latency_seconds"],
+        calls=record["calls"],
+        attempt_errors=dict(record["attempt_errors"]),
+        raw_responses=record.get("raw_response"),
+        retries=record.get("retries", 0),
+    )
+
+
+def _json_line(payload: dict[str, Any]) -> str:
+    return json.dumps(payload, ensure_ascii=False, default=str) + "\n"
+
+
+class RunWriter:
+    """Streams one model's run to its JSONL file as it happens.
+
+    The ``run`` line is written on creation, each evaluation line is
+    appended and flushed as soon as its inspection finishes, and the summary
+    comes last, so an interrupted run keeps every finished line.
+    """
+
+    def __init__(self, path: Path, info: dict[str, Any]) -> None:
+        """Create ``path`` (never overwriting a file) and write the ``run`` line.
+
+        Raises:
+            FileExistsError: If ``path`` already exists.
+        """
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self.path = path
+        self.lines = 0
+        self._handle = path.open("x", encoding="utf-8", newline="\n")
+        self._write({"run": info})
+
+    def _write(self, payload: dict[str, Any]) -> None:
+        self._handle.write(_json_line(payload))
+        self._handle.flush()
+
+    def add(self, evaluation: FileEvaluation) -> None:
+        """Append one evaluation's line."""
+        self._write(line_record(evaluation))
+        self.lines += 1
+
+    def finish(self, summary: dict[str, Any]) -> None:
+        """Append the summary line and close the file."""
+        self._write({"summary": summary})
+        self.close()
+
+    def close(self) -> None:
+        """Close the file, keeping whatever was written."""
+        self._handle.close()
+
+
+def summarize_file(path: Path) -> tuple[list[FileEvaluation], dict[str, Any]]:
+    """Recompute and append the summary of an interrupted run (``--summarize``).
+
+    The summary is marked ``"incomplete": true``; ``fixtures_planned`` (from
+    the ``run`` line) and ``fixtures_run`` tell how far it got.
+
+    Args:
+        path: A run file written by ``--out`` that has no summary line.
+
+    Returns:
+        The finished evaluations and the appended summary.
+
+    Raises:
+        ValueError: If the file has a summary already, or no ``run`` line
+            (written by harness version 1, or not a run file).
+    """
+    info: dict[str, Any] | None = None
+    evaluations: list[FileEvaluation] = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        record = json.loads(line)
+        if "summary" in record:
+            raise ValueError(f"'{path}' already has a summary line.")
+        if "run" in record:
+            info = record["run"]
+        elif info is None:
+            raise ValueError(
+                f"'{path}' has no run line; only harness version 2 runs can be recovered."
+            )
+        else:
+            evaluations.append(evaluation_from_record(record))
+    if info is None:
+        raise ValueError(f"'{path}' has no run line.")
+    summary = summarize(evaluations, {**info, "stopped_early": "interrupted", "incomplete": True})
+    with path.open("a", encoding="utf-8", newline="\n") as handle:
+        handle.write(_json_line({"summary": summary}))
+    return evaluations, summary
 
 
 # ---------------------------------------------------------------------
@@ -969,8 +1190,12 @@ def run_model(
     keep_raw: bool,
     budget: CallBudget,
     limiter: RateLimiter,
+    on_evaluation: Callable[[FileEvaluation], None] | None = None,
 ) -> tuple[list[FileEvaluation], str | None]:
     """Evaluate every fixture ``repeat`` times with one model, within the quota guards.
+
+    ``on_evaluation`` is called with each evaluation as soon as it finishes
+    (the run file's streaming writer).
 
     Returns:
         The evaluations, and why the run stopped early (``None`` if it did not).
@@ -1010,6 +1235,8 @@ def run_model(
             budget.charge(evaluation.calls)
             limiter.record(evaluation.calls)
             evaluations.append(evaluation)
+            if on_evaluation is not None:
+                on_evaluation(evaluation)
     return evaluations, None
 
 
@@ -1041,10 +1268,10 @@ def dry_run(
         )
         chars = len(SYSTEM_PROMPT) + len(prompt)
         total += chars
-        print(f"{prefix} {chars} chars, ~{chars // CHARS_PER_TOKEN} tokens")
+        print(f"{prefix} {chars} chars, ~{round(chars / CHARS_PER_TOKEN)} tokens")
     print(
         f"\n=== Dry run: {len(fixtures)} fixture(s), {total} prompt chars "
-        f"(~{total // CHARS_PER_TOKEN} tokens) per pass; up to {planned_calls} model "
+        f"(~{round(total / CHARS_PER_TOKEN)} tokens) per pass; up to {planned_calls} model "
         "call(s) planned; no model was called ==="
     )
 
@@ -1158,6 +1385,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Restrict the run to this fixture (repeatable).",
     )
     parser.add_argument(
+        "--subset",
+        choices=sorted(SUBSETS),
+        default=None,
+        help="Run a documented fixture list: 'quick' to iterate, 'cloud' for a free-tier "
+        "day (combines with --fixture).",
+    )
+    parser.add_argument(
         "--max-fixtures",
         type=bounded_int(1),
         default=None,
@@ -1191,6 +1425,13 @@ def _parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         "retries included, over all models.",
     )
     parser.add_argument(
+        "--summarize",
+        type=Path,
+        default=None,
+        metavar="RUN",
+        help="Recompute and append the summary of an interrupted --out file; call no model.",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Build the prompts and print their sizes and the planned calls; call no model.",
@@ -1204,6 +1445,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     """Run the evaluation harness against the full (or filtered) sample catalog."""
     args = _parse_args(argv)
     configure_cli(args.log_level)
+    if args.summarize is not None:
+        _summarize_command(args.summarize)
+        return
 
     try:
         settings = load_cli_settings(args.env_file, no_env_file=args.no_env_file)
@@ -1222,8 +1466,9 @@ def main(argv: Sequence[str] | None = None) -> None:
     manifest: dict[str, dict[str, Any]] = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     try:
+        names = [*(args.fixture or []), *(SUBSETS[args.subset] if args.subset else ())]
         fixtures = select_fixtures(
-            manifest, category=args.category, names=args.fixture, max_fixtures=args.max_fixtures
+            manifest, category=args.category, names=names, max_fixtures=args.max_fixtures
         )
         paths = [
             output_path(args.out, model, several_models=len(models) > 1, stamp=stamp)
@@ -1251,35 +1496,47 @@ def main(argv: Sequence[str] | None = None) -> None:
     budget = CallBudget(args.max_calls)
     limiter = RateLimiter(args.rpm)
     for model, path in zip(models, paths, strict=True):
-        started_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
-        evaluations, stopped = run_model(
-            fixtures,
+        info = run_info(
             backend=backend,
-            settings=settings,
             model=model,
             fallback_model=fallback_model,
             n_bytes=args.bytes,
             tail_bytes=args.tail_bytes,
             timeout_seconds=args.timeout,
             repeat=args.repeat,
-            keep_raw=args.keep_raw,
-            budget=budget,
-            limiter=limiter,
+            started_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            stopped_early=None,
+            fixtures_planned=len(fixtures),
         )
-        summary = summarize(
-            evaluations,
-            run_info(
+        writer = RunWriter(path, info) if path is not None else None
+        try:
+            evaluations, stopped = run_model(
+                fixtures,
                 backend=backend,
+                settings=settings,
                 model=model,
                 fallback_model=fallback_model,
                 n_bytes=args.bytes,
                 tail_bytes=args.tail_bytes,
                 timeout_seconds=args.timeout,
                 repeat=args.repeat,
-                started_at=started_at,
-                stopped_early=stopped,
-            ),
-        )
+                keep_raw=args.keep_raw,
+                budget=budget,
+                limiter=limiter,
+                on_evaluation=writer.add if writer is not None else None,
+            )
+        except KeyboardInterrupt:
+            if writer is not None:
+                writer.close()
+                logger.error(
+                    "Interrupted: %d finished line(s) kept in %s; recover the summary with "
+                    "--summarize %s",
+                    writer.lines,
+                    writer.path,
+                    writer.path,
+                )
+            sys.exit(130)
+        summary = summarize(evaluations, {**info, "stopped_early": stopped})
         print_report(
             evaluations,
             backend=backend,
@@ -1287,11 +1544,31 @@ def main(argv: Sequence[str] | None = None) -> None:
             fallback_model=fallback_model,
             summary=summary,
         )
-        if path is not None:
-            write_run(path, evaluations, summary)
-            print(f"Wrote {len(evaluations)} line(s) and the summary to {path}\n")
+        if writer is not None:
+            writer.finish(summary)
+            print(f"Wrote {len(evaluations)} line(s) and the summary to {writer.path}\n")
         if stopped:
             break
+
+
+def _summarize_command(path: Path) -> None:
+    """``--summarize``: append the summary of an interrupted run and print its report."""
+    try:
+        evaluations, summary = summarize_file(path)
+    except (OSError, ValueError) as exc:
+        logger.error("Cannot summarize the run: %s", exc)
+        sys.exit(2)
+    print_report(
+        evaluations,
+        backend=LLMBackend(summary["backend"]),
+        model=summary["model"],
+        fallback_model=summary["fallback_model"],
+        summary=summary,
+    )
+    print(
+        f"Appended an incomplete summary to {path} ({summary['fixtures_run']} of "
+        f"{summary['fixtures_planned']} fixture(s) run).\n"
+    )
 
 
 if __name__ == "__main__":

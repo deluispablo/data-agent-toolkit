@@ -153,9 +153,11 @@ Around the package:
 
 - `scripts/eval_samples.py`: the manual accuracy harness (a live model
   against every `samples/manifest.json` case, per-field scores). `--out`
-  writes a JSONL run (per-fixture verdicts, `Usage`, latency, a summary
-  line), `--repeat` measures drift, and quota guards (`--max-calls`,
-  `--rpm`, `--dry-run`, ...) protect cloud quotas. It may import private
+  streams a JSONL run (a `run` line, per-fixture verdicts, `Usage`,
+  latency, a summary line; `--summarize` recovers an interrupted one),
+  `--repeat` measures drift, `--subset quick|cloud` selects the documented
+  lists, and quota guards (`--max-calls`, `--rpm`, `--dry-run`, ...)
+  protect cloud quotas. It may import private
   names: `--keep-raw` wraps `_inspect.builtin_invoker` so token counts
   still reach `Usage`. Not run by pytest or CI.
 - `scripts/compare_runs.py`: stdlib-only Markdown table of two or more

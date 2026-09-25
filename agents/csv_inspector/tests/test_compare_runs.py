@@ -13,13 +13,22 @@ import pytest
 import compare_runs
 from compare_runs import RunFileError, load_summary, main, render, verdict_changes
 from csv_inspector import LLMBackend
-from eval_samples import FileEvaluation, run_info, summarize, write_run
+from eval_samples import FileEvaluation, RunWriter, run_info, summarize, summarize_file
 
 
 def _write_run(
-    path: Path, model: str, verdicts: dict[str, bool], *, prompt_version: str = "v1"
+    path: Path,
+    model: str,
+    verdicts: dict[str, bool],
+    *,
+    prompt_version: str = "v1",
+    fixtures_planned: int | None = None,
+    finish: bool = True,
 ) -> Path:
-    """Write a run through the harness's own writer: one line per fixture, then the summary."""
+    """Write a run through the harness's own writer: one line per fixture, then the summary.
+
+    With ``finish=False`` the summary line is left out, as in an interrupted run.
+    """
     evaluations = [
         FileEvaluation(
             filename=fixture,
@@ -41,9 +50,16 @@ def _write_run(
         repeat=1,
         started_at="2026-09-24T00:00:00+00:00",
         stopped_early=None,
+        fixtures_planned=fixtures_planned or len(verdicts),
     )
     info["prompt_version"] = prompt_version
-    write_run(path, evaluations, summarize(evaluations, info))
+    writer = RunWriter(path, info)
+    for evaluation in evaluations:
+        writer.add(evaluation)
+    if finish:
+        writer.finish(summarize(evaluations, info))
+    else:
+        writer.close()
     return path
 
 
@@ -156,6 +172,28 @@ def test_summary_is_read_from_the_last_summary_line(tmp_path: Path) -> None:
     path.write_text("\n".join(json.dumps(line) for line in lines), encoding="utf-8")
 
     assert load_summary(path) == {"model": "m"}
+
+
+def test_an_interrupted_run_is_refused_then_labelled_once_summarized(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], two_runs: tuple[Path, Path]
+) -> None:
+    """No summary: refused with the recovery hint; after --summarize: an incomplete column."""
+    interrupted = _write_run(
+        tmp_path / "cut.jsonl",
+        "m",
+        {"d1.csv": True, "q1.csv": False},
+        fixtures_planned=3,
+        finish=False,
+    )
+    with pytest.raises(RunFileError, match="--summarize"):
+        load_summary(interrupted)
+
+    summarize_file(interrupted)
+    main([str(two_runs[0]), str(interrupted)])
+
+    out = capsys.readouterr().out
+    assert "| metric | baseline | cut (incomplete, 2/3 fixtures) |" in out
+    assert "`d2.csv`: fail: delimiter -> not run" in out
 
 
 def test_run_script_as_main(

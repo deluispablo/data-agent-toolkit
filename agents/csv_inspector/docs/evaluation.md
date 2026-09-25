@@ -373,7 +373,7 @@ Everyday before/after runs from [the ritual](#the-ritual) do not touch the
 README.
 
 If a demo file's result changes too (a prompt, grounding or default-model
-change), regenerate the README's hero and terminal recording: see
+change), regenerate the README's hero, terminal recording and walkthrough: see
 "Development" in the README.
 
 ## Baseline 0.4.0

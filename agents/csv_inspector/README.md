@@ -650,11 +650,16 @@ To measure accuracy, cost and latency against the fixture catalog, and to
 compare models or prompt versions, see
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md).
 
-The picture and the recording at the top of this page are generated:
-`scripts/render_readme_hero.py` writes the demo files and both hero SVGs,
-and [`docs/assets/demo.tape`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo.tape)
-records the terminal session with [VHS](https://github.com/charmbracelet/vhs).
-Regenerate both after a change that alters a demo file's result.
+The pictures and the recording on this page are generated:
+`scripts/render_readme_hero.py` writes the demo files and both hero SVGs;
+[`docs/assets/demo.tape`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo.tape)
+records the terminal session with [VHS](https://github.com/charmbracelet/vhs);
+`scripts/capture_walkthrough.py` runs one real inspection into
+`docs/assets/walkthrough.json`, and `scripts/render_walkthrough.py` turns it
+into the "How it works" storyboard (`--markdown` prints its alt text and
+`<details>` blocks; on Windows set `PYTHONIOENCODING=utf-8` before
+redirecting it to a file). Regenerate all three after a change that alters
+a demo file's result.
 
 ## License
 

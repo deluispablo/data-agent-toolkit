@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -41,12 +42,18 @@ _TAGS = [
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Build the Cloud Storage client once, at startup, unless one was injected.
+    """Build the inspection slots and, unless one was injected, the Cloud Storage client.
 
-    A failure does not stop the API, whose other routes need no Cloud
-    Storage: ``POST /inspect/gcs`` tries again on each request and answers
-    with the error's problem response until it succeeds.
+    The slots are one ``asyncio.Semaphore`` of
+    ``settings.max_concurrent_inspections`` permits, created here so it
+    belongs to the serving event loop; the inspection routes wait for a
+    permit (see ``routes/inspect.py``).
+
+    A Cloud Storage failure does not stop the API, whose other routes need
+    no Cloud Storage: ``POST /inspect/gcs`` tries again on each request and
+    answers with the error's problem response until it succeeds.
     """
+    app.state.inspection_slots = asyncio.Semaphore(app.state.settings.max_concurrent_inspections)
     if app.state.gcs_client is None:
         try:
             app.state.gcs_client = create_client(app.state.settings.google_cloud_project)
@@ -79,7 +86,8 @@ def create_app(
 
     Returns:
         The application, with ``settings``, ``library_settings``,
-        ``model_invoker`` and ``gcs_client`` stored on ``app.state``.
+        ``model_invoker``, ``gcs_client`` and ``inspection_slots`` (``None``
+        until the lifespan starts) stored on ``app.state``.
     """
     settings = settings if settings is not None else ApiSettings()
     app = FastAPI(
@@ -94,6 +102,7 @@ def create_app(
     app.state.library_settings = settings.to_library_settings()
     app.state.model_invoker = model_invoker
     app.state.gcs_client = gcs_client
+    app.state.inspection_slots = None
     register_exception_handlers(app)
     app.add_middleware(RequestIdMiddleware)
     app.include_router(build_inspect_router(settings))

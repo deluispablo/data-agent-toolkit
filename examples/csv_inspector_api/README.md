@@ -54,10 +54,33 @@ optional. For a file, copy [`.env.example`](.env.example) to `.env` and add
 | `MAX_TIMEOUT_SECONDS` | `300` | largest budget a request may ask for |
 | `MAX_UPLOAD_BYTES` | 256 MiB | larger uploads get `413` |
 | `ALLOW_BACKEND_OVERRIDE` | `false` | let requests pick the paid backend or cloud models (see below) |
+| `MAX_CONCURRENT_INSPECTIONS` | `4` | inspections run at once by one process; the others wait |
+| `QUEUE_TIMEOUT_SECONDS` | `10` | how long a request waits for a slot before `503` |
 
 Every name takes the `CSV_INSPECTOR_API_` prefix. The `api` backend needs
 the agent's `[cloud]` extra, and `POST /inspect/gcs` needs the example's
 `[gcs]` extra; `uv sync --all-extras` installs both.
+
+### Concurrency
+
+A burst of uploads must not become a burst of model calls: on the `api`
+backend it spends the per-minute quota at once, and on the `local` one it
+queues every request on the same Ollama and GPU. So at most
+`MAX_CONCURRENT_INSPECTIONS` inspections run at once, over `/inspect`,
+`/inspect/raw` and `/inspect/gcs` together; a request past the cap waits
+for a free slot, then runs. If none frees up within `QUEUE_TIMEOUT_SECONDS`
+it gets `503` (`error: "ServerBusyError"`) with `Retry-After` (the queue
+timeout, rounded up to whole seconds); retry after that. `GET /health` is
+never gated. The wait comes before the file is read, so an `/inspect/raw`
+body is only consumed once its request holds a slot, and it does not count
+against `timeout_seconds`.
+
+The cap is per process, one `asyncio.Semaphore` created at startup: with
+several workers or instances, the total is the cap times their number.
+Size it to what the backend serves in parallel, 1 or 2 for one local GPU,
+and on the free tier of the `api` backend keep in mind that the cap bounds
+calls in flight, not calls per minute or per day (see
+[Running on the free tier](../../agents/csv_inspector/README.md#running-on-the-free-tier)).
 
 ## Docker
 
@@ -151,7 +174,9 @@ The main statuses are:
 - `422`: bad input;
 - `504`: timeout;
 - `502`: the model failed;
-- `503`: the deployment is misconfigured;
+- `503`: the deployment is misconfigured, or every inspection slot stayed
+  busy (`ServerBusyError`, with `Retry-After`; see
+  [Concurrency](#concurrency));
 - `403` / `413`: raised by the API itself.
 
 The full table, Cloud Storage included, is in the
@@ -175,7 +200,8 @@ It follows the [embedding guide](../../agents/csv_inspector/docs/embedding.md):
   `ApiSettings.to_library_settings()`, and `load_settings()` is never
   called (§5);
 - `timeout_seconds` covers both models within the operator's cap (§6);
-- one exception handler maps every `CSVInspectorError` (§6).
+- one exception handler maps every `CSVInspectorError` (§6);
+- one semaphore bounds the inspections in flight (§7).
 
 ## Tests
 

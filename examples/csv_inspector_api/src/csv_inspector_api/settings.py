@@ -36,6 +36,11 @@ class ApiSettings(BaseSettings):
         default_timeout_seconds: Time budget of one inspection request.
         max_timeout_seconds: Largest time budget a request may ask for.
         max_upload_bytes: Largest accepted upload; larger ones are rejected early.
+        max_concurrent_inspections: Inspections run at once by this process; the
+            others wait for a free slot. Bounds the burst of model calls (cloud
+            quota, one local GPU) whatever the number of clients.
+        queue_timeout_seconds: How long a request waits for a free slot before
+            it is answered with 503 and ``Retry-After``.
         allow_backend_override: Whether a request may move a local deployment to
             ``backend=api`` (the paid cloud backend) or choose the models of a
             cloud call. ``False`` answers such requests with 403.
@@ -55,6 +60,11 @@ class ApiSettings(BaseSettings):
     default_timeout_seconds: float = Field(default=60, gt=0)
     max_timeout_seconds: float = Field(default=300, gt=0)
     max_upload_bytes: int = Field(default=256 * _MIB, gt=0)
+    # A burst of uploads must not become a burst of model calls: on the cloud
+    # backend it spends the per-minute quota, on the local one it queues N
+    # requests on one GPU. Size it to what the backend serves in parallel.
+    max_concurrent_inspections: int = Field(default=4, gt=0)
+    queue_timeout_seconds: float = Field(default=10, gt=0)
     # Cloud calls cost money: a caller may only switch this deployment to the
     # paid backend, or pick its (pricier) models, when the operator opts in.
     # Keep the default False.

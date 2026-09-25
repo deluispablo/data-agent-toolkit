@@ -15,6 +15,15 @@ listed under **Changed (breaking)**.
   validation or parsing change is measured in about a second, exactly.
   The summary records `replay_of`, and `compare_runs.py` labels a replayed
   column `(replay)`. See "Replaying a run" in `docs/evaluation.md`.
+- README section "Running on the free tier": the Gemini free-tier quotas
+  (about 20 requests per day per model, as read on 2026-09-25), what `429`
+  and `503` mean, why a retry costs a full call, why only counting calls
+  guards the daily quota, and the measured cost per inspection at list
+  price ($0.00084 in the 0.4.0 baseline)
+  ([#137](https://github.com/deluispablo/data-agent-toolkit/issues/137)).
+- `docs/embedding.md` §7 explains how to bound concurrent inspections in a
+  host (one `asyncio.Semaphore`, a bounded wait, `503` with `Retry-After`),
+  with the example API as the reference.
 
 ### Changed
 

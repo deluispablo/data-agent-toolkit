@@ -73,6 +73,47 @@ class FakeInvoker:
         return self.answer
 
 
+class GatedInvoker(FakeInvoker):
+    """A slow fake model: every call waits for :attr:`release`; counts calls in flight.
+
+    Attributes:
+        release: Set it to let every waiting and future call answer.
+        in_flight: Calls started and not yet answered.
+        max_in_flight: Highest :attr:`in_flight` seen: the concurrency reached.
+    """
+
+    def __init__(self, answer: str = SAMPLE_ANSWER, *, error: Exception | None = None) -> None:
+        """Script the answer, or the error raised once released."""
+        super().__init__(answer, error=error)
+        self.release = asyncio.Event()
+        self.in_flight = 0
+        self.max_in_flight = 0
+
+    async def __call__(self, prompt: str, model: str) -> str:
+        """Count the call, wait for :attr:`release`, then answer like :class:`FakeInvoker`."""
+        self.in_flight += 1
+        self.max_in_flight = max(self.max_in_flight, self.in_flight)
+        try:
+            await self.release.wait()
+            return await super().__call__(prompt, model)
+        finally:
+            self.in_flight -= 1
+
+    async def wait_for_in_flight(self, count: int, *, timeout: float = 5) -> None:
+        """Wait until exactly ``count`` calls are in flight.
+
+        Raises:
+            TimeoutError: If that does not happen within ``timeout`` seconds.
+        """
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + timeout
+        while self.in_flight != count:
+            if loop.time() > deadline:
+                msg = f"{self.in_flight} calls in flight, expected {count}"
+                raise TimeoutError(msg)
+            await asyncio.sleep(0.01)
+
+
 class RecordingReader(io.BytesIO):
     """A seekable reader over fixed bytes that records how it is used.
 

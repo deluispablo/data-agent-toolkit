@@ -1801,6 +1801,47 @@ def test_grounding_finds_the_header_a_no_header_answer_named(
     assert (result.has_header, result.header_row_index, result.columns) == expected
 
 
+@pytest.mark.parametrize("has_header", [True, False])
+def test_grounding_finds_the_header_of_a_one_column_file_listed_line_by_line(
+    tmp_path: Path, has_header: bool
+) -> None:
+    """Every line listed as a column, header or not: the line of the first name is the header."""
+    target = tmp_path / "names.csv"
+    target.write_text("Cliente\nAcme S.L.\nBeta Corp\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=has_header,
+            header_row_index=0 if has_header else None,
+            columns=["Cliente", "Acme S.L.", "Beta Corp"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index, result.columns) == (True, 0, ["Cliente"])
+
+
+def test_grounding_takes_a_header_only_file_for_a_header(tmp_path: Path) -> None:
+    """A "no header" answer naming the file's only line: that line is the header."""
+    target = tmp_path / "empty_table.csv"
+    target.write_text("Fecha,Cliente,Importe\n", encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            has_header=False,
+            header_row_index=None,
+            columns=["Fecha", "Cliente", "Importe"],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.has_header, result.header_row_index) == (True, 0)
+
+
 def test_grounding_reports_the_default_for_a_delimiter_that_never_occurs(tmp_path: Path) -> None:
     """A tab guessed for a one-column file splits nothing: the default ``,`` is reported."""
     target = tmp_path / "names.csv"

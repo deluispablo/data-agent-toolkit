@@ -202,43 +202,53 @@ def _shaped_alike(first: list[str], second: list[str]) -> bool:
     )
 
 
+def _ground_one_column(
+    result: CSVInspectionResult, lines: list[str], rows: list[list[str] | None]
+) -> dict[str, object]:
+    """The header of a one-column file whose answer listed lines as columns (see below)."""
+    at = next((i for i, line in enumerate(lines) if line.strip() == result.columns[0]), None)
+    if at is None and result.has_header:
+        at = result.header_row_index
+    if at is None or at >= len(rows):
+        return {"has_header": False, "header_row_index": None, "columns": ["column_1"]}
+    return {"has_header": True, "header_row_index": at, "columns": [(rows[at] or [""])[0]]}
+
+
 def _ground_header(result: CSVInspectionResult, head_sample: str) -> dict[str, object]:
     """Return the header fields to correct: row index, names, or "no header".
 
+    In a one-column file (the delimiter splits no head line) models list
+    lines as columns: the line equal to their first name (else the header
+    row they gave) is the header, holding the only name.
+
     A model that answers "no header" but whose names are, exactly, a line
-    of the head followed by a line not shaped like it (see
-    :func:`_shaped_alike`) has found the header after all: that line is
-    reported as the header row. Otherwise a header-less file gets
-    positional column names, whatever names the model made up (often the
-    first data row's values). A model that answers a header at row 0 it cannot anchor,
-    over a first row shaped like the data below it, is corrected to no
-    header row (see :func:`_first_row_is_data`). In a one-column file (the
-    delimiter splits no head line) the header row holds the only name,
-    however many lines the model listed as columns.
+    of the head that is the last one or is followed by a line not shaped
+    like it (see :func:`_shaped_alike`) has found the header after all:
+    that line is reported as the header row. Otherwise a header-less file
+    gets positional column names, whatever names the model made up (often
+    the first data row's values). A model that answers a header at row 0
+    it cannot anchor, over a first row shaped like the data below it, is
+    corrected to no header row (see :func:`_first_row_is_data`).
     """
     lines = _split_lines(head_sample.lstrip("﻿"))
+    rows = [_split_fields(line, result.delimiter, result.quotechar) for line in lines]
+    if len(result.columns) > 1 and _agreement_score(lines, result.delimiter, result.quotechar) == 0:
+        return _ground_one_column(result, lines, rows)
     if not result.has_header:
-        rows = [_split_fields(line, result.delimiter, result.quotechar) for line in lines]
-        for index, (fields, next_fields) in enumerate(itertools.pairwise(rows)):
+        for index, fields in enumerate(rows):
+            next_fields = rows[index + 1] if index + 1 < len(rows) else None
             if (
                 fields is not None
                 and [field.strip() for field in fields] == result.columns
-                and next_fields is not None
-                and len(next_fields) == len(fields)
-                and not _shaped_alike(fields, next_fields)
+                and (
+                    next_fields is None
+                    or (len(next_fields) == len(fields) and not _shaped_alike(fields, next_fields))
+                )
             ):
                 logger.info("The model's column names are line %d: reporting a header row.", index)
                 return {"has_header": True, "header_row_index": index, "columns": fields}
         positional = [f"column_{number}" for number in range(1, len(result.columns) + 1)]
         return {} if result.columns == positional else {"columns": positional}
-    index = result.header_row_index or 0
-    if (
-        len(result.columns) > 1
-        and index < len(lines)
-        and _agreement_score(lines, result.delimiter, result.quotechar) == 0
-    ):
-        name = (_split_fields(lines[index], result.delimiter, result.quotechar) or [""])[0]
-        return {"columns": [name]}
     header = _locate_header_row(result, head_sample)
     if header is None:
         if result.header_row_index != 0 or not _first_row_is_data(result, head_sample):

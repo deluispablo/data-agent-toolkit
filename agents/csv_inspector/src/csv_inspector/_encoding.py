@@ -1,7 +1,7 @@
 """Encoding detection and decoding of byte samples; no I/O.
 
-Also holds the line-break pattern ``csv`` and pandas split rows on, shared by
-sampling (trimming a truncated head) and grounding (splitting samples).
+Also holds the line-break pattern ``csv`` and pandas split rows on, and
+:func:`split_lines`, shared by sampling and grounding.
 """
 
 from __future__ import annotations
@@ -18,6 +18,24 @@ logger = logging.getLogger(__name__)
 # form feeds, vertical tabs, U+001C-U+001E, U+0085, U+2028 and U+2029, which can
 # occur inside fields of dirty or latin-1-decoded data.
 LINE_BREAK = re.compile(r"\r\n|\r|\n")
+# One line: its text and its line break, or the text after the last break.
+_LINE = re.compile(r"[^\r\n]*(?:\r\n|\r|\n)|[^\r\n]+")
+
+
+def split_lines(text: str, *, keepends: bool = False) -> list[str]:
+    """Split ``text`` into lines the way ``csv`` and pandas count rows.
+
+    A final line break ends the last line; it does not start an empty one.
+
+    Args:
+        text: The text to split.
+        keepends: Keep each line's line break (the last line may have none).
+
+    Returns:
+        The lines, in order.
+    """
+    lines: list[str] = _LINE.findall(text)
+    return lines if keepends else [line.rstrip("\r\n") for line in lines]
 
 
 def detect_encoding(raw_bytes: bytes) -> str:

@@ -15,6 +15,7 @@ from csv_inspector import (
 from csv_inspector._grounding import (
     _field_shape,
     _first_row_is_data,
+    _ParsedSample,
     ground_in_samples,
 )
 from csv_inspector._models import _ModelAnswer
@@ -204,7 +205,7 @@ def test_first_row_is_data_needs_a_second_row_of_the_same_shape(head: str, is_da
     }
     result = CSVInspectionResult.model_validate(answer)
 
-    assert _first_row_is_data(result, head) is is_data
+    assert _first_row_is_data(result, _ParsedSample.parse(head, ",", '"')) is is_data
 
 
 def test_grounding_recovers_header_row_and_literal_column_names(tmp_path: Path) -> None:

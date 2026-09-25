@@ -27,8 +27,7 @@ from ._exceptions import (
     ModelInvocationError,
     ModelTimeoutError,
 )
-from ._models import CSVInspectionResult
-from ._prompt import SYSTEM_PROMPT
+from ._prompt import SYSTEM_PROMPT, response_schema
 
 if TYPE_CHECKING:
     from google.genai import Client as GenaiClient
@@ -150,6 +149,8 @@ def _import_ollama() -> ModuleType:
 _OLLAMA_MIN_NUM_CTX = 4096
 _OLLAMA_MAX_NUM_CTX = 32768
 _OLLAMA_RESPONSE_TOKENS = 1024
+# The status an Ollama server older than 0.5 answers to a schema ``format``.
+_HTTP_BAD_REQUEST = 400
 
 
 def _ollama_num_ctx(prompt: str) -> int:
@@ -173,15 +174,25 @@ def _ollama_num_ctx(prompt: str) -> int:
     return max(_OLLAMA_MIN_NUM_CTX, 1 << (needed - 1).bit_length())
 
 
-def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
-    """Keyword arguments for an Ollama chat request."""
+def _ollama_request(prompt: str, model: str, *, schema: bool = True) -> dict[str, Any]:
+    """Keyword arguments for an Ollama chat request.
+
+    Args:
+        prompt: The fully-built prompt.
+        model: Name of the Ollama model.
+        schema: Constrain the reply with :func:`response_schema` (structured
+            outputs); ``False`` asks for plain JSON mode, for servers that
+            reject a schema ``format``.
+    """
     return {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        "format": "json",
+        # The schema is the contract of the reply's shape (Ollama compiles it
+        # into a grammar); the prompt only carries the fields' semantics.
+        "format": response_schema() if schema else "json",
         # num_predict caps the reply at the budget num_ctx reserves for it.
         # Without it a model stuck repeating (e.g. an endless footer_lines
         # list) generates until the timeout, or forever when there is none;
@@ -193,6 +204,30 @@ def _ollama_request(prompt: str, model: str) -> dict[str, Any]:
             "num_predict": _OLLAMA_RESPONSE_TOKENS,
         },
     }
+
+
+def _rejects_schema_format(ollama: ModuleType, exc: Exception) -> bool:
+    """Whether ``exc`` is an Ollama server refusing a JSON Schema ``format``.
+
+    Servers older than Ollama 0.5 answer HTTP 400 with an error about
+    ``format`` when it is a schema instead of ``"json"``.
+    """
+    response_error = getattr(ollama, "ResponseError", ())
+    return (
+        isinstance(exc, response_error)
+        and getattr(exc, "status_code", None) == _HTTP_BAD_REQUEST
+        and "format" in str(exc).lower()
+    )
+
+
+def _log_schema_fallback(model: str, exc: Exception) -> None:
+    """Warn that the server refused the schema and the request is retried in JSON mode."""
+    logger.warning(
+        "Ollama rejected the response schema for model '%s' (%s); retrying with "
+        "format='json'. Upgrade the Ollama server (0.5 or later) for structured outputs.",
+        model,
+        exc,
+    )
 
 
 def _ollama_error(model: str, exc: Exception) -> ModelInvocationError:
@@ -227,7 +262,13 @@ def _invoke_ollama(
     ollama = _import_ollama()
     try:
         with ollama.Client(host=host, timeout=timeout_seconds) as client:
-            response = client.chat(**_ollama_request(prompt, model))
+            try:
+                response = client.chat(**_ollama_request(prompt, model))
+            except Exception as exc:
+                if not _rejects_schema_format(ollama, exc):
+                    raise
+                _log_schema_fallback(model, exc)
+                response = client.chat(**_ollama_request(prompt, model, schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
     return _ollama_response(response, model)
@@ -240,7 +281,13 @@ async def _ainvoke_ollama(
     ollama = _import_ollama()
     try:
         async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
-            response = await client.chat(**_ollama_request(prompt, model))
+            try:
+                response = await client.chat(**_ollama_request(prompt, model))
+            except Exception as exc:
+                if not _rejects_schema_format(ollama, exc):
+                    raise
+                _log_schema_fallback(model, exc)
+                response = await client.chat(**_ollama_request(prompt, model, schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
     return _ollama_response(response, model)
@@ -358,7 +405,7 @@ class _CloudCall:
             system_instruction=SYSTEM_PROMPT,
             temperature=0.0,
             response_mime_type="application/json",
-            response_json_schema=CSVInspectionResult.model_json_schema(),
+            response_json_schema=response_schema(),
             # No tools are passed; disabling AFC stops the SDK from logging an
             # "AFC is enabled" INFO line and a WARNING on every call.
             automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
@@ -527,9 +574,10 @@ def invoke_cloud_model(
     Authenticates with ``gemini_api_key`` (Gemini Developer API) or, failing
     that, ``google_cloud_project`` + ``google_cloud_location`` (Vertex AI with
     Application Default Credentials), from ``settings`` or the environment.
-    Requests JSON constrained by the :class:`CSVInspectionResult` JSON
-    Schema, at ``temperature=0.0``. Credentials are checked before any client
-    is created, and the API key never appears in logs or raised errors.
+    Requests JSON constrained by :func:`~csv_inspector._prompt.response_schema`
+    (the same schema the Ollama backend sends), at ``temperature=0.0``.
+    Credentials are checked before any client is created, and the API key
+    never appears in logs or raised errors.
 
     Args:
         prompt: The fully-built prompt to send.

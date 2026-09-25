@@ -297,7 +297,7 @@ def test_an_over_long_stream_is_inspected_without_a_footer(
 ) -> None:
     """The model is told the end was not sampled, and no footer is reported."""
     monkeypatch.setattr("csv_inspector._sampling.MAX_FORWARD_SCAN_BYTES", SCAN_LIMIT)
-    reported = json.loads(RESULT_JSON) | {"footer_lines": ["1;2"]}
+    reported = json.loads(RESULT_JSON) | {"footer_first_line": "1;2"}
     prompts: list[str] = []
 
     def invoker(prompt: str, model: str) -> str:

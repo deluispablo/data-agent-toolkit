@@ -21,6 +21,7 @@ from types import SimpleNamespace
 from typing import Any, ClassVar
 
 import pytest
+from ollama import ResponseError
 from pydantic import SecretStr
 
 from csv_inspector import (
@@ -35,7 +36,13 @@ from csv_inspector import (
     inspect_csv,
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL, resolve_settings
-from csv_inspector._invokers import ainvoke_cloud_model, invoke_cloud_model
+from csv_inspector._invokers import (
+    ainvoke_cloud_model,
+    ainvoke_ollama_model,
+    invoke_cloud_model,
+    invoke_ollama_model,
+)
+from csv_inspector._prompt import _strip_schema, response_schema
 from fakes import install_fake_ollama, ollama_reply
 
 AGENT_DIR = Path(__file__).resolve().parent.parent
@@ -235,7 +242,7 @@ def test_cloud_invoker_without_credentials_fails_before_creating_a_client(
 def test_cloud_invoker_sends_a_deterministic_json_request_with_the_schema(
     monkeypatch: pytest.MonkeyPatch, recording_client: type[_RecordingClient]
 ) -> None:
-    """The request uses JSON mode, the result schema and temperature 0.0."""
+    """The request uses JSON mode, the shared response schema and temperature 0.0."""
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
 
     text = invoke_cloud_model("the prompt", "gemini-2.5-flash")
@@ -250,7 +257,11 @@ def test_cloud_invoker_sends_a_deterministic_json_request_with_the_schema(
     config = request["config"]
     assert config.temperature == 0.0
     assert config.response_mime_type == "application/json"
-    assert config.response_json_schema == CSVInspectionResult.model_json_schema()
+    # The very dict the Ollama backend sends as ``format`` (issue #130).
+    assert config.response_json_schema is response_schema()
+    sent = config.response_json_schema["properties"]
+    assert "footer_first_line" in sent
+    assert "footer_lines" not in sent
     assert config.system_instruction
     assert config.automatic_function_calling.disable
 
@@ -637,6 +648,122 @@ def test_configuration_errors_are_not_retried_with_the_fallback(
         )
 
     assert calls == ["primary"]
+
+
+# ---------------------------------------------------------------------
+# The response schema both backends send (issue #130)
+# ---------------------------------------------------------------------
+
+
+def test_response_schema_is_small_flat_and_bounded() -> None:
+    """No annotations, no $defs, no usage; names are kept and numeric bounds stay."""
+    schema = response_schema()
+    text = json.dumps(schema)
+
+    assert "$defs" not in schema
+    assert "$ref" not in text
+    for keyword in ('"title"', '"description"', '"default"'):
+        assert keyword not in text
+    assert "usage" not in schema["properties"]
+    assert schema["properties"]["columns"]["type"] == "array"
+    # The model's answer, not the result: one footer anchor line (issue #132).
+    assert "footer_first_line" in schema["properties"]
+    assert "footer_lines" not in schema["properties"]
+    assert "footer_rows_to_skip" not in schema["properties"]
+    # A grammar lets a model skip optional keys; every one is required.
+    assert schema["required"] == list(schema["properties"])
+    assert schema["properties"]["confidence"] == {
+        "maximum": 1.0,
+        "minimum": 0.0,
+        "type": "number",
+    }
+    assert response_schema() is schema
+
+
+def test_response_schema_inlines_definitions() -> None:
+    """A ``$ref`` to ``$defs`` is replaced by the stripped definition."""
+    defs: dict[str, Any] = {"Inner": {"title": "Inner", "type": "string", "description": "x"}}
+    schema = {
+        "$defs": defs,
+        "properties": {"title": {"$ref": "#/$defs/Inner"}, "n": {"default": 1, "type": "integer"}},
+    }
+
+    assert _strip_schema(schema, defs) == {
+        "properties": {"title": {"type": "string"}, "n": {"type": "integer"}}
+    }
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+def test_ollama_request_sends_the_response_schema(
+    monkeypatch: pytest.MonkeyPatch, use_async: bool
+) -> None:
+    """The ``format`` of every Ollama request is the response schema, not "json"."""
+    fake = install_fake_ollama(monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON))
+
+    if use_async:
+        asyncio.run(ainvoke_ollama_model("p", "m"))
+    else:
+        invoke_ollama_model("p", "m")
+
+    (request,) = fake.requests
+    assert request["format"] == response_schema()
+    assert request["format"]["properties"]["columns"]["type"] == "array"
+    assert "footer_first_line" in request["format"]["properties"]
+    assert "footer_lines" not in request["format"]["properties"]
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+def test_ollama_schema_rejection_retries_in_json_mode(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, use_async: bool
+) -> None:
+    """An old server refusing a schema ``format`` gets the same call with "json", once."""
+
+    def chat(**kwargs: Any) -> Any:
+        if isinstance(kwargs["format"], dict):
+            raise ResponseError('{"error": "invalid format: expected \\"json\\""}', 400)
+        return ollama_reply(VALID_RESULT_JSON)
+
+    fake = install_fake_ollama(monkeypatch, chat)
+
+    with caplog.at_level(logging.WARNING, logger="csv_inspector"):
+        if use_async:
+            text = asyncio.run(ainvoke_ollama_model("p", "m"))
+        else:
+            text = invoke_ollama_model("p", "m")
+
+    assert text == VALID_RESULT_JSON
+    assert [request["format"] for request in fake.requests] == [response_schema(), "json"]
+    assert fake.requests[1]["messages"] == fake.requests[0]["messages"]
+    assert fake.requests[1]["options"] == fake.requests[0]["options"]
+    (record,) = [r for r in caplog.records if "rejected the response schema" in r.message]
+    assert record.levelno == logging.WARNING
+
+
+@pytest.mark.parametrize(
+    ("error", "status"),
+    [("model 'm' not found", 404), ("invalid options", 400)],
+    ids=["other-status", "400-not-about-format"],
+)
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+def test_other_ollama_errors_are_not_retried_in_json_mode(
+    monkeypatch: pytest.MonkeyPatch, error: str, status: int, use_async: bool
+) -> None:
+    """Only a 400 about ``format`` triggers the JSON-mode retry."""
+
+    def chat(**kwargs: Any) -> Any:
+        raise ResponseError(error, status)
+
+    fake = install_fake_ollama(monkeypatch, chat)
+
+    def invoke() -> str:
+        if use_async:
+            return asyncio.run(ainvoke_ollama_model("p", "m"))
+        return invoke_ollama_model("p", "m")
+
+    with pytest.raises(ModelInvocationError, match=error):
+        invoke()
+
+    assert len(fake.requests) == 1
 
 
 # ---------------------------------------------------------------------

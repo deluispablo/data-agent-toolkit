@@ -40,7 +40,7 @@ ANSWER = json.dumps(
         "encoding": "utf-8",
         "delimiter": ";",
         "header_row_index": 0,
-        "footer_lines": ["TOTAL;;10.00"],
+        "footer_first_line": "TOTAL;;10.00",
         "columns": ["Fecha", "Cliente", "Importe"],
         "confidence": 0.9,
     }

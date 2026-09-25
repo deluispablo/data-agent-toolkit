@@ -45,9 +45,11 @@ from csv_inspector._grounding import (
     _extends_footer,
     _field_shape,
     _first_row_is_data,
+    _locate_footer_lines,
     ground_in_samples,
 )
 from csv_inspector._invokers import ModelInvoker, invoke_ollama_model
+from csv_inspector._models import _ModelAnswer
 from csv_inspector._prompt import _extract_json_payload, build_prompt, parse_and_validate
 from csv_inspector._sampling import (
     MAX_SAMPLE_BYTES,
@@ -67,7 +69,7 @@ VALID_RESULT_PAYLOAD: dict[str, object] = {
     "escapechar": None,
     "doublequote": True,
     "header_row_index": 2,
-    "footer_lines": [],
+    "footer_first_line": None,
     "columns": ["Fecha", "Importe"],
     "confidence": 0.95,
 }
@@ -316,7 +318,7 @@ def test_build_prompt_forbids_a_footer_when_the_end_was_not_sampled() -> None:
     assert "TAIL SAMPLE START" not in prompt
     assert "contains the ENTIRE file" not in prompt
     assert "its end was not sampled" in prompt
-    assert '"footer_lines" must be []' in prompt
+    assert '"footer_first_line" must be null' in prompt
 
 
 def test_build_prompt_includes_tail_section_and_mid_line_caveat() -> None:
@@ -358,10 +360,11 @@ def test_build_prompt_reads_footer_only_from_the_tail_when_present() -> None:
 
 
 def test_build_prompt_no_longer_requests_derived_or_removed_fields() -> None:
-    """The model is asked only for footer_lines: the count is derived, metadata is gone."""
+    """The model is asked for the first footer line only; the rest is read from the file."""
     prompt = build_prompt(head_sample="a,b\n1,2\n", detected_encoding="utf-8")
 
-    assert '"footer_lines"' in prompt
+    assert '"footer_first_line"' in prompt
+    assert "footer_lines" not in prompt
     assert "footer_rows_to_skip" not in prompt
     assert "metadata_lines" not in prompt
 
@@ -415,7 +418,7 @@ def test_header_less_answers_validate(
     answer: dict[str, object], expected_index: int | None
 ) -> None:
     """Null (or -1) means "no header row"; has_header follows unless given."""
-    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+    result = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **answer})
 
     assert result.header_row_index == expected_index
     assert result.has_header is (expected_index is not None)
@@ -434,7 +437,7 @@ def test_header_less_answers_validate(
 def test_contradictory_header_answers_fail(answer: dict[str, object], message: str) -> None:
     """has_header and header_row_index must agree, with a clear message."""
     with pytest.raises(ValidationError, match=message):
-        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **answer})
+        _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **answer})
 
 
 def test_a_missing_header_row_index_still_fails() -> None:
@@ -442,7 +445,7 @@ def test_a_missing_header_row_index_still_fails() -> None:
     payload = {k: v for k, v in VALID_RESULT_PAYLOAD.items() if k != "header_row_index"}
 
     with pytest.raises(ValidationError, match="required when has_header"):
-        CSVInspectionResult.model_validate(payload)
+        _ModelAnswer.model_validate(payload)
 
 
 def test_a_header_less_fixture_keeps_its_positional_columns() -> None:
@@ -538,7 +541,7 @@ def _ground_case(case: SampleCase, names: list[str]) -> CSVInspectionResult:
         "columns": list(names),
     }
     head = case.raw_bytes.decode(encoding)
-    return ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+    return ground_in_samples(_ModelAnswer.model_validate(answer), head, None)
 
 
 _HEADERLESS_CASES = [
@@ -599,7 +602,7 @@ def test_grounding_keeps_a_header_named_by_the_model_in_another_case() -> None:
     }
     head = "Fecha,Cliente\nAcme,Beta\nGamma,Delta\n"
 
-    result = ground_in_samples(CSVInspectionResult.model_validate(answer), head, None)
+    result = ground_in_samples(_ModelAnswer.model_validate(answer), head, None)
 
     assert (result.has_header, result.header_row_index) == (True, 0)
 
@@ -1037,7 +1040,7 @@ def _sloppy_answer(**overrides: object) -> ModelInvoker:
         **VALID_RESULT_PAYLOAD,
         "header_row_index": 0,
         "columns": ["Fecha", "Proveedor", "Monto"],
-        "footer_lines": ["TOTAL;;60.00"],
+        "footer_first_line": "TOTAL;;60.00",
         **overrides,
     }
 
@@ -1064,7 +1067,9 @@ def test_grounded_column_names_keep_padding_like_csv_reader(tmp_path: Path) -> N
     target.write_text("Fecha; Cliente ;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
     columns = ["Fecha", "Cliente", "Importe"]
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(columns=columns, footer_lines=[]))
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(columns=columns, footer_first_line=None)
+    )
 
     assert result.columns == ["Fecha", " Cliente ", "Importe"]
 
@@ -1089,7 +1094,7 @@ def test_grounding_reads_the_footer_from_the_tail_of_a_large_file() -> None:
     columns = ["Fecha", "Proveedor", "Descripción", "Monto"]
 
     result = inspect_csv(
-        fixture, model_invoker=_sloppy_answer(columns=columns, footer_lines=[totals_row])
+        fixture, model_invoker=_sloppy_answer(columns=columns, footer_first_line=totals_row)
     )
 
     assert result.header_row_index == 2
@@ -1112,7 +1117,8 @@ def test_grounding_leaves_a_header_less_file_alone(tmp_path: Path) -> None:
     ]
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(columns=columns, header_row_index=0, footer_lines=[])
+        target,
+        model_invoker=_sloppy_answer(columns=columns, header_row_index=0, footer_first_line=None),
     )
 
     assert (result.has_header, result.header_row_index) == (False, None)
@@ -1130,7 +1136,7 @@ def test_grounding_anchors_the_footer_on_its_last_occurrence(tmp_path: Path) -> 
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(footer_lines=["Revisado"], header_row_index=0),
+        model_invoker=_sloppy_answer(footer_first_line="Revisado", header_row_index=0),
     )
 
     assert result.footer_lines == ["Revisado"]
@@ -1143,11 +1149,11 @@ def test_grounding_drops_a_footer_that_is_not_at_the_end_of_the_file(
     target = tmp_path / "plain.csv"
     target.write_text("Fecha;Cliente;Importe\n2024-01-01;Acme;10.00\n", encoding="utf-8")
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["*** END ***"]))
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_first_line="*** END ***"))
 
     assert result.footer_lines == []
     assert result.footer_rows_to_skip == 0
-    assert "do not occur at the end of the file" in caplog.text
+    assert "does not occur at the end of the file" in caplog.text
 
 
 def test_grounding_drops_an_unanchored_footer_on_the_head_and_tail_path(tmp_path: Path) -> None:
@@ -1157,7 +1163,7 @@ def test_grounding_drops_an_unanchored_footer_on_the_head_and_tail_path(tmp_path
     target.write_text("Fecha;Proveedor;Monto\n" + rows, encoding="utf-8")
 
     result = inspect_csv(
-        target, n_bytes=512, tail_bytes=512, model_invoker=_sloppy_answer(footer_lines=["TOTAL"])
+        target, n_bytes=512, tail_bytes=512, model_invoker=_sloppy_answer(footer_first_line="TOTAL")
     )
 
     assert result.footer_lines == []
@@ -1196,7 +1202,9 @@ def test_grounding_keeps_the_delimiter_of_a_one_column_file(tmp_path: Path) -> N
     target = tmp_path / "ids.csv"
     target.write_text("id\n1\n2\n3\n", encoding="utf-8")
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(delimiter=",", footer_lines=[]))
+    result = inspect_csv(
+        target, model_invoker=_sloppy_answer(delimiter=",", footer_first_line=None)
+    )
 
     assert result.delimiter == ","
 
@@ -1227,7 +1235,7 @@ def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> 
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_first_line=None),
     )
 
     assert result.delimiter == "\t"
@@ -1235,10 +1243,10 @@ def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> 
 
 
 def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Path) -> None:
-    """A ``,`` splitting more than half as many rows as the tab stays (#151)."""
+    """A ``,`` splitting more than two thirds as many rows as the tab stays (#151)."""
     rows = "".join(
         f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
-        if day % 2 == 0 or day % 3 == 0
+        if day % 5 != 0
         else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
         for day in range(1, 21)
     )
@@ -1247,7 +1255,7 @@ def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Pat
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_lines=[]),
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_first_line=None),
     )
 
     assert result.delimiter == ","
@@ -1270,7 +1278,7 @@ def test_grounding_keeps_the_reported_delimiter_when_candidates_tie(tmp_path: Pa
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(delimiter="|", footer_lines=[], columns=["a"]),
+        model_invoker=_sloppy_answer(delimiter="|", footer_first_line=None, columns=["a"]),
     )
 
     assert result.delimiter == "|"
@@ -1280,7 +1288,7 @@ def test_column_names_are_stripped_and_blank_and_duplicate_names_kept() -> None:
     """Surrounding whitespace goes; an empty name and a repeated name stay (issue #129)."""
     payload = {**VALID_RESULT_PAYLOAD, "columns": ["", " id ", "id", "\tvalue"]}
 
-    result = CSVInspectionResult.model_validate(payload)
+    result = _ModelAnswer.model_validate(payload)
 
     assert result.columns == ["", "id", "id", "value"]
 
@@ -1293,7 +1301,7 @@ def test_column_names_are_stripped_and_blank_and_duplicate_names_kept() -> None:
 def test_columns_must_be_a_non_empty_list_of_names(columns: object) -> None:
     """Anything but a non-empty list of strings is a malformed answer (issue #129)."""
     with pytest.raises(ValidationError):
-        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "columns": columns})
+        _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "columns": columns})
 
 
 def test_json_schema_is_flat_with_no_column_objects_notes_or_usage() -> None:
@@ -1312,7 +1320,7 @@ def test_prompt_asks_for_column_names_only() -> None:
     """The prompt asks for a list of names, with no types, examples or notes (issue #129)."""
     prompt = build_prompt("a\n1\n", "utf-8")
 
-    assert '"columns": ["<name copied character for character' in prompt
+    assert '"columns" holds each name copied character for character' in prompt
     for removed in ("inferred_type", "nullable", "example_values", '"notes"', "boolean"):
         assert removed not in prompt
 
@@ -1340,7 +1348,7 @@ def test_a_forty_column_answer_validates_and_grounds(
                 name.replace("Campo", "Field") if number % 2 else name
                 for number, name in enumerate(names)
             ],
-            "footer_lines": ["TOTAL;;"],
+            "footer_first_line": "TOTAL;;",
         }
     )
     fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(answer))
@@ -1361,7 +1369,7 @@ def test_grounding_recovers_an_unreported_totals_row_above_the_footer(tmp_path: 
     target.write_text(_LEDGER, encoding="utf-8")
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"])
+        target, model_invoker=_sloppy_answer(footer_first_line="--- Fin del informe ---")
     )
 
     assert result.footer_lines == ["", "TOTAL;;60.00", "--- Fin del informe ---"]
@@ -1379,7 +1387,7 @@ def test_grounding_never_extends_the_footer_past_a_data_row(tmp_path: Path) -> N
     )
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"])
+        target, model_invoker=_sloppy_answer(footer_first_line="--- Fin del informe ---")
     )
 
     assert result.footer_lines == ["--- Fin del informe ---"]
@@ -1397,7 +1405,7 @@ def test_grounding_drops_a_footer_when_the_end_of_the_file_was_not_sampled(
     target = tmp_path / "ledger.csv"
     target.write_text("Fecha;Cliente;Importe\n" + "2024-01-01;Acme;10.00\n" * 200, encoding="utf-8")
     prompts: list[str] = []
-    answer = _sloppy_answer(footer_lines=["2024-01-01;Acme;10.00"])
+    answer = _sloppy_answer(footer_first_line="2024-01-01;Acme;10.00")
 
     def recording_invoker(prompt: str, model: str) -> str:
         prompts.append(prompt)
@@ -1457,7 +1465,7 @@ def test_grounding_keeps_a_data_row_named_like_a_totals_label_out_of_the_footer(
     result = inspect_csv(
         target,
         model_invoker=_sloppy_answer(
-            delimiter=",", columns=columns, footer_lines=["--- Fin del informe ---"]
+            delimiter=",", columns=columns, footer_first_line="--- Fin del informe ---"
         ),
     )
 
@@ -1481,9 +1489,7 @@ def test_grounding_drops_data_rows_the_model_reported_as_footer(tmp_path: Path) 
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(
-            footer_lines=["2024-01-02;Beta;20.00", "Generado el 2024-08-08 10:00:00"]
-        ),
+        model_invoker=_sloppy_answer(footer_first_line="2024-01-02;Beta;20.00"),
     )
 
     assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
@@ -1500,13 +1506,11 @@ def test_grounding_discards_a_footer_made_only_of_data_rows(
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(
-            footer_lines=["2024-01-01;Acme;10.00", "2024-01-02;Beta;20.00"]
-        ),
+        model_invoker=_sloppy_answer(footer_first_line="2024-01-01;Acme;10.00"),
     )
 
     assert result.footer_lines == []
-    assert "do not occur at the end of the file" in caplog.text
+    assert "does not occur at the end of the file" in caplog.text
 
 
 def test_grounding_includes_a_marker_above_the_anchor(tmp_path: Path) -> None:
@@ -1515,7 +1519,7 @@ def test_grounding_includes_a_marker_above_the_anchor(tmp_path: Path) -> None:
     target.write_text(_MARKED_LEDGER, encoding="utf-8")
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(footer_lines=["Generado el 2024-08-08 10:00:00"])
+        target, model_invoker=_sloppy_answer(footer_first_line="Generado el 2024-08-08 10:00:00")
     )
 
     assert result.footer_lines == ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"]
@@ -1529,7 +1533,7 @@ def test_grounding_keeps_a_totals_row_with_the_data_width(tmp_path: Path) -> Non
         encoding="utf-8",
     )
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;2;30.00"]))
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_first_line="TOTAL;2;30.00"))
 
     assert result.footer_lines == ["TOTAL;2;30.00"]
 
@@ -1538,20 +1542,20 @@ def test_grounding_keeps_a_totals_row_with_the_data_width(tmp_path: Path) -> Non
     ("reported", "expected"),
     [
         (
-            ["2024-08-08 10:00:00"],
+            "2024-08-08 10:00:00",
             ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
         ),
-        (["Fin del"], []),
+        ("Fin del", []),
     ],
 )
 def test_grounding_anchors_on_a_substring_of_the_footer_line(
-    tmp_path: Path, reported: list[str], expected: list[str]
+    tmp_path: Path, reported: str, expected: list[str]
 ) -> None:
     """Reported text of 8 characters or more anchors the line it occurs in (issue #153)."""
     target = tmp_path / "ledger.csv"
     target.write_text(_MARKED_LEDGER, encoding="utf-8")
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=reported))
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_first_line=reported))
 
     assert result.footer_lines == expected
 
@@ -1567,7 +1571,7 @@ def test_grounding_ignores_trailing_empty_fields_in_an_anchor(tmp_path: Path) ->
         encoding="utf-8",
     )
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["TOTAL;;30.00;"]))
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_first_line="TOTAL;;30.00;"))
 
     assert result.footer_lines == ["TOTAL;;30.00;;"]
 
@@ -1584,7 +1588,7 @@ def test_grounding_starts_a_footer_after_the_last_data_row(tmp_path: Path) -> No
         encoding="utf-8",
     )
 
-    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_lines=["2024-01-03;Gamma"]))
+    result = inspect_csv(target, model_invoker=_sloppy_answer(footer_first_line="2024-01-03;Gamma"))
 
     assert result.footer_lines == []
 
@@ -1604,7 +1608,7 @@ def test_grounding_reads_an_invented_data_row_as_the_end_of_the_data(
     target.write_text(content, encoding="utf-8")
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(footer_lines=["2024-01-09;Omega;99.00"])
+        target, model_invoker=_sloppy_answer(footer_first_line="2024-01-09;Omega;99.00")
     )
 
     assert result.footer_lines == expected
@@ -1622,11 +1626,89 @@ def test_grounding_anchors_a_footer_copied_with_the_replaced_delimiter(tmp_path:
     )
 
     result = inspect_csv(
-        target, model_invoker=_sloppy_answer(delimiter=",", footer_lines=["TOTAL,,30.00"])
+        target, model_invoker=_sloppy_answer(delimiter=",", footer_first_line="TOTAL,,30.00")
     )
 
     assert result.delimiter == "\t"
     assert result.footer_lines == ["TOTAL\t\t30.00"]
+
+
+def test_grounding_anchors_a_data_row_copied_with_spaces_for_the_delimiter(
+    tmp_path: Path,
+) -> None:
+    """Separators squashed to spaces still designate the last data row."""
+    target = tmp_path / "ledger.tsv"
+    target.write_text(
+        "Fecha\tProveedor\tMonto\n"
+        "2024-01-01\tAcme\t10.00\n"
+        "2024-01-02\tBeta S.L.\t20.00\n"
+        "--- Fin del informe ---\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="\t", footer_first_line="2024-01-02 Beta S.L. 20.00"
+        ),
+    )
+
+    assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+def test_grounding_replaces_a_delimiter_dominated_one_and_a_half_times(tmp_path: Path) -> None:
+    """Tab on 8 lines against ``,`` on 5, as in the 40-column fixtures: tab wins (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day}.50\n"
+        if day <= 5
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 8)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_first_line=None),
+    )
+
+    assert result.delimiter == "\t"
+
+
+@pytest.mark.parametrize(
+    ("note", "answered", "expected"),
+    [
+        ('"dijo \\"hola\\" ya"', (None, True), ("\\", False)),
+        ('"fin \\"hola\\""', (None, True), ("\\", False)),
+        ('"dijo ""hola"" ya"', ("\\", False), (None, True)),
+        ('"sin comillas"', ("\\", False), ("\\", False)),
+        ('"mezcla \\"a\\" y ""b"""', (None, True), (None, True)),
+    ],
+)
+def test_grounding_reads_quote_escaping_from_the_samples(
+    tmp_path: Path,
+    note: str,
+    answered: tuple[str | None, bool],
+    expected: tuple[str | None, bool],
+) -> None:
+    """One escaping convention in the samples overrides the answer; none or both keep it."""
+    target = tmp_path / "notes.csv"
+    target.write_text(
+        f"Fecha,Cliente,Nota\n2024-01-01,Acme,{note}\n2024-01-02,Beta,x\n", encoding="utf-8"
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            columns=["Fecha", "Cliente", "Nota"],
+            escapechar=answered[0],
+            doublequote=answered[1],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.escapechar, result.doublequote) == expected
 
 
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
@@ -1638,7 +1720,7 @@ def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     result = inspect_csv(
         target,
         model_invoker=_sloppy_answer(
-            delimiter=",", columns=columns, header_row_index=1, footer_lines=[]
+            delimiter=",", columns=columns, header_row_index=1, footer_first_line=None
         ),
     )
 
@@ -1663,7 +1745,7 @@ def test_grounding_of_totals_shaped_last_rows_in_the_catalog(
 
     result = inspect_csv(
         SAMPLE_CSV_PATH.parent / "samples" / fixture,
-        model_invoker=_sloppy_answer(delimiter=",", columns=columns, footer_lines=[lines[-1]]),
+        model_invoker=_sloppy_answer(delimiter=",", columns=columns, footer_first_line=lines[-1]),
     )
 
     assert result.footer_lines == expected
@@ -1688,7 +1770,7 @@ def test_grounding_counts_lines_like_csv_does(tmp_path: Path) -> None:
 
     result = inspect_csv(
         target,
-        model_invoker=_sloppy_answer(footer_lines=["--- Fin del informe ---"]),
+        model_invoker=_sloppy_answer(footer_first_line="--- Fin del informe ---"),
     )
 
     assert result.header_row_index == 1
@@ -1709,7 +1791,7 @@ def test_header_fallback_ignores_empty_names(tmp_path: Path) -> None:
     result = inspect_csv(
         target,
         model_invoker=_sloppy_answer(
-            delimiter=",", columns=columns, header_row_index=0, footer_lines=[]
+            delimiter=",", columns=columns, header_row_index=0, footer_first_line=None
         ),
     )
 
@@ -1723,7 +1805,7 @@ def test_header_fallback_ignores_empty_names(tmp_path: Path) -> None:
 )
 def test_dialect_characters_accept_common_spellings_of_tab(value: str, expected: str) -> None:
     """A tab written as an escape sequence or a word becomes a real tab (issue #11)."""
-    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": value})
+    result = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "delimiter": value})
 
     assert result.delimiter == expected
 
@@ -1731,7 +1813,7 @@ def test_dialect_characters_accept_common_spellings_of_tab(value: str, expected:
 @pytest.mark.parametrize("value", ["", "null", "None", None])
 def test_an_empty_escapechar_means_none(value: str | None) -> None:
     """``""``, ``"null"`` and ``"none"`` mean there is no escape character (issue #11)."""
-    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "escapechar": value})
+    result = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "escapechar": value})
 
     assert result.escapechar is None
 
@@ -1750,13 +1832,13 @@ def test_an_empty_escapechar_means_none(value: str | None) -> None:
 def test_dialect_characters_must_be_one_character(field: str, value: str) -> None:
     """Anything else that is not one character fails validation (issue #11)."""
     with pytest.raises(ValidationError, match="exactly one character"):
-        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, field: value})
+        _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, field: value})
 
 
 @pytest.mark.parametrize("value", ["", "null", "None", "NONE", " none ", None])
 def test_no_quoting_spellings_map_quotechar_to_default(value: str | None) -> None:
     """Unquoted files: empty/null quotechar answers keep the inert default (issue #93)."""
-    result = CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, "quotechar": value})
+    result = _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, "quotechar": value})
     assert result.quotechar == '"'
 
 
@@ -1772,14 +1854,14 @@ def test_no_quoting_spellings_map_quotechar_to_default(value: str | None) -> Non
 def test_a_dialect_csv_cannot_read_fails_validation(dialect: dict[str, str]) -> None:
     """Characters that are valid alone but conflict fail validation (issue #48)."""
     with pytest.raises(ValidationError, match=r"line break|must differ"):
-        CSVInspectionResult.model_validate({**VALID_RESULT_PAYLOAD, **dialect})
+        _ModelAnswer.model_validate({**VALID_RESULT_PAYLOAD, **dialect})
 
 
 def test_an_escapechar_equal_to_the_quotechar_means_doubled_quotes() -> None:
     """``escapechar='"'`` describes RFC 4180 doubled quotes (issue #48)."""
     payload = {**VALID_RESULT_PAYLOAD, "escapechar": '"', "doublequote": False}
 
-    result = CSVInspectionResult.model_validate(payload)
+    result = _ModelAnswer.model_validate(payload)
 
     assert result.escapechar is None
     assert result.doublequote is True
@@ -1887,3 +1969,162 @@ def test_a_failed_async_attempt_log_never_shows_the_configured_api_key(
 
     assert "API key *** was rejected" in caplog.text
     assert secret not in caplog.text
+
+
+# ---------------------------------------------------------------------
+# What the model answers vs what the library returns (issue #132)
+# ---------------------------------------------------------------------
+
+
+def _answer(**overrides: object) -> _ModelAnswer:
+    """A validated model answer for the ``_MARKED_LEDGER`` file."""
+    return _ModelAnswer.model_validate(
+        {
+            **VALID_RESULT_PAYLOAD,
+            "header_row_index": 0,
+            "columns": ["Fecha", "Cliente", "Importe"],
+            **overrides,
+        }
+    )
+
+
+@pytest.mark.parametrize(
+    ("anchor", "expected"),
+    [
+        pytest.param(
+            "--- Fin del informe ---",
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+            id="first-footer-line",
+        ),
+        pytest.param(
+            "Generado el 2024-08-08 10:00:00",
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+            id="last-footer-line",
+        ),
+        pytest.param(
+            "2024-01-02;Beta;20.00",
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+            id="last-data-row",
+        ),
+        pytest.param(
+            "",
+            ["", "--- Fin del informe ---", "Generado el 2024-08-08 10:00:00"],
+            id="blank-separator",
+        ),
+        pytest.param("*** END ***", None, id="not-found"),
+    ],
+)
+def test_locate_footer_lines_reads_the_footer_from_one_anchor(
+    anchor: str, expected: list[str] | None
+) -> None:
+    """One anchor line is enough: the whole footer is read from the file."""
+    assert _locate_footer_lines(anchor, _MARKED_LEDGER, ";", '"') == expected
+
+
+def test_locate_footer_lines_finds_nothing_after_the_last_data_row() -> None:
+    """A blank anchor over a file that ends with a data row anchors nothing."""
+    assert _locate_footer_lines("", "a;b\n1;x\n2;y\n", ";", '"') is None
+
+
+def test_no_footer_line_with_the_end_sampled_gives_no_footer(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """``footer_first_line`` null means no footer, silently, even when the file has one."""
+    with caplog.at_level(logging.WARNING):
+        result = ground_in_samples(_answer(footer_first_line=None), _MARKED_LEDGER, None)
+
+    assert result.footer_lines == []
+    assert caplog.records == []
+
+
+def test_an_unknown_footer_line_is_discarded_with_a_warning(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """An anchor that is not at the sampled end of the file leaves no footer, and says so."""
+    with caplog.at_level(logging.WARNING, logger="csv_inspector"):
+        result = ground_in_samples(_answer(footer_first_line="*** END ***"), _MARKED_LEDGER, None)
+
+    assert result.footer_lines == []
+    (record,) = caplog.records
+    assert record.levelno == logging.WARNING
+    assert "*** END ***" in record.getMessage()
+
+
+def test_grounding_builds_the_public_result_from_the_answer() -> None:
+    """The pipeline's only result constructor: an answer in, a CSVInspectionResult out."""
+    answer = _answer(footer_first_line="--- Fin del informe ---")
+
+    result = ground_in_samples(answer, _MARKED_LEDGER, None)
+
+    assert type(result) is CSVInspectionResult
+    assert result.footer_rows_to_skip == 3
+    assert "footer_first_line" not in result.model_dump()
+    assert result.model_dump().keys() == {
+        "encoding",
+        "delimiter",
+        "quotechar",
+        "escapechar",
+        "doublequote",
+        "has_header",
+        "header_row_index",
+        "footer_lines",
+        "columns",
+        "confidence",
+        "footer_rows_to_skip",
+    }
+
+
+@pytest.mark.parametrize(
+    ("footer_lines", "expected"),
+    [
+        (["", "TOTAL;;60.00", "--- Fin ---"], "TOTAL;;60.00"),
+        ([""], ""),
+        ([], None),
+    ],
+    ids=["first-non-blank", "blank-only", "empty"],
+)
+def test_an_answer_with_footer_lines_is_still_accepted(
+    footer_lines: list[str], expected: str | None
+) -> None:
+    """A pre-0.4 answer (e.g. a custom invoker) anchors on its first non-blank footer line."""
+    payload = {k: v for k, v in VALID_RESULT_PAYLOAD.items() if k != "footer_first_line"}
+
+    answer = _ModelAnswer.model_validate({**payload, "footer_lines": footer_lines})
+
+    assert answer.footer_first_line == expected
+
+
+def test_an_explicit_footer_first_line_wins_over_footer_lines() -> None:
+    """Both keys: the new one is the answer."""
+    answer = _ModelAnswer.model_validate(
+        {**VALID_RESULT_PAYLOAD, "footer_first_line": "END", "footer_lines": ["TOTAL"]}
+    )
+
+    assert answer.footer_first_line == "END"
+
+
+@pytest.mark.parametrize(
+    "overrides",
+    [
+        {"delimiter": "tab"},
+        {"escapechar": ""},
+        {"has_header": False, "header_row_index": -1},
+        {"escapechar": '"'},
+    ],
+    ids=["tab-spelling", "empty-escape", "minus-one", "escaped-quote"],
+)
+def test_the_public_result_does_not_accept_model_spellings(overrides: dict[str, object]) -> None:
+    """Leniency is for the model's answer; the result the library returns is strict."""
+    payload = {**VALID_RESULT_PAYLOAD, "footer_lines": [], **overrides}
+
+    _ModelAnswer.model_validate(payload)
+    with pytest.raises(ValidationError):
+        CSVInspectionResult.model_validate(payload)
+
+
+def test_model_answer_is_private() -> None:
+    """``_ModelAnswer`` is an internal type, never exported."""
+    import csv_inspector  # noqa: PLC0415 - checked right here.
+
+    assert "_ModelAnswer" not in csv_inspector.__all__
+    assert not hasattr(csv_inspector, "_ModelAnswer")

@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-h"
+PROMPT_VERSION = "2026.09-i"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -136,11 +136,9 @@ infer columns.
         )
         file_end = "the last lines of the sample above"
 
-    return f"""You are an expert data engineering agent specialized in detecting \
-the quirks of "dirty" or non-standard CSV files.
-
-Below are byte samples from a real CSV file. The encoding heuristically \
-detected by chardet is: {detected_encoding!r} (it may be incorrect).
+    return f"""Below are byte samples from a real, possibly messy CSV file. The \
+encoding heuristically detected by chardet is: {detected_encoding!r} (it may \
+be incorrect).
 
 --- HEAD SAMPLE START (first bytes of the file) ---
 {head_sample}

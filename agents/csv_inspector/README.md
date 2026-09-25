@@ -3,7 +3,7 @@
 **Point it at any CSV. Get back how to read it.**
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
-![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-informational)
+![Version 0.5.0](https://img.shields.io/badge/version-0.5.0-informational)
 ![LLM: local Ollama or Gemini](https://img.shields.io/badge/LLM-local%20Ollama%20%7C%20Gemini-8250df)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -95,28 +95,31 @@ stamp):
 
 Measured with the repository's evaluation harness against a catalog of
 **80 messy fixtures** (encodings, delimiters, quoting, preambles, footers,
-header-less files, structural oddities). Baseline 0.4.0, measured on
-2026-09-25, next to 0.3.0:
+header-less files, structural oddities). Baseline 0.5.0, measured on
+2026-09-25, next to 0.4.0:
 
 | | Local: `qwen2.5-coder:7b` | Cloud: `gemini-flash-lite-latest` |
 |---|---|---|
-| Accuracy | **99.7 %** (the full catalog, 3 repeats; 0.3.0: 92.8 %) | **100 %** (a 15-fixture subset; 0.3.0: 98.1 %) |
-| Latency per inspection | p50 1.6 s, p95 6.5 s (0.3.0: 5.0 s, 20.9 s) | p50 1.1 s, p95 1.4 s |
-| Cost | $0, on your own machine | about $0.84 per 1,000 files at list price, on that subset (0.3.0: $1.64) |
+| Accuracy | **100 %** of the answered inspections (the full catalog, 3 repeats; 0.4.0: 99.7 %); 3 of 240 fail, see below | **100 %** (a 15-fixture subset; 0.4.0: 100 %) |
+| Prompt size | 1,522 tokens on average (0.4.0: 2,639, -42 %) | 968 tokens (0.4.0: 1,806, -46 %) |
+| Latency per inspection | p50 1.5 s, p95 4.7 s (0.4.0: 1.6 s, 6.5 s) | p50 19.8 s, p95 28.3 s on the day measured (0.4.0: 1.1 s, 1.4 s), all of it the service's |
+| Cost | $0, on your own machine | about $0.58 per 1,000 files at list price, on that subset (0.4.0: $0.84) |
 
 Each fixture scores the share of its fields that match the ground truth;
 accuracy is the mean over fixtures, known limitations and failed
-inspections excluded. On 0.4.0 every category is at 100 % except
-`header_footer` (99.2 %), and no inspection fails on the 7b model: the
-40-column files that failed on 0.3.0 now pass
-([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
-The fallback `qwen2.5-coder:3b` scores 98.7 % when used as the primary. The
-remaining misses are two known limitations and one missed footer. Since
-[#158](https://github.com/deluispablo/data-agent-toolkit/issues/158) the
-catalog scores `escapechar` and `doublequote` on every fixture with quoted
-fields (45 of 80); the 0.4.0 answers, replayed, score 100 % on both.
+inspections excluded. On 0.5.0 every category is at 100 % on the 7b model.
+The samples are bounded in lines (the first 15 and last 10 of each window,
+[#134](https://github.com/deluispablo/data-agent-toolkit/issues/134)),
+which is where the prompt savings come from. One fixture fails on all 3
+repeats: `gen_preamble_5_footer.csv`, a tab-separated file whose totals
+row ends in empty fields, makes both local models repeat `\t` until Ollama
+aborts ([#181](https://github.com/deluispablo/data-agent-toolkit/issues/181)).
+The fallback `qwen2.5-coder:3b` scores 98.4 % when used as the primary,
+with 21 failed inspections of 240. `escapechar` and `doublequote` are
+scored on every fixture with quoted fields (45 of 80) since
+[#158](https://github.com/deluispablo/data-agent-toolkit/issues/158).
 Method, per-category and per-field scores, machine and every miss:
-[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-040).
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-050).
 
 ## Install
 
@@ -126,7 +129,7 @@ pip install ./agents/csv_inspector            # local backend (Ollama)
 pip install "./agents/csv_inspector[cloud]"   # + Gemini backend
 
 # As a dependency of another project, pinned to a release tag
-pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.4.0#subdirectory=agents/csv_inspector"
+pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.5.0#subdirectory=agents/csv_inspector"
 ```
 
 Requires Python 3.10+. The local backend needs a running
@@ -193,7 +196,7 @@ the defaults are 4 KiB each.
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/assets/walkthrough-dark.svg">
-  <img alt="How csv-inspector handled demo_sales.csv (380 bytes). 1 Sample: 224 bytes of head and 80 bytes of tail are read, 76 bytes in between are not. 2 Prompt: 842 tokens, prompt version 2026.09-m, answer shape fixed by a JSON Schema. 3 Model answer from qwen2.5-coder:7b. 4 Ground: header_row_index 0 corrected to 3; footer_lines [&quot;TOTAL;;;51;427,30;&quot;] corrected to [&quot;TOTAL;;;51;427,30;&quot;, &quot;*** End of report ***&quot;]. 5 Result: encoding Windows-1252, delimiter &quot;;&quot;, header_row_index 3, footer_rows_to_skip 2, columns Date, Store, Product, Units, Amount (€), Returned. qwen2.5-coder:7b on local Ollama, $0." src="docs/assets/walkthrough-light.svg" width="900">
+  <img alt="How csv-inspector handled demo_sales.csv (380 bytes). 1 Sample: 224 bytes of head and 80 bytes of tail are read, 76 bytes in between are not. 2 Prompt: 844 tokens, prompt version 2026.09-n, answer shape fixed by a JSON Schema. 3 Model answer from qwen2.5-coder:7b. 4 Ground: header_row_index 0 corrected to 3; footer_lines [&amp;quot;TOTAL;;;51;427,30;&amp;quot;] corrected to [&amp;quot;TOTAL;;;51;427,30;&amp;quot;, &amp;quot;*** End of report ***&amp;quot;]. 5 Result: encoding Windows-1252, delimiter &amp;quot;;&amp;quot;, header_row_index 3, footer_rows_to_skip 2, columns Date, Store, Product, Units, Amount (€), Returned. qwen2.5-coder:7b on local Ollama, $0." src="docs/assets/walkthrough-light.svg" width="900">
 </picture>
 
 **1. Sample.** The source (a path, bytes or a stream) is read in two
@@ -245,7 +248,7 @@ by a JSON Schema that both backends enforce, so the prompt only explains
 what the fields mean.
 
 <details>
-<summary>The exact prompt (842 tokens, prompt version 2026.09-m)</summary>
+<summary>The exact prompt (844 tokens, prompt version 2026.09-n)</summary>
 
 ````text
 Byte samples of a real, possibly messy CSV file follow. Encoding guessed by chardet (may be wrong): 'Windows-1252'.
@@ -260,7 +263,7 @@ Date;Store;Product;Units;Amount (€);Returned
 
 --- HEAD SAMPLE END ---
 
---- TAIL SAMPLE START (last bytes of the file; may start mid-line or mid-word) ---
+--- TAIL SAMPLE START (end of the file; lines in between not shown; may start mid-line) ---
 ançon;Ground coffee 1kg;9;107,55;no
 TOTAL;;;51;427,30;
 *** End of report ***

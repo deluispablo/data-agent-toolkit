@@ -8,6 +8,11 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-09-25
+
+Leaner input and a measured budget: samples bounded in lines, a reply cap
+sized from the file, quote escaping grounded and scored everywhere.
+
 ### Added
 
 - `scripts/eval_samples.py --replay RUN` re-scores the catalog on the raw
@@ -64,6 +69,11 @@ listed under **Changed (breaking)**.
 
 ### Documentation
 
+- Baseline 0.5.0 in `docs/evaluation.md` (`qwen2.5-coder:7b` and `:3b`,
+  `gemini-flash-lite-latest`), quoted in the README's "Accuracy at a
+  glance"; the "How it works" walkthrough is regenerated for prompt
+  version `2026.09-n`
+  ([#140](https://github.com/deluispablo/data-agent-toolkit/issues/140)).
 - `tail_bytes=0` is documented as the no-footer mode (README "How it
   works", `docs/embedding.md`, the API example README): one read instead of
   two, no tail tokens, `footer_lines` always `[]`. `docs/evaluation.md`
@@ -695,7 +705,8 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.4.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.5.0...HEAD
+[0.5.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.4.0...csv-inspector-v0.5.0
 [0.4.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...csv-inspector-v0.4.0
 [0.3.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...csv-inspector-v0.3.0
 [0.2.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.1.0...csv-inspector-v0.2.0

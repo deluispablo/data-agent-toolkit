@@ -1,37 +1,106 @@
 # csv-inspector
 
-LLM-assisted inspection of large, messy CSV/TSV sources. From small,
-**bounded head and tail samples**, and never loading the source in full,
-`csv-inspector` infers:
+**Point it at any CSV. Get back how to read it.**
 
-- the character encoding;
-- the field delimiter, quote character and escape rules;
-- whether the file has a header row at all (`has_header`), where it is
-  (`header_row_index`, the number of preamble lines such as export banners
-  or comments to skip; `None` for a header-less file) and the footer lines
-  after the data (`footer_lines`: totals rows, "end of report" markers,
-  generation timestamps, blank separators; `footer_rows_to_skip` is derived
-  from them);
-- the column names, as written in the header row (`columns`).
+![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
+![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-informational)
+![LLM: local Ollama or Gemini](https://img.shields.io/badge/LLM-local%20Ollama%20%7C%20Gemini-8250df)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-Column types are not inferred: the engine that loads the file reads all of
-it and infers them better than a 4 KB sample can (see
-[Using the result](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#column-types)).
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/hero-dark.svg">
+  <img alt="csv-inspector samples the head and tail of a messy Windows-1252 export, sends them to a local LLM, and returns encoding Windows-1252, delimiter ';', header_row_index 3, footer_rows_to_skip 2 and six typed columns" src="docs/assets/hero-light.svg" width="900">
+</picture>
 
-It runs on a **local Ollama model by default** (free, no credentials) or on
-**Google Gemini** as an opt-in, and returns a Pydantic-validated
-`CSVInspectionResult` ready to drive downstream ingestion.
+`csv-inspector` is an LLM-assisted inspector for large, messy CSV/TSV
+sources. It reads **small, bounded head and tail samples**, never the whole
+file, and tells you the encoding, the dialect, where the header is, which
+footer lines to drop and what the columns look like. It runs on a **free,
+local Ollama model by default** (no credentials) or on **Google Gemini** as
+an opt-in, and returns a Pydantic-validated `CSVInspectionResult` ready to
+drive downstream ingestion.
 
-It is a **library you embed** in your own application or API (FastAPI,
-Flask, Django, a worker, any cloud), with a small CLI on the side. It is not
-a service.
+[Install](#install) · [Quickstart](#quickstart) · [How it works](#how-it-works) ·
+[Embedding guide](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md) ·
+[Using the result](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md) ·
+[Changelog](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/CHANGELOG.md)
 
-- **Embedding guide:** [docs/embedding.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md)
-  (sync and async endpoints, settings injection, timeouts, thread-safety)
-- **Using the result:** [docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md)
-  (reader options for `csv`, pandas and PySpark; `header_row_index` is a
-  physical line count, so use `skiprows`, not `header`)
-- **Changelog:** [CHANGELOG.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/CHANGELOG.md)
+## Why
+
+Real-world exports are rarely the tidy CSV a reader expects. The file in the
+picture above is a typical one: a report banner and a timestamp before the
+header, `;` as the delimiter, decimal commas, accents in Windows-1252, and a
+totals row plus an "end of report" marker after the data. A default
+`pandas.read_csv` stops at the first accented byte with a
+`UnicodeDecodeError`; fix the encoding and it still needs the right
+delimiter, the lines to skip at both ends and the right header row.
+
+`csv-inspector` answers the questions you would otherwise answer by opening
+the file and counting lines, for files you have never seen and may be far
+too large to open:
+
+| It infers | Reported as |
+|---|---|
+| The character encoding | `encoding` (a Python codec name) |
+| The field delimiter, quote character and escape rules | `delimiter`, `quotechar`, `escapechar`, `doublequote` |
+| Whether the file has a header row at all | `has_header` |
+| Where the header is: the number of preamble lines, such as export banners or comments, to skip | `header_row_index` (`None` for a header-less file) |
+| The footer lines after the data: totals rows, "end of report" markers, generation timestamps, blank separators | `footer_lines`, and `footer_rows_to_skip` derived from them |
+| A preliminary column schema | `columns`: name, inferred type, nullability, examples |
+
+### What makes it different
+
+- **Never loads the source.** One bounded read of the head and one of the
+  tail (4 KiB each by default, 16 KiB at most), whether the file is 4 KB or
+  40 GB.
+- **Free and local by default.** Ollama with `qwen2.5-coder:7b`, falling
+  back to `qwen2.5-coder:3b`. Gemini is an opt-in extra.
+- **Grounded, not trusted.** The model's answer is re-checked against the
+  real bytes: the delimiter, the header row, the literal column names and
+  the verbatim footer are recomputed from the sample.
+- **A validated contract.** A Pydantic v2 model with a closed vocabulary of
+  six column types, not free text.
+- **Built to embed.** A library for your own application or API (FastAPI,
+  Flask, Django, a worker, any cloud), with sync and async entry points,
+  one time budget for the whole model phase, typed errors, and the cost of
+  every call in `result.usage`. There is a small CLI on the side. It is not
+  a service.
+
+## See it run
+
+A real session with the local backend on the demo file from the picture
+([`docs/assets/demo_sales.csv`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo_sales.csv)):
+
+<img alt="Terminal recording: Get-Content shows the messy demo file; in Python, inspect_csv returns ('Windows-1252', ';', 3, 2), the six column names with their types, the two footer lines, and the model qwen2.5-coder:7b" src="docs/assets/demo.gif" width="900">
+
+## Accuracy at a glance
+
+<!--
+  Keep this section in step with the latest published baseline in
+  docs/evaluation.md. Any pull request that publishes a new baseline (see
+  "Publishing a baseline" there) updates these figures in the same PR.
+-->
+
+Measured with the repository's evaluation harness against a catalog of
+**80 messy fixtures** (encodings, delimiters, quoting, preambles, footers,
+header-less files, structural oddities). Baseline 0.3.0, measured on
+2026-09-24:
+
+| | Local: `qwen2.5-coder:7b` | Cloud: `gemini-flash-lite-latest` |
+|---|---|---|
+| Accuracy | **92.8 %** (the full catalog, 3 repeats) | **98.1 %** (a 15-fixture subset) |
+| Latency per inspection | p50 5.0 s, p95 20.9 s | p50 1.7 s, p95 2.5 s |
+| Cost | $0, on your own machine | about $1.64 per 1,000 files at list price, on that subset |
+
+Each fixture scores the share of its fields that match the ground truth;
+accuracy is the mean over fixtures, known limitations and failed
+inspections excluded. `encoding`, `quotechar` and `escapechar` are always
+right; the weakest fields are the footer (`footer_lines`, 77.1 %) and
+header-less detection (`has_header`, 75.0 %).
+Very wide files (the catalog's 40-column ones) currently fail on the local
+models: the answer outgrows the model's reply cap ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
+Method, per-field scores, machine and every miss:
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-030).
 
 ## Install
 
@@ -60,13 +129,8 @@ with open("exports/ledger.csv", "rb") as f:
     result = inspect_csv(f)  # ...or a binary stream
 
 print(result.delimiter, result.header_row_index, result.footer_rows_to_skip)
-print(result.columns)  # ["Fecha", "Cliente", "Importe"]
+print([column.name for column in result.columns])
 ```
-
-To read the file with these values, follow
-[docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md): `header_row_index`
-and `footer_rows_to_skip` count physical lines, so pandas'
-`header=result.header_row_index` silently picks the wrong row.
 
 In asyncio code, await `ainspect_csv` instead. **Never call `inspect_csv`
 on the event loop**: it blocks.
@@ -77,86 +141,59 @@ from csv_inspector import ainspect_csv
 result = await ainspect_csv(uploaded_bytes, timeout_seconds=30)
 ```
 
-## Public API
+### Read the file with the result
 
-Everything importable from `csv_inspector` (its `__all__`) is the public,
-stable API. Every other module and name is internal.
+`header_row_index` and `footer_rows_to_skip` count **physical lines**, so
+pandas' `header=result.header_row_index` silently picks the wrong row. Use
+`skiprows`:
 
-| Name | What it is |
-|---|---|
-| `inspect_csv(source, /, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)` | Synchronous inspection |
-| `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
-| `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
-| `CSVInspectionResult` | The validated output contract (see [The result](#the-result)). An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
-| `Usage` | The type of `result.usage`: what the model phase cost (see [Usage](#usage)) |
-| `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
-| `Settings` | Explicit configuration; constructing it never reads the environment |
-| `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
-| `ModelInvoker`, `AsyncModelInvoker` | Types of the `model_invoker` seam: `(prompt, model) -> str` and its async twin |
-| `ensure_backend_ready(backend, settings=None)` | Check a backend's configuration (cloud credentials, `google-genai` installed) without a network or model call; raises `BackendConfigurationError`. The `local` backend always passes |
-| `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); works on a base install |
-| `CSVInspectorError` and subclasses | See [Errors](#errors) |
-| `__version__` | The installed version |
+```python
+import pandas as pd
 
-### The result
+df = pd.read_csv(
+    path,
+    encoding=result.encoding,
+    sep=result.delimiter,
+    quotechar=result.quotechar,
+    escapechar=result.escapechar,
+    doublequote=result.doublequote,
+    skiprows=result.header_row_index or 0,  # physical lines: NOT header=
+    header=0 if result.has_header else None,
+    names=None if result.has_header else [column.name for column in result.columns],
+    skipfooter=result.footer_rows_to_skip,
+    engine="python" if result.footer_rows_to_skip else "c",
+)
+```
 
-| Field | Meaning |
-|---|---|
-| `encoding` | The character encoding, checked against the one detected from the bytes |
-| `delimiter`, `quotechar`, `escapechar`, `doublequote` | The dialect, ready for `csv`, pandas, PySpark or BigQuery |
-| `has_header`, `header_row_index` | Whether the file has a row of column names, and how many physical lines precede it (`None` for a header-less file) |
-| `footer_lines`, `footer_rows_to_skip` | The trailing non-data lines, verbatim, and how many there are |
-| `columns` | The column names as written in the header row, in file order (`column_1`, `column_2`, ... for a header-less file). Empty names (a pandas index column) and duplicate names are kept, as they are in the file |
-| `confidence` | The model's self-reported confidence, from 0.0 to 1.0 |
-
-`confidence` is a routing signal, not a guarantee: send inspections below
-a threshold you choose (for example 0.7) to human review instead of loading
-them automatically. The dialect, header row, column names and footer are
-grounded in the sampled bytes whatever the model's confidence.
-
-### Sources
-
-- **Paths** are read with one bounded read per window.
-- **Buffers** are sliced; only the sampled windows are copied.
-- **Seekable streams** are sampled from their **current position** to their end, and that position is restored afterwards.
-- **Non-seekable streams**, such as an upload body, are consumed once, keeping only a rolling tail buffer, so memory stays bounded by `n_bytes + tail_bytes` however long the stream is. Reaching the tail means reading everything before it, so at most 64 MiB are read past the head: a longer stream gets no tail sample, and is treated like `tail_bytes=0` (no footer is reported). To sample the end of a longer stream, spool it to a temporary file and pass that. A stalled stream still blocks in `read()`, which the library cannot interrupt, so set a read timeout on the stream itself.
-- **Text-mode streams** are rejected with `TypeError`; open files with `"rb"`.
-- **Non-blocking streams** must have their data available: a `read()` that returns `None` (no data yet) raises `FileSampleReadError` instead of being taken as the end of the stream.
-
-### Timeouts
-
-`timeout_seconds` is **one overall budget for the model phase**, shared by
-the primary and fallback models, so the worst case really is
-`timeout_seconds`. With a fallback, the primary may use about 70 % of the
-budget and the fallback gets everything left, so a slowly loading primary
-(a cold 7B model on CPU) usually still answers, while a hung one leaves the
-fallback about 30 %; time the primary does not use carries over. A model
-the budget leaves out is logged at INFO, to help tune `timeout_seconds`. The library enforces it, so custom invokers are bounded too, and
-also passes each model's share to the HTTP clients. When it runs out,
-`InspectionTimeoutError` is raised (for example, map it to HTTP 504).
-
-### Usage
-
-Every result returned by `inspect_csv` or `ainspect_csv` carries
-`result.usage`: what the model phase cost.
-
-| Field | Meaning |
-|---|---|
-| `model` | The model whose answer was kept (the fallback when the primary failed) |
-| `prompt_tokens`, `completion_tokens` | Summed over every model attempt, since a failed primary still costs tokens. `None` when no attempt reported them (a custom `model_invoker` returns text only) |
-| `latency_seconds` | Wall time of the model phase, all attempts included |
-| `attempts` | How many models were called |
-| `retries` | Transient cloud errors (429/503) retried within an attempt |
-| `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-b`); it changes with every change to the prompt wording |
-
-An attempt that fails without an answer (timeout, transport error, empty
-reply) reports no tokens. `usage` is not part of the JSON contract: it is
-left out of `model_dump()`, `model_dump_json()` and `model_json_schema()`.
-It does take part in `==`, so compare two results' `model_dump()` to
-ignore it. The library logs it in one INFO line per success.
+The recipes for the stdlib `csv` module and PySpark, and the traps behind
+each option, are in
+[docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md).
 
 ## How it works
+
+```mermaid
+flowchart LR
+    S[("CSV / TSV<br/>path, bytes or stream")] --> W["<b>Sample</b><br/>bounded head + tail<br/>4 KiB each by default"]
+    W --> M{{"<b>Ask a model</b><br/>local Ollama or Gemini<br/>primary, then fallback"}}
+    M --> G["<b>Ground</b><br/>recompute positions and<br/>names from the real bytes"]
+    G --> R(["<b>CSVInspectionResult</b><br/>validated and typed"])
+
+    style R fill:#2f9e44,color:#fff
+```
+
+1. **Sample.** Read a bounded head window and, when bytes are left past it,
+   a bounded tail window. The middle of the file is never read.
+2. **Ask a model.** Send both samples in one prompt to the primary model,
+   and to the fallback model if the primary fails, within one time budget.
+3. **Ground.** Small local models reliably *recognize* headers and footers
+   but count and copy lines poorly, so the model's answer is used as a key
+   to recompute the delimiter, the header row and literal column names (or
+   "no header"), and the verbatim footer from the sampled text. The exact
+   rules are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
+4. **Validate.** Return a `CSVInspectionResult`, or raise a typed error.
+
+<details>
+<summary><b>The full pipeline, step by step</b></summary>
 
 ```mermaid
 flowchart TD
@@ -201,11 +238,7 @@ flowchart TD
   prose around the object (`Here is the result: {...}`) does not waste an
   attempt.
 
-**Grounding.** Small local models reliably *recognize* headers and footers
-but count and copy lines poorly, so the model's answer is used as a key to
-recompute the delimiter, the header row and literal column names (or "no
-header"), and the verbatim footer from the sampled text. The exact rules
-are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
+</details>
 
 ### Known limitations
 
@@ -225,14 +258,23 @@ are in [How the result is grounded](https://github.com/deluispablo/data-agent-to
 
 ## Backends
 
-| Backend | Model service | Needs | Default |
-|---|---|---|---|
-| `local` | Ollama | `pip install csv-inspector` + a running Ollama | ✅ |
-| `api` | Google Gemini: Gemini Developer API (API key) or Vertex AI (Application Default Credentials), via `google-genai` | `pip install "csv-inspector[cloud]"` + credentials | opt-in |
+| | `local` (default) | `api` (opt-in) |
+|---|---|---|
+| Model service | Ollama | Google Gemini: Gemini Developer API (API key) or Vertex AI (Application Default Credentials), via `google-genai` |
+| Install | `pip install csv-inspector` + a running Ollama | `pip install "csv-inspector[cloud]"` + credentials |
+| Default models | `qwen2.5-coder:7b`, fallback `qwen2.5-coder:3b` | `gemini-3.6-flash`, fallback `gemini-flash-lite-latest` |
+| Cost | Free | Pay per token (free tier available) |
+| Retries | Never | One retry on `503` / `429`, see below |
 
-Verified against the real Gemini Developer API on 2026-09-24 with
-`google-genai` 2.25.0. Vertex AI has not been verified against the real
-service yet ([#92](https://github.com/deluispablo/data-agent-toolkit/issues/92)).
+Both backends send the same prompt: JSON output (constrained by
+`CSVInspectionResult`'s JSON Schema on Gemini) at `temperature=0.0`, then
+the same validation and grounding. SDKs are imported lazily; the local
+backend never loads the cloud SDK.
+
+**Gemini notes.** Verified against the real Gemini Developer API on
+2026-09-24 with `google-genai` 2.25.0. Vertex AI has not been verified
+against the real service yet
+([#92](https://github.com/deluispablo/data-agent-toolkit/issues/92)).
 Gemini answers `503 UNAVAILABLE` (high demand) or `429 RESOURCE_EXHAUSTED`
 (free-tier quota) often. The `api` backend retries such an answer **once**,
 on the same model: after the `Retry-After` header when it asks for 10 s or
@@ -242,15 +284,110 @@ failure, or any other error goes to the fallback model. The retry costs the
 same tokens as the first request; it avoids discarding the primary model's
 answer for a transient error. The local backend never retries.
 
-Both backends send the same prompt and the same JSON Schema of the
-answer, at `temperature=0.0`, then run the same validation and grounding.
-The schema constrains the output (Ollama's structured outputs, Gemini's
-`response_json_schema`), so the prompt only explains what the fields mean.
-An Ollama server older than 0.5, which rejects a schema, is asked again in
-plain JSON mode, with a WARNING. SDKs are imported lazily; the local
-backend never loads the cloud SDK.
+## Documentation
 
-## Settings
+- **Embedding guide:** [docs/embedding.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md)
+  (sync and async endpoints, settings injection, timeouts, thread-safety)
+- **Using the result:** [docs/using-the-result.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md)
+  (reader options for `csv`, pandas and PySpark; `header_row_index` is a
+  physical line count, so use `skiprows`, not `header`)
+- **Evaluation:** [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md)
+  (accuracy, cost and latency against the fixture catalog)
+- **Changelog:** [CHANGELOG.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/CHANGELOG.md)
+
+## Reference
+
+### Public API
+
+Everything importable from `csv_inspector` (its `__all__`) is the public,
+stable API. Every other module and name is internal.
+
+| Name | What it is |
+|---|---|
+| `inspect_csv(source, /, *, backend, settings, model, fallback_model, n_bytes, tail_bytes, timeout_seconds, model_invoker)` | Synchronous inspection |
+| `ainspect_csv(...)` | The same, for asyncio (native async clients; sampling runs in a worker thread) |
+| `CSVSource` | Accepted sources: `str` or `PathLike` (a path; a `str` is never CSV content), `bytes`, `bytearray` or `memoryview`, or a binary file-like object (seekable or not) |
+| `CSVInspectionResult`, `ColumnSchema` | The validated output contract. An unquoted file still reports `quotechar='"'`, which is inert when it never occurs in the file |
+| `ColumnType` | The closed vocabulary of `ColumnSchema.inferred_type` (see [Column types](#column-types)) |
+| `LLMBackend` | `LOCAL` (Ollama, default) or `API` (Gemini) |
+| `Settings` | Explicit configuration; constructing it never reads the environment |
+| `DEFAULT_SAMPLE_BYTES`, `DEFAULT_TAIL_BYTES`, `MAX_SAMPLE_BYTES` | Default head and tail windows (4096 bytes each) and the largest window `inspect_csv` accepts (16384 bytes; larger raises `ValueError`) |
+| `ModelInvoker`, `AsyncModelInvoker` | Types of the `model_invoker` seam: `(prompt, model) -> str` and its async twin |
+| `ensure_backend_ready(backend, settings=None)` | Check a backend's configuration (cloud credentials, `google-genai` installed) without a network or model call; raises `BackendConfigurationError`. The `local` backend always passes |
+| `load_settings(env_file=None)` | Explicitly read `Settings` from the environment (a `.env` only if given); works on a base install |
+| `CSVInspectorError` and subclasses | See [Errors](#errors) |
+| `__version__` | The installed version |
+
+### Column types
+
+`ColumnSchema.inferred_type` is always one of `string`, `integer`, `float`,
+`date` (no time part), `datetime` or `boolean`, so a downstream type mapping
+only has to cover these six values. Small models often answer with other
+words; common aliases are mapped (case-insensitively), and any other word
+becomes `string`, the safe type:
+
+| Model answer | `inferred_type` |
+|---|---|
+| `int`, `bigint`, `int64` | `integer` |
+| `number`, `decimal`, `double`, `numeric` | `float` |
+| `text`, `str`, `varchar` | `string` |
+| `bool` | `boolean` |
+| `timestamp` | `datetime` |
+| anything else | `string` |
+
+### Sources
+
+| Source | How it is read |
+|---|---|
+| **Paths** | One bounded read per window. |
+| **Buffers** | Sliced; only the sampled windows are copied. |
+| **Seekable streams** | Sampled from their **current position** to their end, and that position is restored afterwards. |
+| **Non-seekable streams**, such as an upload body | Consumed once, keeping only a rolling tail buffer, so memory stays bounded by `n_bytes + tail_bytes` however long the stream is. See below. |
+| **Text-mode streams** | Rejected with `TypeError`; open files with `"rb"`. |
+| **Non-blocking streams** | Must have their data available: a `read()` that returns `None` (no data yet) raises `FileSampleReadError` instead of being taken as the end of the stream. |
+
+Reaching the tail of a non-seekable stream means reading everything before
+it, so at most 64 MiB are read past the head: a longer stream gets no tail
+sample, and is treated like `tail_bytes=0` (no footer is reported). To
+sample the end of a longer stream, spool it to a temporary file and pass
+that. A stalled stream still blocks in `read()`, which the library cannot
+interrupt, so set a read timeout on the stream itself.
+
+### Timeouts
+
+`timeout_seconds` is **one overall budget for the model phase**, shared by
+the primary and fallback models, so the worst case really is
+`timeout_seconds`. With a fallback, the primary may use about 70 % of the
+budget and the fallback gets everything left, so a slowly loading primary
+(a cold 7B model on CPU) usually still answers, while a hung one leaves the
+fallback about 30 %; time the primary does not use carries over. A model
+the budget leaves out is logged at INFO, to help tune `timeout_seconds`.
+The library enforces it, so custom invokers are bounded too, and also
+passes each model's share to the HTTP clients. When it runs out,
+`InspectionTimeoutError` is raised (for example, map it to HTTP 504).
+
+### Usage
+
+Every result returned by `inspect_csv` or `ainspect_csv` carries
+`result.usage`: what the model phase cost.
+
+| Field | Meaning |
+|---|---|
+| `model` | The model whose answer was kept (the fallback when the primary failed) |
+| `prompt_tokens`, `completion_tokens` | Summed over every model attempt, since a failed primary still costs tokens. `None` when no attempt reported them (a custom `model_invoker` returns text only) |
+| `latency_seconds` | Wall time of the model phase, all attempts included |
+| `attempts` | How many models were called |
+| `retries` | Transient cloud errors (429/503) retried within an attempt |
+| `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-a`); it changes with every change to the prompt wording |
+
+An attempt that fails without an answer (timeout, transport error, empty
+reply) reports no tokens. `usage` is not part of the JSON contract: it is
+left out of `model_dump()`, `model_dump_json()` and `model_json_schema()`.
+It does take part in `==`, so compare two results' `model_dump()` to
+ignore it. The library logs it in one INFO line per success.
+
+### Settings
 
 There are two ways to configure the library:
 
@@ -285,7 +422,7 @@ location. A missing credential, package or invalid setting fails fast with
 model. The API key is a `SecretStr`, scrubbed from every backend error; it
 never appears in logs or exceptions.
 
-## CLI
+### CLI
 
 ```bash
 csv-inspector data.csv                                   # or: python -m csv_inspector data.csv
@@ -308,7 +445,7 @@ for the model phase, enough for a cold 7B load on CPU, so a stalled Ollama
 ends in an `InspectionTimeoutError` message instead of a hang. `--timeout N`
 changes the budget and `--timeout 0` removes it.
 
-## Errors
+### Errors
 
 All domain failures subclass `CSVInspectorError`:
 
@@ -342,6 +479,12 @@ for the development setup.
 To measure accuracy, cost and latency against the fixture catalog, and to
 compare models or prompt versions, see
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md).
+
+The picture and the recording at the top of this page are generated:
+`scripts/render_readme_hero.py` writes the demo file and both hero SVGs,
+and [`docs/assets/demo.tape`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo.tape)
+records the terminal session with [VHS](https://github.com/charmbracelet/vhs).
+Regenerate both after a change that alters the demo file's result.
 
 ## License
 

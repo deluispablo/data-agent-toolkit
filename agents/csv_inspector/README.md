@@ -726,7 +726,7 @@ unsupported source or a text-mode stream.
 The package lives in the
 [data-agent-toolkit](https://github.com/deluispablo/data-agent-toolkit)
 monorepo, next to its tests (`tests/`), fixture catalog (`samples/`),
-evaluation harness (`scripts/eval_samples.py`), demo (`main_demo.py`) and a
+evaluation harness (`scripts/eval_samples.py`, the `scripts/eval_harness/` package), demo (`main_demo.py`) and a
 settings template for the CLIs (`.env.example`). See the repository's
 [CONTRIBUTING.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/CONTRIBUTING.md)
 for the development setup.
@@ -736,7 +736,8 @@ compare models or prompt versions, see
 [docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md).
 
 The pictures and the recording on this page are generated:
-`scripts/render_readme_hero.py` writes the demo files and both hero SVGs;
+`scripts/render_readme_hero.py` writes the demo files and both hero SVGs
+(palettes and SVG helpers shared through `scripts/readme_svg.py`);
 [`docs/assets/demo.tape`](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/assets/demo.tape)
 records the terminal session with [VHS](https://github.com/charmbracelet/vhs);
 `scripts/capture_walkthrough.py` runs one real inspection into

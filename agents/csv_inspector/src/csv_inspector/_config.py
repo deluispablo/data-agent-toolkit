@@ -1,16 +1,9 @@
 """Settings for csv_inspector: explicit by default, environment on request.
 
-:class:`Settings` is a plain, frozen Pydantic model: constructing one never
-reads environment variables or files. Hosts that manage their own secrets
-build it directly and pass it to :func:`csv_inspector.inspect_csv`.
-
-:func:`load_settings` is the explicit, opt-in way to read settings from the
-process environment (and, only if asked, from a ``.env`` file). It needs no
-extra package: a base install reads the environment too.
-
-:func:`resolve_settings` picks between the two for one call, and
-:func:`ensure_backend_ready` checks that a backend is usable as configured,
-before any source is read.
+Constructing :class:`Settings` never reads the environment or a file;
+:func:`load_settings` is the opt-in reader (no extra package needed),
+:func:`resolve_settings` picks one of the two for a call, and
+:func:`ensure_backend_ready` checks a backend before any source is read.
 """
 
 from __future__ import annotations
@@ -80,20 +73,16 @@ class CloudCredentials:
 class Settings(BaseModel):
     """csv_inspector settings, injectable explicitly or loaded from the environment.
 
-    Constructing ``Settings(...)`` never reads the environment; unknown
-    fields are rejected to catch typos. :func:`load_settings` maps each
-    field to the upper-cased environment variable of the same name (e.g.
-    ``gemini_api_key`` ← ``GEMINI_API_KEY``).
+    Construction never reads the environment and rejects unknown fields;
+    :func:`load_settings` reads each field from its upper-cased name.
 
     Attributes:
         llm_backend: Default backend: ``local`` or ``api``.
         ollama_model: Primary local model.
         ollama_fallback_model: Fallback local model.
-        ollama_host: Base URL of the Ollama server, e.g.
-            ``http://ollama:11434``. ``None`` lets the Ollama SDK use its
-            default (or ``OLLAMA_HOST`` from the process environment).
-        gemini_api_key: Gemini Developer API key. Held as a ``SecretStr`` so
-            it is masked in ``repr`` and logs.
+        ollama_host: Base URL of the Ollama server; ``None`` is the SDK's
+            default (or ``OLLAMA_HOST``).
+        gemini_api_key: Gemini Developer API key, masked in ``repr`` and logs.
         google_cloud_project: Vertex AI project.
         google_cloud_location: Vertex AI location.
         cloud_model: Primary cloud model.
@@ -143,18 +132,11 @@ class Settings(BaseModel):
         return self.ollama_fallback_model
 
     def cloud_credentials(self) -> CloudCredentials:
-        """Resolve which cloud credentials to use.
-
-        An API key takes precedence (Gemini Developer API); otherwise both a
-        project and a location are required (Vertex AI with Application
-        Default Credentials).
-
-        Returns:
-            The resolved :class:`CloudCredentials`.
+        """The cloud credentials: an API key first, else a Vertex AI project and location.
 
         Raises:
             CredentialsNotConfiguredError: If neither route is fully
-                configured. The message names the missing setting(s).
+                configured; the message names the missing setting(s).
         """
         if self.gemini_api_key is not None:
             return CloudCredentials(mode=CloudAuthMode.GEMINI_API, api_key=self.gemini_api_key)
@@ -197,10 +179,9 @@ def _unquote(value: str) -> str:
 def _read_env_file(path: str | os.PathLike[str]) -> dict[str, str]:
     """Read ``KEY=VALUE`` lines from a ``.env`` file; a missing file reads as empty.
 
-    Supported: blank lines, ``#`` comment lines, an ``export`` prefix,
-    values in single or double quotes, and a `` # comment`` after a bare
-    value. Not supported: variable interpolation, escape sequences and
-    multi-line values. Keys are matched case-insensitively.
+    Blank and ``#`` lines, ``export``, quoted values and a trailing `` # comment``
+    are understood, keys case-insensitively; not interpolation, escapes or
+    multi-line values.
 
     Raises:
         BackendConfigurationError: If the file exists but cannot be read.
@@ -227,19 +208,13 @@ def _read_env_file(path: str | os.PathLike[str]) -> dict[str, str]:
 def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings:
     """Read :class:`Settings` from the process environment, explicitly.
 
-    Only environment variables are read by default. A ``.env`` file is read
-    only when ``env_file`` is given: the library never assumes that the
-    process's working directory is a safe place to load secrets from. Each
-    field is read from its upper-cased name (e.g. ``ollama_model`` from
-    ``OLLAMA_MODEL``), case-insensitively; other variables are ignored.
+    Each field comes from its upper-cased name (``ollama_model`` from
+    ``OLLAMA_MODEL``), case-insensitively. A ``.env`` file is read only when
+    given: the working directory is never assumed a safe place for secrets.
 
     Args:
-        env_file: Optional path to a ``.env`` file (see
-            :func:`_read_env_file` for the syntax). Environment variables
-            take precedence over its values. A missing file is ignored.
-
-    Returns:
-        The loaded settings.
+        env_file: Optional ``.env`` file (syntax: :func:`_read_env_file`);
+            environment variables win over it; a missing file is ignored.
 
     Raises:
         BackendConfigurationError: If the ``.env`` file cannot be read, or a
@@ -260,34 +235,21 @@ def load_settings(*, env_file: str | os.PathLike[str] | None = None) -> Settings
 
 
 def resolve_settings(settings: Settings | None) -> Settings:
-    """Return the settings to use: the injected ones, or the environment's.
-
-    Args:
-        settings: Explicitly injected settings. When given, the environment
-            is never read.
-
-    Returns:
-        ``settings`` if given; otherwise settings read from the process
-        environment (:func:`load_settings`, no ``.env``).
+    """``settings`` if given (the environment is then never read), else :func:`load_settings`.
 
     Raises:
-        BackendConfigurationError: If an environment variable holds an
-            invalid value.
+        BackendConfigurationError: If an environment variable holds an invalid value.
     """
     return settings if settings is not None else load_settings()
 
 
 def ensure_backend_ready(backend: LLMBackend, settings: Settings | None = None) -> None:
-    """Fail fast if ``backend`` cannot be used as configured.
+    """Fail fast if ``backend`` cannot be used as configured; no network or model call.
 
-    Every inspection with a built-in invoker runs this check before reading
-    the source. Hosts can call it too: at startup, or in a readiness probe,
-    to report a misconfigured deployment before the first request. It makes
-    no network call and no model call, so it is free and fast.
-
-    The local backend needs nothing up front and always passes: Ollama's
-    reachability is only known when it is called. The cloud backend needs
-    sufficient credentials and the ``google-genai`` package.
+    Every inspection with a built-in invoker runs it before reading the
+    source; hosts can call it at startup or in a readiness probe. The local
+    backend always passes (Ollama is only known reachable when called); the
+    cloud one needs credentials and the ``google-genai`` package.
 
     Args:
         backend: The backend to check.

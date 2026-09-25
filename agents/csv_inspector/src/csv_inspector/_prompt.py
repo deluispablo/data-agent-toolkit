@@ -62,22 +62,14 @@ def _strip_annotations(node: object) -> object:
 
 @functools.lru_cache(maxsize=1)
 def response_schema() -> dict[str, Any]:
-    """The JSON Schema both backends send to constrain the model's answer.
+    """The JSON Schema both backends send to constrain the model's answer (cached: read-only).
 
-    Built from the JSON Schema of the model's answer (``_ModelAnswer``:
-    ``footer_first_line``, not the result's ``footer_lines``), without ``title``,
-    ``description`` and ``default`` keys, so it is small enough for Ollama to
-    compile into a grammar. The answer is flat (no nested models, so no
-    ``$defs`` to inline). Numeric bounds
-    stay. Every property is required, nullable ones included: a grammar
-    lets the model skip an optional key, and a skipped ``quotechar`` or
-    ``escapechar`` silently becomes its default. The schema is the contract
-    of the answer's shape; the prompt only carries what the schema cannot
-    say (see ``build_prompt``). Cached: treat the returned dict as
-    read-only.
-
-    Returns:
-        The JSON Schema, as a dict.
+    ``_ModelAnswer``'s schema, flat and without ``title``, ``description`` and
+    ``default``, so Ollama compiles a small grammar; numeric bounds stay. Every
+    property is required, nullable ones included: a grammar lets a model skip
+    an optional key, and a skipped ``quotechar`` would silently become its
+    default. The schema is the contract of the shape; the prompt carries only
+    what it cannot say.
     """
     schema = _ModelAnswer.model_json_schema()
     if "$defs" in schema:  # pragma: no cover - guards a future nested field
@@ -97,30 +89,19 @@ def build_prompt(
     tail_sample: str | None = None,
     covers_whole_file: bool = True,
 ) -> str:
-    """Build the prompt sent to the LLM to infer the CSV dialect and schema.
+    """Build the prompt: the samples, then what the schema cannot say.
+
+    The prompt names no JSON shape (the schema sent with it does), only what
+    counts as preamble or footer and what to copy verbatim.
 
     Args:
-        head_sample: The decoded text sample from the start of the source
-            file.
-        detected_encoding: The encoding heuristically detected for the head
-            sample, included as a hint the model may override.
-        tail_sample: The decoded text sample from the end of the source
-            file, or ``None`` when the head sample already covers the whole
-            file (in which case a separate tail section is omitted to save
-            tokens). When present, the lines between the two samples are
-            not sent (a byte window further down, or lines the line bounds
-            left out), and its first line may be cut.
-        covers_whole_file: Whether the samples reach the real end of the
-            file. Only consulted without a tail sample: ``False`` means the
-            head was truncated and the end of the file was never sampled,
-            so the model is told not to report any footer.
-
-    Returns:
-        A complete prompt instructing the model to respond with a single
-        JSON object matching :func:`response_schema`. The prompt names no
-        JSON shape: the schema sent with the request is the contract, and
-        the prompt carries only what the schema cannot say (what counts as
-        preamble or footer, what to copy verbatim).
+        head_sample: The decoded head sample.
+        detected_encoding: The detected encoding, a hint the model may override.
+        tail_sample: The decoded tail sample (its first line may be cut; the
+            lines between the samples are not sent), or ``None`` when the
+            head covers the whole file.
+        covers_whole_file: Without a tail, ``False`` means the end of the file
+            was never sampled: the model is told to report no footer.
     """
     if tail_sample is not None:
         tail_section = f"""
@@ -189,20 +170,11 @@ fields, and rows may have uneven field counts.
 
 
 def _extract_json_payload(raw_response: str) -> str:
-    """Extract a bare JSON object from a raw LLM response.
+    """Extract a bare JSON object from a raw response, fenced or wrapped in prose.
 
-    Some models wrap their JSON output in a markdown code fence, or in prose
-    such as ``Here is the result: {...}``, even when explicitly instructed
-    not to. A fenced object is taken as is; otherwise the text from the
-    first ``{`` to the last ``}`` is taken, which drops any surrounding
-    prose.
-
-    Args:
-        raw_response: The raw text returned by the model.
-
-    Returns:
-        The JSON object's text, or the stripped response when it holds no
-        ``{...}`` span, so that parsing reports the real content.
+    A fenced object is taken as is; otherwise the text from the first ``{``
+    to the last ``}``, or the stripped response when it holds no such span
+    (so parsing reports the real content).
     """
     match = _JSON_FENCE_PATTERN.search(raw_response)
     if match:
@@ -213,18 +185,7 @@ def _extract_json_payload(raw_response: str) -> str:
 
 
 def parse_and_validate(raw_response: str, model: str) -> _ModelAnswer:
-    """Parse a raw model response into a validated model answer.
-
-    Built-in and custom invokers alike go through here; grounding then
-    turns the answer into the public result.
-
-    Args:
-        raw_response: The raw text returned by the model.
-        model: Name of the model that produced the response, used only for
-            diagnostics.
-
-    Returns:
-        The validated answer, still to be grounded in the samples.
+    """Parse the raw text of ``model`` (any invoker) into an answer, still to be grounded.
 
     Raises:
         ResponseParsingError: If the response is not valid JSON.

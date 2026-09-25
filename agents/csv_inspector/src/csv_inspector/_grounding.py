@@ -239,18 +239,21 @@ def _locate_footer_lines(
     The model is asked for the first non-blank footer line only: it is good
     at recognizing footer content but unreliable at copying several lines
     (it drops blank separators, skips a line, or takes the last data rows
-    for a footer), and the file holds the footer anyway. The anchor matches
-    its last occurrence in the file's last lines (see
-    :func:`_anchor_matches`), also when the model wrote it with its own,
-    replaced delimiter; a data-shaped anchor that occurs nowhere (a
-    miscopied or made-up last data row) means the footer starts right after
-    the data. The footer starts after the last data row at or after the
-    anchor, since a footer follows the data (the model may point at a
-    ragged data row with full rows after it); it then takes every line from
-    there to the end of the file verbatim, and extends backwards over the
-    blank, totals and other non-data lines that separate it from the data.
-    A blank anchor (the model copied the blank separator line) starts at the
-    end of the file and extends backwards the same way.
+    for a footer), and the file holds the footer anyway. The anchor only
+    says whether there is a footer: it must match a line of the file's last
+    lines (see :func:`_anchor_matches`), also when the model wrote it with
+    its own, replaced delimiter, or be shaped like a data row (a miscopied
+    or made-up last data row: the footer starts right after the data). A
+    blank anchor (the model copied the blank separator line) always
+    qualifies.
+
+    Where the footer starts comes from the file. When its data rows have a
+    known width, the footer is every line after the last data row, since a
+    footer follows the data (the model may point at a ragged data row with
+    full rows after it, or at a line above blank and totals lines).
+    Otherwise it starts at the anchor's last occurrence (at the end of the
+    file for a blank anchor) and extends backwards over blank and totals
+    lines.
 
     Args:
         anchor: The first footer line reported by the model.
@@ -263,9 +266,8 @@ def _locate_footer_lines(
             delimiter (``TOTAL,,12.50`` for ``TOTAL		12.50``).
 
     Returns:
-        The grounded footer lines, or ``None`` when the anchor does not occur
-        in ``end_of_file`` (and is not shaped like a data row), or only data
-        rows follow it (nothing to anchor).
+        The grounded footer lines, or ``None`` when the anchor does not
+        qualify, or nothing but data follows it (nothing to anchor).
     """
     reported = anchor.strip()
     keys = {reported}
@@ -273,41 +275,40 @@ def _locate_footer_lines(
         keys.add(reported.replace(model_delimiter, delimiter))
     lines = _split_lines(end_of_file)
     width = _data_width(lines, delimiter, quotechar)
-
-    def is_data(line: str) -> bool:
-        return width is not None and _is_data_row(line, delimiter, quotechar, width)
-
-    if reported:
-        # The last occurrence, so text that also appears earlier in the data
-        # cannot drag data rows into the footer. Line 0 is skipped: in a tail
-        # sample it is usually a truncated fragment.
-        found = next(
+    # The last occurrence, so text that also appears earlier in the data
+    # cannot drag data rows into the footer. Line 0 is skipped: in a tail
+    # sample it is usually a truncated fragment.
+    found = next(
+        (
+            i
+            for i in range(len(lines) - 1, 0, -1)
+            if any(_anchor_matches(key, lines[i], delimiter) for key in keys)
+        ),
+        None,
+    )
+    if (
+        reported
+        and found is None
+        and (
+            width is None or not any(_is_data_row(key, delimiter, quotechar, width) for key in keys)
+        )
+    ):
+        return None
+    if width is not None:
+        last_data = next(
             (
                 i
                 for i in range(len(lines) - 1, 0, -1)
-                if any(_anchor_matches(key, lines[i], delimiter) for key in keys)
+                if _is_data_row(lines[i], delimiter, quotechar, width)
             ),
-            None,
+            0,
         )
-        if found is None:
-            # A data row the model miscopied or made up still says where it
-            # saw the footer: right after the data.
-            if not any(is_data(key) for key in keys):
-                return None
-            found = 1
-        data_rows = [index for index in range(found, len(lines)) if is_data(lines[index])]
-        start = data_rows[-1] + 1 if data_rows else found
+        start = last_data + 1
     else:
-        start = len(lines)
-    if start < len(lines) or not reported:
-        while start > 1 and (
-            _extends_footer(lines[start - 1], delimiter, quotechar)
-            or (width is not None and not is_data(lines[start - 1]))
-        ):
+        start = len(lines) if found is None else found
+        while start > 1 and _extends_footer(lines[start - 1], delimiter, quotechar):
             start -= 1
-    if start == len(lines):
-        return None
-    return lines[start:]
+    return lines[start:] if start < len(lines) else None
 
 
 def _anchor_matches(reported: str, line: str, delimiter: str) -> bool:
@@ -556,7 +557,6 @@ def ground_in_samples(
     result = CSVInspectionResult.model_validate(answer.model_dump(exclude={"footer_first_line"}))
     updates: dict[str, object] = {}
 
-    model_delimiter = result.delimiter
     delimiter = _ground_delimiter(result, head_sample)
     if delimiter != result.delimiter:
         updates["delimiter"] = delimiter
@@ -570,7 +570,7 @@ def ground_in_samples(
     if anchor is not None and (tail_sample is not None or covers_whole_file):
         end_of_file = tail_sample if tail_sample is not None else head_sample
         footer_lines = _locate_footer_lines(
-            anchor, end_of_file, result.delimiter, result.quotechar, model_delimiter
+            anchor, end_of_file, result.delimiter, result.quotechar, answer.delimiter
         )
         if footer_lines is None:
             # The real end of the file was seen and the reported footer is

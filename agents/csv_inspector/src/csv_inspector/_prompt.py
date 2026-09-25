@@ -33,33 +33,24 @@ _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)
 # Annotation keywords dropped from the response schema: they are prose for
 # humans, and Ollama compiles the schema into a grammar, so every key costs.
 _SCHEMA_ANNOTATIONS = frozenset({"title", "description", "default"})
-_DEFS_PREFIX = "#/$defs/"
 
 
-def _strip_schema(node: object, defs: dict[str, Any]) -> object:
-    """Return ``node`` without annotation keywords and with every ``$ref`` inlined.
-
-    Args:
-        node: A JSON Schema fragment.
-        defs: The schema's ``$defs``, used to resolve local references.
-    """
+def _strip_annotations(node: object) -> object:
+    """Return a JSON Schema fragment without its annotation keywords."""
     if isinstance(node, list):
-        return [_strip_schema(item, defs) for item in node]
+        return [_strip_annotations(item) for item in node]
     if not isinstance(node, dict):
         return node
-    ref = node.get("$ref")
-    if isinstance(ref, str) and ref.startswith(_DEFS_PREFIX):
-        return _strip_schema(defs[ref.removeprefix(_DEFS_PREFIX)], defs)
-    stripped: dict[str, Any] = {}
-    for key, value in node.items():
-        if key in _SCHEMA_ANNOTATIONS or key == "$defs":
-            continue
-        if key == "properties" and isinstance(value, dict):
-            # Property names are data, not keywords: keep every one.
-            stripped[key] = {name: _strip_schema(sub, defs) for name, sub in value.items()}
-        else:
-            stripped[key] = _strip_schema(value, defs)
-    return stripped
+    return {
+        # Property names are data, not keywords: keep every one.
+        key: (
+            {name: _strip_annotations(sub) for name, sub in value.items()}
+            if key == "properties"
+            else _strip_annotations(value)
+        )
+        for key, value in node.items()
+        if key not in _SCHEMA_ANNOTATIONS
+    }
 
 
 @functools.lru_cache(maxsize=1)
@@ -68,8 +59,9 @@ def response_schema() -> dict[str, Any]:
 
     Built from the JSON Schema of the model's answer (``_ModelAnswer``:
     ``footer_first_line``, not the result's ``footer_lines``), without ``title``,
-    ``description`` and ``default`` keys and with any ``$defs`` inlined, so
-    it is small enough for Ollama to compile into a grammar. Numeric bounds
+    ``description`` and ``default`` keys, so it is small enough for Ollama to
+    compile into a grammar. The answer is flat (no nested models, so no
+    ``$defs`` to inline). Numeric bounds
     stay. Every property is required, nullable ones included: a grammar
     lets the model skip an optional key, and a skipped ``quotechar`` or
     ``escapechar`` silently becomes its default. The schema is the contract
@@ -81,7 +73,9 @@ def response_schema() -> dict[str, Any]:
         The JSON Schema, as a dict.
     """
     schema = _ModelAnswer.model_json_schema()
-    stripped = cast("dict[str, Any]", _strip_schema(schema, schema.get("$defs", {})))
+    if "$defs" in schema:  # pragma: no cover - guards a future nested field
+        raise TypeError("_ModelAnswer must stay flat: Ollama gets no $defs to resolve")
+    stripped = cast("dict[str, Any]", _strip_annotations(schema))
     stripped["required"] = list(stripped["properties"])
     return stripped
 

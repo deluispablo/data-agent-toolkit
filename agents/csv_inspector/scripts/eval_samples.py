@@ -75,7 +75,7 @@ import sys
 import time
 from collections import Counter, defaultdict
 from collections.abc import Callable, Iterator, Sequence
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -89,9 +89,10 @@ from csv_inspector import (
     LLMBackend,
     Settings,
     _inspect,
+    _invokers,
     inspect_csv,
 )
-from csv_inspector._invokers import InvokerResponse
+from csv_inspector._invokers import _RETRY_WARNING, InvokerResponse
 from csv_inspector._models import Usage
 from csv_inspector._prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_prompt
 from csv_inspector._sampling import sample_source
@@ -195,9 +196,6 @@ _RESULT_FIELDS: tuple[str, ...] = (
 # inspection raised that exception class.
 _EXPECTED_ERROR = "expected_error"
 _COMPARABLE_FIELDS: tuple[str, ...] = (*_RESULT_FIELDS, _EXPECTED_ERROR)
-# The library logs this (at WARNING) each time a cloud request is retried.
-_RETRY_LOGGER = "csv_inspector._invokers"
-_RETRY_MESSAGE = "retrying once"
 
 
 @dataclass
@@ -421,11 +419,11 @@ def _recording_builtin_invoker(raw: list[dict[str, str]]) -> Iterator[None]:
 
 
 class _RetryCounter(logging.Handler):
-    """Counts the library's "retrying once" warnings while attached.
+    """Counts the library's retry warnings (``_RETRY_WARNING``) while attached.
 
     A failed inspection has no ``Usage``, so this is the only place its
     cloud retries show. It needs WARNING enabled on the library's logger,
-    which is the default.
+    which is the default. Use it as a context manager.
     """
 
     def __init__(self) -> None:
@@ -435,25 +433,15 @@ class _RetryCounter(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         """Count one retry warning; ignore every other record."""
-        if _RETRY_MESSAGE in str(record.msg):
+        if record.msg == _RETRY_WARNING:
             self.count += 1
 
+    def __enter__(self) -> _RetryCounter:
+        logging.getLogger(_invokers.__name__).addHandler(self)
+        return self
 
-@contextmanager
-def _counting_retries(counter: _RetryCounter) -> Iterator[None]:
-    """Attach ``counter`` to the library's invoker logger for the block."""
-    retry_logger = logging.getLogger(_RETRY_LOGGER)
-    retry_logger.addHandler(counter)
-    try:
-        yield
-    finally:
-        retry_logger.removeHandler(counter)
-
-
-@contextmanager
-def _no_recording() -> Iterator[None]:
-    """A do-nothing stand-in for :func:`_recording_builtin_invoker`."""
-    yield
+    def __exit__(self, *exc_info: object) -> None:
+        logging.getLogger(_invokers.__name__).removeHandler(self)
 
 
 def _worst_case_calls(backend: LLMBackend, model: str, fallback_model: str) -> int:
@@ -528,8 +516,8 @@ def evaluate_file(
     started = time.monotonic()
     try:
         with (
-            _counting_retries(counter),
-            _recording_builtin_invoker(raw) if keep_raw else _no_recording(),
+            counter,
+            _recording_builtin_invoker(raw) if keep_raw else nullcontext(),
         ):
             result = inspect_csv(
                 SAMPLES_DIR / filename,
@@ -854,12 +842,11 @@ def run_info(
     started_at: str,
     stopped_early: str | None,
     fixtures_planned: int,
-    incomplete: bool = False,
 ) -> dict[str, Any]:
     """The settings of one model's run: its ``run`` line, and the start of its summary.
 
-    ``incomplete`` marks a summary recomputed by ``--summarize`` from an
-    interrupted run's lines.
+    ``incomplete`` is ``False`` here; ``--summarize`` sets it on the summary
+    it recomputes from an interrupted run's lines.
     """
     return {
         "harness_version": HARNESS_VERSION,
@@ -874,7 +861,7 @@ def run_info(
         "started_at": started_at,
         "stopped_early": stopped_early,
         "fixtures_planned": fixtures_planned,
-        "incomplete": incomplete,
+        "incomplete": False,
     }
 
 
@@ -990,24 +977,15 @@ def summarize_file(path: Path) -> tuple[list[FileEvaluation], dict[str, Any]]:
         ValueError: If the file has a summary already, or no ``run`` line
             (written by harness version 1, or not a run file).
     """
-    info: dict[str, Any] | None = None
-    evaluations: list[FileEvaluation] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if not line.strip():
-            continue
-        record = json.loads(line)
-        if "summary" in record:
-            raise ValueError(f"'{path}' already has a summary line.")
-        if "run" in record:
-            info = record["run"]
-        elif info is None:
-            raise ValueError(
-                f"'{path}' has no run line; only harness version 2 runs can be recovered."
-            )
-        else:
-            evaluations.append(evaluation_from_record(record))
-    if info is None:
-        raise ValueError(f"'{path}' has no run line.")
+    records = [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
+    if any("summary" in record for record in records):
+        raise ValueError(f"'{path}' already has a summary line.")
+    if not records or "run" not in records[0]:
+        raise ValueError(f"'{path}' has no run line; only harness version 2 runs can be recovered.")
+    info: dict[str, Any] = records[0]["run"]
+    evaluations = [evaluation_from_record(record) for record in records[1:]]
     summary = summarize(evaluations, {**info, "stopped_early": "interrupted", "incomplete": True})
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(_json_line({"summary": summary}))

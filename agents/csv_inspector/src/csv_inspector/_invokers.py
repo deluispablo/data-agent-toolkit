@@ -9,6 +9,7 @@ only ``google-genai`` (``[cloud]`` extra).
 from __future__ import annotations
 
 import asyncio
+import functools
 import logging
 import math
 import random
@@ -27,7 +28,7 @@ from ._exceptions import (
     ModelInvocationError,
     ModelTimeoutError,
 )
-from ._prompt import SYSTEM_PROMPT, response_schema
+from ._prompt import CHARS_PER_TOKEN, SYSTEM_PROMPT, response_schema
 
 if TYPE_CHECKING:
     from google.genai import Client as GenaiClient
@@ -146,40 +147,74 @@ def _import_ollama() -> ModuleType:
     return ollama
 
 
-_OLLAMA_MIN_NUM_CTX = 4096
-_OLLAMA_MAX_NUM_CTX = 32768
-_OLLAMA_RESPONSE_TOKENS = 1024
+# Three context windows: few steps limit model reloads (Ollama reloads a
+# model when num_ctx changes); the sampling limits keep prompts under the last.
+_OLLAMA_NUM_CTX_STEPS = (8192, 16384, 32768)
+# The reply cap: a fixed set of keys plus one column name per field, never
+# below a floor. Measured on the post-#134 runs
+# runs/qwen2.5-coder-{7b,3b}-m603.jsonl (2026-09-25): answers for files of
+# 12 fields or fewer have a p99 of 263 completion tokens (floor: x 1.5,
+# rounded up to 64), and wider answers cost up to 16.9 tokens per field
+# (padded 40-column names), so 20 leaves room.
+_OLLAMA_MIN_RESPONSE_TOKENS = 448
+_REPLY_BASE_TOKENS = 32
+_REPLY_TOKENS_PER_FIELD = 20
 # The status an Ollama server older than 0.5 answers to a schema ``format``.
 _HTTP_BAD_REQUEST = 400
 
 
-def _ollama_num_ctx(prompt: str) -> int:
+def ollama_reply_tokens(fields: int | None) -> int:
+    """The reply cap (``num_predict``) for a file of ``fields`` columns.
+
+    A reply holds one name per column, so the cap grows with the head's
+    field count (a 200-column file gets about 4,000 tokens), never below
+    :data:`_OLLAMA_MIN_RESPONSE_TOKENS`. A model stuck repeating is cut
+    there, which fails fast and leaves the fallback its time budget.
+
+    Args:
+        fields: The head's estimated field count, or ``None`` when unknown
+            (the minimum is used).
+    """
+    if fields is None:
+        return _OLLAMA_MIN_RESPONSE_TOKENS
+    return max(_OLLAMA_MIN_RESPONSE_TOKENS, _REPLY_BASE_TOKENS + _REPLY_TOKENS_PER_FIELD * fields)
+
+
+def _ollama_num_ctx(prompt: str, reply_tokens: int) -> int:
     """Context window (tokens) large enough for the system prompt, ``prompt`` and the reply.
 
     Ollama's default window is small and it silently drops the *start* of an
     overflowing prompt (the instructions and head sample), so the window is
-    sized from the prompt. Numeric CSV text tokenizes poorly, so this assumes
-    ~2 characters per token. The result is rounded up to a power of two to
-    limit model reloads (Ollama reloads a model when ``num_ctx`` changes) and
-    capped; the sampling limits keep built-in prompts under the cap.
+    sized from the prompt at :data:`CHARS_PER_TOKEN` characters per token,
+    plus the reply cap, and rounded up to one of three steps (8K, 16K, 32K).
+    A step above the first is logged at INFO; past the last, a WARNING says
+    the prompt may be truncated.
     """
-    needed = (len(SYSTEM_PROMPT) + len(prompt)) // 2 + _OLLAMA_RESPONSE_TOKENS
-    if needed > _OLLAMA_MAX_NUM_CTX:
-        logger.warning(
-            "Prompt needs ~%d tokens; capping Ollama num_ctx at %d, so it may be truncated.",
-            needed,
-            _OLLAMA_MAX_NUM_CTX,
-        )
-        return _OLLAMA_MAX_NUM_CTX
-    return max(_OLLAMA_MIN_NUM_CTX, 1 << (needed - 1).bit_length())
+    needed = math.ceil((len(SYSTEM_PROMPT) + len(prompt)) / CHARS_PER_TOKEN) + reply_tokens
+    for step in _OLLAMA_NUM_CTX_STEPS:
+        if needed <= step:
+            if step > _OLLAMA_NUM_CTX_STEPS[0]:
+                logger.info("Prompt and reply need ~%d tokens; Ollama num_ctx %d.", needed, step)
+            return step
+    cap = _OLLAMA_NUM_CTX_STEPS[-1]
+    logger.warning(
+        "Prompt needs ~%d tokens; capping Ollama num_ctx at %d, so it may be truncated.",
+        needed,
+        cap,
+    )
+    return cap
 
 
-def _ollama_request(prompt: str, model: str, *, schema: bool = True) -> dict[str, Any]:
+def _ollama_request(
+    prompt: str, model: str, *, reply_tokens: int, schema: bool = True
+) -> dict[str, Any]:
     """Keyword arguments for an Ollama chat request.
 
     Args:
         prompt: The fully-built prompt.
         model: Name of the Ollama model.
+        reply_tokens: The reply cap (``num_predict``); see
+            :func:`ollama_reply_tokens`.
         schema: Constrain the reply with :func:`response_schema` (structured
             outputs); ``False`` asks for plain JSON mode, for servers that
             reject a schema ``format``.
@@ -194,14 +229,14 @@ def _ollama_request(prompt: str, model: str, *, schema: bool = True) -> dict[str
         # into a grammar); the prompt only carries the fields' semantics.
         "format": response_schema() if schema else "json",
         # num_predict caps the reply at the budget num_ctx reserves for it.
-        # Without it a model stuck repeating (e.g. an endless footer_lines
-        # list) generates until the timeout, or forever when there is none;
-        # a capped reply is truncated JSON, which fails parsing and moves on
-        # to the fallback model.
+        # Without it a model stuck repeating (e.g. column names copied from
+        # the prompt's footer examples) generates until the timeout, or
+        # forever when there is none; a capped reply is truncated JSON, which
+        # fails parsing and moves on to the fallback model.
         "options": {
             "temperature": 0.0,
-            "num_ctx": _ollama_num_ctx(prompt),
-            "num_predict": _OLLAMA_RESPONSE_TOKENS,
+            "num_ctx": _ollama_num_ctx(prompt, reply_tokens),
+            "num_predict": reply_tokens,
         },
     }
 
@@ -254,36 +289,48 @@ def _ollama_response(response: _OllamaChatResponse, model: str) -> InvokerRespon
 
 
 def _invoke_ollama(
-    prompt: str, model: str, *, host: str | None, timeout_seconds: float | None
+    prompt: str,
+    model: str,
+    *,
+    host: str | None,
+    timeout_seconds: float | None,
+    reply_tokens: int = _OLLAMA_MIN_RESPONSE_TOKENS,
 ) -> InvokerResponse:
     """:func:`invoke_ollama_model`, returning the usage counters with the text."""
     ollama = _import_ollama()
+    request = functools.partial(_ollama_request, prompt, model, reply_tokens=reply_tokens)
     try:
         with ollama.Client(host=host, timeout=timeout_seconds) as client:
             try:
-                response = client.chat(**_ollama_request(prompt, model))
+                response = client.chat(**request())
             except Exception as exc:
                 if not _retry_without_schema(ollama, model, exc):
                     raise
-                response = client.chat(**_ollama_request(prompt, model, schema=False))
+                response = client.chat(**request(schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
     return _ollama_response(response, model)
 
 
 async def _ainvoke_ollama(
-    prompt: str, model: str, *, host: str | None, timeout_seconds: float | None
+    prompt: str,
+    model: str,
+    *,
+    host: str | None,
+    timeout_seconds: float | None,
+    reply_tokens: int = _OLLAMA_MIN_RESPONSE_TOKENS,
 ) -> InvokerResponse:
     """:func:`ainvoke_ollama_model`, returning the usage counters with the text."""
     ollama = _import_ollama()
+    request = functools.partial(_ollama_request, prompt, model, reply_tokens=reply_tokens)
     try:
         async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
             try:
-                response = await client.chat(**_ollama_request(prompt, model))
+                response = await client.chat(**request())
             except Exception as exc:
                 if not _retry_without_schema(ollama, model, exc):
                     raise
-                response = await client.chat(**_ollama_request(prompt, model, schema=False))
+                response = await client.chat(**request(schema=False))
     except Exception as exc:
         raise _ollama_error(model, exc) from exc
     return _ollama_response(response, model)
@@ -632,32 +679,49 @@ async def ainvoke_cloud_model(
 
 
 def builtin_invoker(
-    backend: LLMBackend, settings: Settings
+    backend: LLMBackend, settings: Settings, *, fields: int | None = None
 ) -> Callable[[str, str, float | None], InvokerResponse]:
     """Return the built-in sync invoker as ``(prompt, model, timeout_seconds) -> response``.
 
     This is the seam the inspection calls: ``response.text`` is the model's
     raw text, before any parsing, and the other fields feed ``Usage``. A
     wrapper around the returned callable (e.g. one keeping the raw text)
-    must return the :class:`InvokerResponse` unchanged so usage keeps flowing.
+    must return the :class:`InvokerResponse` unchanged so usage keeps flowing,
+    and a wrapper around this factory must pass ``fields`` on.
+
+    Args:
+        backend: The backend to call.
+        settings: Its settings (host, credentials).
+        fields: The head's estimated field count, which sizes Ollama's reply
+            cap (:func:`ollama_reply_tokens`); ``None`` for the minimum.
     """
     if backend is LLMBackend.API:
         return lambda prompt, model, timeout: _invoke_cloud(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
+    reply_tokens = ollama_reply_tokens(fields)
     return lambda prompt, model, timeout: _invoke_ollama(
-        prompt, model, host=settings.ollama_host, timeout_seconds=timeout
+        prompt,
+        model,
+        host=settings.ollama_host,
+        timeout_seconds=timeout,
+        reply_tokens=reply_tokens,
     )
 
 
 def builtin_async_invoker(
-    backend: LLMBackend, settings: Settings
+    backend: LLMBackend, settings: Settings, *, fields: int | None = None
 ) -> Callable[[str, str, float | None], Awaitable[InvokerResponse]]:
     """Return the built-in async invoker; the async twin of :func:`builtin_invoker`."""
     if backend is LLMBackend.API:
         return lambda prompt, model, timeout: _ainvoke_cloud(
             prompt, model, settings=settings, timeout_seconds=timeout
         )
+    reply_tokens = ollama_reply_tokens(fields)
     return lambda prompt, model, timeout: _ainvoke_ollama(
-        prompt, model, host=settings.ollama_host, timeout_seconds=timeout
+        prompt,
+        model,
+        host=settings.ollama_host,
+        timeout_seconds=timeout,
+        reply_tokens=reply_tokens,
     )

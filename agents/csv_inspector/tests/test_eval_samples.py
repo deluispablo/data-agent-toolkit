@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import runpy
 import sys
 import time
@@ -24,6 +25,7 @@ from csv_inspector import (
     load_settings,
 )
 from csv_inspector import _inspect as inspect_module
+from csv_inspector import _prompt as prompt_module
 from csv_inspector._invokers import builtin_invoker
 from csv_inspector._models import Usage
 from csv_inspector._prompt import PROMPT_VERSION
@@ -1198,3 +1200,15 @@ def test_a_null_escapechar_is_scored_while_other_nulls_are_skipped(
     assert evaluation.mismatched_fields == [("escapechar", None, "\\")]
     assert evaluation.matched_fields == ["delimiter"]
     assert "header_row_index" in evaluation.skipped_fields
+
+
+def test_the_dry_run_estimate_uses_the_library_chars_per_token(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """One measured constant sizes Ollama's window and the dry run (#138)."""
+    main(["--no-env-file", "--dry-run", "--fixture", "delimiter_comma.csv"])
+
+    match = re.search(r"(\d+) chars, ~(\d+) tokens", capsys.readouterr().out)
+    assert match is not None
+    chars, tokens = match.groups()
+    assert int(tokens) == round(int(chars) / prompt_module.CHARS_PER_TOKEN)

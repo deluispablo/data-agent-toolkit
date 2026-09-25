@@ -98,7 +98,7 @@ from csv_inspector import (
 )
 from csv_inspector._invokers import _RETRY_WARNING, InvokerResponse
 from csv_inspector._models import Usage
-from csv_inspector._prompt import PROMPT_VERSION, SYSTEM_PROMPT, build_prompt
+from csv_inspector._prompt import CHARS_PER_TOKEN, PROMPT_VERSION, SYSTEM_PROMPT, build_prompt
 from csv_inspector._sampling import sample_source
 from csv_inspector.cli import (
     DEFAULT_CLI_TIMEOUT_SECONDS,
@@ -122,13 +122,6 @@ MANIFEST_PATH = SAMPLES_DIR / "manifest.json"
 HARNESS_VERSION = "2"
 """Version of the JSONL run format; bump it when a line or summary field changes meaning."""
 
-CHARS_PER_TOKEN = 1.81
-"""``--dry-run`` token estimate: characters per token measured on ``qwen2.5-coder:7b``.
-
-CSV text tokenizes densely (the 0.3.0 baseline, ``docs/evaluation.md``).
-The library's ``num_ctx`` sizing still assumes 2 until #138 adds a shared
-constant; import that one then.
-"""
 
 SUBSETS: dict[str, tuple[str, ...]] = {
     # Iterate here (--repeat 2), prove on the full catalog (--repeat 3). Every
@@ -411,10 +404,10 @@ def _recording_builtin_invoker(raw: list[dict[str, str]]) -> Iterator[None]:
     Args:
         raw: The list the answers are appended to.
     """
-    original: Callable[[LLMBackend, Settings], _SyncCall] = getattr(_inspect, _SEAM)
+    original: Callable[..., _SyncCall] = getattr(_inspect, _SEAM)
 
-    def factory(backend: LLMBackend, settings: Settings) -> _SyncCall:
-        call = original(backend, settings)
+    def factory(backend: LLMBackend, settings: Settings, *, fields: int | None = None) -> _SyncCall:
+        call = original(backend, settings, fields=fields)
 
         def recording(prompt: str, model: str, timeout: float | None) -> InvokerResponse:
             response = call(prompt, model, timeout)

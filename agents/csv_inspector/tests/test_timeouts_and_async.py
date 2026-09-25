@@ -10,6 +10,7 @@ import asyncio
 import importlib.util
 import json
 import logging
+import math
 import threading
 import time
 from pathlib import Path
@@ -32,11 +33,15 @@ from csv_inspector import (
 )
 from csv_inspector import _inspect as inspect_module
 from csv_inspector._invokers import (
+    _OLLAMA_MIN_RESPONSE_TOKENS,
+    _ollama_num_ctx,
     ainvoke_cloud_model,
     ainvoke_ollama_model,
     invoke_cloud_model,
     invoke_ollama_model,
+    ollama_reply_tokens,
 )
+from csv_inspector._prompt import CHARS_PER_TOKEN, SYSTEM_PROMPT
 from csv_inspector._sampling import MAX_SAMPLE_BYTES, sample_source
 from fakes import install_fake_ollama, ollama_reply
 
@@ -672,30 +677,71 @@ def test_ollama_num_ctx_fits_the_largest_built_in_prompt(
 
     request = fake.requests[0]
     prompt_chars = sum(len(message["content"]) for message in request["messages"])
-    # ~2 characters per token for digit-heavy text, plus room for the reply.
-    assert request["options"]["num_ctx"] >= prompt_chars // 2 + 1024
+    # CHARS_PER_TOKEN for digit-heavy text, plus room for the reply.
+    needed = prompt_chars / CHARS_PER_TOKEN + request["options"]["num_predict"]
+    assert request["options"]["num_ctx"] >= needed
     assert request["options"]["num_ctx"] <= 32768
 
 
-def test_ollama_num_ctx_uses_the_minimum_window_for_small_prompts(
+def test_ollama_num_ctx_uses_the_first_step_for_small_prompts(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Small prompts keep a stable minimum window instead of shrinking below it."""
-    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
-
-    invoke_ollama_model("tiny", "m")
-
-    assert fake.requests[0]["options"]["num_ctx"] == 4096
-
-
-def test_ollama_reply_is_capped_at_the_reserved_response_budget(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """A model stuck repeating must stop at the reply budget, not run unbounded."""
+    """Small prompts keep the first window, and the reply gets the minimum cap."""
     fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
 
     invoke_ollama_model("tiny", "m")
 
     options = fake.requests[0]["options"]
-    assert options["num_predict"] == 1024
-    assert options["num_ctx"] >= len("tiny") // 2 + options["num_predict"]
+    assert options["num_ctx"] == 8192
+    assert options["num_predict"] == _OLLAMA_MIN_RESPONSE_TOKENS
+
+
+@pytest.mark.parametrize(
+    ("fields", "expected"),
+    [(None, _OLLAMA_MIN_RESPONSE_TOKENS), (3, _OLLAMA_MIN_RESPONSE_TOKENS), (40, 832), (200, 4032)],
+)
+def test_the_reply_cap_grows_with_the_field_count(fields: int | None, expected: int) -> None:
+    """One column name per field, never below the measured minimum."""
+    assert ollama_reply_tokens(fields) == expected
+
+
+def test_a_wide_file_gets_a_reply_cap_sized_from_its_head(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """``inspect_csv`` counts the head's fields once and sizes ``num_predict`` from them."""
+    fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply(RESULT_JSON))
+    target = tmp_path / "wide.csv"
+    header = ",".join(f"c{n}" for n in range(40))
+    target.write_text(header + "\n" + ",".join(["1"] * 40) + "\n", encoding="utf-8")
+
+    inspect_csv(target)
+
+    assert fake.requests[0]["options"]["num_predict"] == 32 + 20 * 40
+
+
+@pytest.mark.parametrize(
+    ("needed", "expected"),
+    [(8192, 8192), (8193, 16384), (16384, 16384), (16385, 32768), (32768, 32768)],
+)
+def test_ollama_num_ctx_takes_the_smallest_step_that_fits(
+    caplog: pytest.LogCaptureFixture, needed: int, expected: int
+) -> None:
+    """Three windows; a step up is logged at INFO."""
+    prompt_chars = int((needed - 100) * CHARS_PER_TOKEN) - len(SYSTEM_PROMPT)
+    prompt = "x" * prompt_chars
+    reply = needed - math.ceil((len(SYSTEM_PROMPT) + prompt_chars) / CHARS_PER_TOKEN)
+
+    with caplog.at_level(logging.INFO, logger="csv_inspector._invokers"):
+        assert _ollama_num_ctx(prompt, reply) == expected
+
+    assert ("num_ctx" in caplog.text) is (expected > 8192)
+
+
+def test_ollama_num_ctx_warns_when_the_prompt_overflows_the_last_step(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Past 32K the window is capped, with a warning that the prompt may be truncated."""
+    with caplog.at_level(logging.WARNING, logger="csv_inspector._invokers"):
+        assert _ollama_num_ctx("x" * 70_000, 384) == 32768
+
+    assert "may be truncated" in caplog.text

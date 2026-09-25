@@ -670,6 +670,8 @@ def test_response_schema_is_small_flat_and_bounded() -> None:
     assert "footer_first_line" in schema["properties"]
     assert "footer_lines" not in schema["properties"]
     assert "footer_rows_to_skip" not in schema["properties"]
+    # A grammar lets a model skip optional keys; every one is required.
+    assert schema["required"] == list(schema["properties"])
     assert schema["properties"]["confidence"] == {
         "maximum": 1.0,
         "minimum": 0.0,

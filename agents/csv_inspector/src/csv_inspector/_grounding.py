@@ -38,7 +38,9 @@ _CANDIDATE_DELIMITERS = ",;\t|"
 # How many lines must split into the same number of fields to pick a candidate.
 _MIN_AGREEING_LINES = 2
 # How many times the model's score a single candidate must reach to replace it.
-_DOMINANCE_RATIO = 2
+_DOMINANCE_RATIO = 1.5
+# Runs of whitespace and usual delimiters, squashed when matching a footer anchor.
+_SEPARATORS = re.compile(r"[\s,;|]+")
 
 # Field shapes compared by the header-less test (see _field_shape).
 _INTEGER = re.compile(r"[+-]?\d+")
@@ -313,12 +315,16 @@ def _anchor_matches(reported: str, line: str, delimiter: str) -> bool:
 
     The model's line is a key, matched tolerantly: the two are equal once
     surrounding whitespace and trailing empty fields (trailing delimiters)
-    are stripped, or the reported text, at least
-    ``_MIN_SUBSTRING_ANCHOR`` characters long, occurs within the line
-    (e.g. the timestamp of a ``Generated on ...`` line).
+    are stripped, or once every run of whitespace and usual delimiters is
+    squashed to one space (a data row copied with spaces for tabs), or the
+    reported text, at least ``_MIN_SUBSTRING_ANCHOR`` characters long,
+    occurs within the line (e.g. the timestamp of a ``Generated on ...``
+    line).
     """
     trailing = delimiter + " \t"
     if reported.rstrip(trailing) == line.strip().rstrip(trailing):
+        return True
+    if _SEPARATORS.sub(" ", reported).strip() == _SEPARATORS.sub(" ", line).strip():
         return True
     return len(reported) >= _MIN_SUBSTRING_ANCHOR and reported in line
 
@@ -423,11 +429,13 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     unlike ``csv.Sniffer``, which needs nearly every line to agree. The
     model's delimiter (one that never occurs scores 0) is replaced only
     when exactly one usual delimiter scores the most, at least
-    ``_MIN_AGREEING_LINES``, and at least ``_DOMINANCE_RATIO`` (2) times
-    the model's score. A delimiter that splits half the lines the winner
-    does therefore stays. On the sample fixtures, a wrong ``,`` scored 4
-    to 13 times less than the tab (#151), while no other candidate ever
-    reached the right delimiter's score. Otherwise it is kept: ties,
+    ``_MIN_AGREEING_LINES``, and at least ``_DOMINANCE_RATIO`` (1.5) times
+    the model's score. A delimiter that splits two thirds of the lines the
+    winner does therefore stays. On the sample fixtures, a wrong ``,``
+    scored 1.6 to 13 times less than the tab (#151; 1.6 and 1.75 on the
+    40-column files, whose 4 KiB head holds 8 lines), while no other
+    candidate ever reached more than 0.83 times the right delimiter's
+    score. Otherwise it is kept: ties,
     one-column files and exotic delimiters stay as reported.
 
     Args:

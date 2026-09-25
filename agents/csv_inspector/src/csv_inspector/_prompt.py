@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-d"
+PROMPT_VERSION = "2026.09-e"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -70,15 +70,20 @@ def response_schema() -> dict[str, Any]:
     ``footer_first_line``, not the result's ``footer_lines``), without ``title``,
     ``description`` and ``default`` keys and with any ``$defs`` inlined, so
     it is small enough for Ollama to compile into a grammar. Numeric bounds
-    stay. The schema is the contract of the answer's shape; the prompt only
-    carries what the schema cannot say (see ``build_prompt``). Cached: treat
-    the returned dict as read-only.
+    stay. Every property is required, nullable ones included: a grammar
+    lets the model skip an optional key, and a skipped ``quotechar`` or
+    ``escapechar`` silently becomes its default. The schema is the contract
+    of the answer's shape; the prompt only carries what the schema cannot
+    say (see ``build_prompt``). Cached: treat the returned dict as
+    read-only.
 
     Returns:
         The JSON Schema, as a dict.
     """
     schema = _ModelAnswer.model_json_schema()
-    return cast("dict[str, Any]", _strip_schema(schema, schema.get("$defs", {})))
+    stripped = cast("dict[str, Any]", _strip_schema(schema, schema.get("$defs", {})))
+    stripped["required"] = list(stripped["properties"])
+    return stripped
 
 
 def build_prompt(

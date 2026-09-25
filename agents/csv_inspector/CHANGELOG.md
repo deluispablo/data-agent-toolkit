@@ -89,7 +89,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-d` today), and the
+  version of the prompt the models were sent (`2026.09-e` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -139,7 +139,10 @@ pipelines consume.
 - The local backend sends the answer's JSON Schema to Ollama
   (`format=<schema>`, structured outputs) instead of plain JSON mode, and
   the cloud backend sends the same schema, stripped of titles,
-  descriptions and defaults. The prompt no longer spells out the JSON
+  descriptions and defaults, with every field required (a grammar lets a
+  model skip an optional key, and a skipped `quotechar` or `escapechar`
+  silently became its default; `PROMPT_VERSION` `2026.09-e`). The prompt
+  no longer spells out the JSON
   shape, only what the fields mean: the instruction template shrinks from
   3,291 to 2,813 characters (`PROMPT_VERSION` `2026.09-c`). An Ollama
   server older than 0.5 that rejects a schema is asked again with
@@ -172,8 +175,9 @@ pipelines consume.
   delimiter clearly dominates it, not only when it splits fewer than two
   head lines: a `,` answered for a tab-separated file whose values hold
   commas (`"Fernández, Asociados"`, `1,50`) is now replaced by the tab
-  when exactly one candidate splits at least twice as many head lines into
-  the same number of fields. Ties, one-column files and exotic delimiters
+  when exactly one candidate splits at least 1.5 times as many head lines
+  into the same number of fields (the 40-column tab files, whose 4 KiB head
+  holds 8 lines, win by 1.6x and 1.75x). Ties, one-column files and exotic delimiters
   still keep the model's answer
   ([#151](https://github.com/deluispablo/data-agent-toolkit/issues/151)).
 - Footer grounding no longer turns data rows into a footer. A data row
@@ -198,7 +202,8 @@ pipelines consume.
   a data row the model reports but that is not in the file (miscopied or
   made up) is read as "the footer starts after the data". A
   footer line the model copied with its own delimiter, replaced by
-  grounding (`TOTAL,,12.50` in a tab-separated file), still anchors
+  grounding (`TOTAL,,12.50` in a tab-separated file), or with spaces for
+  its separators, still anchors
   ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129),
   follow-up of [#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
 

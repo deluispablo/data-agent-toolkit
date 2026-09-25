@@ -1243,10 +1243,10 @@ def test_grounding_replaces_a_delimiter_dominated_by_another(tmp_path: Path) -> 
 
 
 def test_grounding_keeps_a_delimiter_that_is_not_clearly_dominated(tmp_path: Path) -> None:
-    """A ``,`` splitting more than half as many rows as the tab stays (#151)."""
+    """A ``,`` splitting more than two thirds as many rows as the tab stays (#151)."""
     rows = "".join(
         f"2024-01-{day:02d}\tFernández, Asociados\t{day},50\n"
-        if day % 2 == 0 or day % 3 == 0
+        if day % 5 != 0
         else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
         for day in range(1, 21)
     )
@@ -1631,6 +1631,48 @@ def test_grounding_anchors_a_footer_copied_with_the_replaced_delimiter(tmp_path:
 
     assert result.delimiter == "\t"
     assert result.footer_lines == ["TOTAL\t\t30.00"]
+
+
+def test_grounding_anchors_a_data_row_copied_with_spaces_for_the_delimiter(
+    tmp_path: Path,
+) -> None:
+    """Separators squashed to spaces still designate the last data row."""
+    target = tmp_path / "ledger.tsv"
+    target.write_text(
+        "Fecha\tProveedor\tMonto\n"
+        "2024-01-01\tAcme\t10.00\n"
+        "2024-01-02\tBeta S.L.\t20.00\n"
+        "--- Fin del informe ---\n",
+        encoding="utf-8",
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter="\t", footer_first_line="2024-01-02 Beta S.L. 20.00"
+        ),
+    )
+
+    assert result.footer_lines == ["--- Fin del informe ---"]
+
+
+def test_grounding_replaces_a_delimiter_dominated_one_and_a_half_times(tmp_path: Path) -> None:
+    """Tab on 8 lines against ``,`` on 5, as in the 40-column fixtures: tab wins (#151)."""
+    rows = "".join(
+        f"2024-01-{day:02d}\tFernández, Asociados\t{day}.50\n"
+        if day <= 5
+        else f"2024-01-{day:02d}\tAcme\t{day}.00\n"
+        for day in range(1, 8)
+    )
+    target = tmp_path / "ledger.tsv"
+    target.write_text("Fecha\tCliente\tImporte\n" + rows, encoding="utf-8")
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(delimiter=",", header_row_index=0, footer_first_line=None),
+    )
+
+    assert result.delimiter == "\t"
 
 
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:

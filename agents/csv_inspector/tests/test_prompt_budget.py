@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 2973 characters on PROMPT_VERSION
-# 2026.09-f, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 3271
+# The template with empty samples: 2679 characters on PROMPT_VERSION
+# 2026.09-g, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 2947
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -94,6 +94,7 @@ _GOLDEN_WITH_TAIL = (
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -104,12 +105,6 @@ _GOLDEN_WITH_TAIL = (
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
     'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
-    "\n"
-    "Keep in mind:\n"
-    "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"
-    "- Column names may contain accented characters and other special characters.\n"
-    '- Check how quotes are escaped inside quoted fields: doubled ("") or backslash-escaped (\\"); see "escapechar" and "doublequote" above.\n'
-    "- Rows may have an inconsistent number of fields; do not let that block your analysis.\n"
 )
 
 _GOLDEN_TRUNCATED_HEAD = (
@@ -129,6 +124,7 @@ _GOLDEN_TRUNCATED_HEAD = (
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -139,12 +135,6 @@ _GOLDEN_TRUNCATED_HEAD = (
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
     'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
-    "\n"
-    "Keep in mind:\n"
-    "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"
-    "- Column names may contain accented characters and other special characters.\n"
-    '- Check how quotes are escaped inside quoted fields: doubled ("") or backslash-escaped (\\"); see "escapechar" and "doublequote" above.\n'
-    "- Rows may have an inconsistent number of fields; do not let that block your analysis.\n"
 )
 
 _GOLDEN_WHOLE_FILE = (
@@ -164,6 +154,7 @@ _GOLDEN_WHOLE_FILE = (
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
     '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
     '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
+    '- "delimiter" is the real separator: it may also appear inside quoted fields, and rows may have uneven field counts.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -174,10 +165,4 @@ _GOLDEN_WHOLE_FILE = (
     '- a generation timestamp or signature, e.g. "Generado el 2024-01-20 10:00:00"\n'
     "- a blank line separating the data from any of the above\n"
     'Copy only the first non-blank line after the last data row, verbatim, into "footer_first_line"; the rest of the footer is read from the file. Use null only when the file really ends with a data row. Footer lines are never part of the header preamble.\n'
-    "\n"
-    "Keep in mind:\n"
-    "- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.\n"
-    "- Column names may contain accented characters and other special characters.\n"
-    '- Check how quotes are escaped inside quoted fields: doubled ("") or backslash-escaped (\\"); see "escapechar" and "doublequote" above.\n'
-    "- Rows may have an inconsistent number of fields; do not let that block your analysis.\n"
 )

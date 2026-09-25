@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-f"
+PROMPT_VERSION = "2026.09-g"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -154,6 +154,8 @@ look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted
 - "escapechar" and "doublequote": a quote inside a quoted field written \
 with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
 written doubled ("") or never present, "escapechar": null, "doublequote": true.
+- "delimiter" is the real separator: it may also appear inside quoted \
+fields, and rows may have uneven field counts.
 - "columns" holds each name copied character for character from the header row.
 
 HEADER (start of the file): lines before the real column-name row, such as \
@@ -178,13 +180,6 @@ Copy only the first non-blank line after the last data row, verbatim, \
 into "footer_first_line"; the rest of the footer is read from the file. Use \
 null only when the file really ends with a data row. Footer lines are never \
 part of the header preamble.
-
-Keep in mind:
-- The delimiter may also appear inside quoted fields; do not confuse it with the real separator.
-- Column names may contain accented characters and other special characters.
-- Check how quotes are escaped inside quoted fields: doubled ("") or \
-backslash-escaped (\\"); see "escapechar" and "doublequote" above.
-- Rows may have an inconsistent number of fields; do not let that block your analysis.
 """
 
 

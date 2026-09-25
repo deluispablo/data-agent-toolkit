@@ -75,7 +75,7 @@ never gated. The wait comes before the file is read, so an `/inspect/raw`
 body is only consumed once its request holds a slot, and it does not count
 against `timeout_seconds`.
 
-The cap is per process, one `asyncio.Semaphore` created at startup: with
+The cap is per process, one `asyncio.Semaphore` created by `create_app`: with
 several workers or instances, the total is the cap times their number.
 Size it to what the backend serves in parallel, 1 or 2 for one local GPU,
 and on the free tier of the `api` backend keep in mind that the cap bounds

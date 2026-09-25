@@ -49,7 +49,7 @@ def app(settings: ApiSettings, gated: GatedInvoker) -> FastAPI:
 
 @pytest.fixture
 async def client(app: FastAPI) -> AsyncIterator[httpx.AsyncClient]:
-    """An in-process client, with the app's lifespan running (it creates the slots)."""
+    """An in-process client, with the app's lifespan running."""
     transport = httpx.ASGITransport(app=app)
     async with (
         app.router.lifespan_context(app),
@@ -75,15 +75,11 @@ async def _settle() -> None:
     await asyncio.sleep(0.1)
 
 
-@pytest.mark.anyio
-async def test_lifespan_creates_the_slots(app: FastAPI) -> None:
-    """The semaphore belongs to the serving loop: it is built at startup."""
-    before = app.state.inspection_slots
-    assert before is None
-    async with app.router.lifespan_context(app):
-        slots = app.state.inspection_slots
-        assert isinstance(slots, asyncio.Semaphore)
-        assert not slots.locked()
+def test_create_app_creates_the_slots(app: FastAPI) -> None:
+    """One place builds the semaphore; it binds to the serving loop on first use."""
+    slots = app.state.inspection_slots
+    assert isinstance(slots, asyncio.Semaphore)
+    assert not slots.locked()
 
 
 @pytest.mark.anyio

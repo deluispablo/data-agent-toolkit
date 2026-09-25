@@ -202,13 +202,13 @@ Around the package:
 
 | Module | Responsibility |
 |---|---|
-| `app.py` | `create_app(settings=None, *, model_invoker=None, gcs_client=None)`. The two keyword arguments are the test seams. The Cloud Storage client and the inspection slots (one `asyncio.Semaphore`) are built once in the lifespan. |
+| `app.py` | `create_app(settings=None, *, model_invoker=None, gcs_client=None)`. The two keyword arguments are the test seams. The inspection slots (one `asyncio.Semaphore`) are created here, the Cloud Storage client in the lifespan. |
 | `settings.py` | `ApiSettings` (`CSV_INSPECTOR_API_*`); `to_library_settings()` is the only place that builds `csv_inspector.Settings`. |
-| `routes/inspect.py` | `POST /inspect` (multipart, seekable), `/inspect/raw` (streamed, non-seekable) and `/inspect/gcs` (ranged `BlobReader`); shared query parameters, the cost guard on overrides, and the concurrency cap (`503` busy after `queue_timeout_seconds`). |
+| `routes/inspect.py` | `POST /inspect` (multipart, seekable), `/inspect/raw` (streamed, non-seekable) and `/inspect/gcs` (ranged `BlobReader`), three module-level functions; the shared query parameters (a dependency declared on the router, built per deployment so OpenAPI shows its time budget), the cost guard on overrides (`InspectParams.check_override`), and the concurrency cap (`503` busy after `queue_timeout_seconds`). |
 | `routes/health.py` | `GET /health`, and `?probe=true` for `ensure_backend_ready`. |
 | `streaming.py` | `AsyncIteratorReader`: a blocking reader over `request.stream()` for the library's worker thread. |
 | `sources/gcs.py` | Opens a `gs://` object for ranged reads; typed protocols over the untyped SDK; no `google.*` import at module level. |
-| `errors.py` | One handler maps every `CSVInspectorError`, and every Cloud Storage error, to an `application/problem+json` response. |
+| `errors.py` | Ordered tables (library, API, Cloud Storage) map every error to an `application/problem+json` response, one handler per table; `problem_responses()` documents the same rows in OpenAPI. |
 | `request_id.py` | `RequestIdMiddleware` (the `X-Request-ID` header and the access line) and `RequestIdFilter`. |
 | `main_demo.py`, `Dockerfile` | The demo (the only file that prints or configures logging) and the cloud-backend image. |
 

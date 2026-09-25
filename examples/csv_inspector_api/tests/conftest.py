@@ -9,6 +9,9 @@ process while a guard here fails any network connection. Notable checks:
 request mid-body (the reader, not its timeout, releases the worker
 thread); ``test_inspect_gcs.py`` reads through a fake Cloud Storage reader
 that records every ``read`` and ``seek`` (only the two windows are read);
+``test_concurrency.py`` holds inspections in a gated fake model to prove
+that at most ``max_concurrent_inspections`` run at once and that a
+request that waits too long gets ``503`` with ``Retry-After``;
 ``test_gcs_errors.py`` covers the error table; ``test_errors.py`` fails when
 a new library exception has no status; ``test_embedding_rules.py`` checks
 with ``ast`` that only ``main_demo.py`` prints or configures logging and

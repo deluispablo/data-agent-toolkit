@@ -480,6 +480,46 @@ failure, or any other error goes to the fallback model. The retry costs the
 same tokens as the first request; it avoids discarding the primary model's
 answer for a transient error. The local backend never retries.
 
+## Running on the free tier
+
+The `api` backend runs on the Gemini free tier, which is enough to try the
+agent and to serve a small, steady workload. Plan for its limits:
+
+- **Quotas.** As read on 2026-09-25, in this repository's evaluation runs,
+  the free tier allows about **20 requests per day per model** (the `429`
+  answer says `limit: 20`). Google also enforces per-minute limits
+  (requests and tokens per minute) that differ by model and change over
+  time: check the current
+  [Gemini API rate limits](https://ai.google.dev/gemini-api/docs/rate-limits)
+  page before sizing a deployment. In the 0.3.0 baseline, 15 calls spaced
+  at 10 per minute met no per-minute `429`: every `429` seen was the daily
+  quota.
+- **`429` or `503`.** `429 RESOURCE_EXHAUSTED` means your quota is spent: a
+  per-minute one clears within the minute, a daily one only when the day's
+  window resets, so retrying today is wasted. `503 UNAVAILABLE` means the
+  model is overloaded on Google's side ("high demand"); it has nothing to
+  do with your quota, is common on the free tier, and usually passes.
+- **A retry is a full call.** The library retries a `429` or `503` **once**
+  on the same model, then moves to the fallback model, which may retry once
+  too (see [Backends](#backends)). One inspection is one request when all
+  goes well and up to four in the worst case. Every retry sends the same
+  prompt, costs the same tokens and counts against the quota; the primary
+  and the fallback model each have their own.
+- **Only counting guards the daily quota.** No rate limiter stretches a
+  daily limit. The evaluation harness counts every request and stops before
+  a limit with `--max-calls` (see
+  [Quota notes](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#quota-notes)).
+  In a host, count calls yourself: a successful inspection made
+  `result.usage.attempts + result.usage.retries` requests; a failed one
+  reports no usage, so charge it the worst case. Bounding concurrency (see
+  the embedding guide, §7) smooths bursts against the per-minute limits,
+  but not the daily one.
+- **Cost past the free tier.** At list price ($0.30 input and $2.50 output
+  per million tokens), the 0.4.0 baseline measured **$0.00084 per
+  inspection** on `gemini-flash-lite-latest`, about $0.84 per 1,000 files
+  (see
+  [Cloud cost](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#cloud-cost)).
+
 ## Documentation
 
 - **Embedding guide:** [docs/embedding.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/embedding.md)

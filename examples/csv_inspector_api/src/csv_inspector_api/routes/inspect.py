@@ -20,6 +20,13 @@ the request and releases the worker thread at once. Never send
 ``multipart/form-data`` to ``/inspect/raw``: the envelope would be
 inspected as the file.
 
+At most ``max_concurrent_inspections`` inspections run at once in a
+process, whatever the route: the others wait for a slot, up to
+``queue_timeout_seconds``, then get ``503`` with ``Retry-After``. The wait
+comes before any byte of the source is read (``/inspect/raw`` has not
+consumed its body yet), and the slot is released however the inspection
+ends. ``GET /health`` is never gated.
+
 Content types are not checked: clients send anything from ``text/csv`` to
 ``application/octet-stream``, and the library detects what the bytes are.
 Invalid query parameters are FastAPI's own ``422`` (``application/json``);
@@ -32,7 +39,10 @@ library's normal failure path (``502`` after the fallback, or ``503``).
 
 import asyncio
 import logging
+import math
 import time
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from typing import Annotated, Any
 
@@ -49,7 +59,12 @@ from csv_inspector import (
 )
 from fastapi import APIRouter, Depends, File, Query, Request, Response, UploadFile
 
-from ..errors import BackendOverrideDisabledError, UploadTooLargeError, problem_responses
+from ..errors import (
+    BackendOverrideDisabledError,
+    ServerBusyError,
+    UploadTooLargeError,
+    problem_responses,
+)
 from ..settings import ApiSettings
 from ..sources.gcs import (
     GcsClient,
@@ -106,6 +121,46 @@ class InspectParams:
     fallback_model: str | None = None
 
 
+@asynccontextmanager
+async def _inspection_slot(request: Request) -> AsyncIterator[None]:
+    """Hold one of the app's inspection slots for the duration of the block.
+
+    The slots are the ``asyncio.Semaphore`` the lifespan stores on
+    ``app.state.inspection_slots``; when the lifespan did not run (an
+    in-process ASGI transport, a host mounting the app without lifespan
+    events) they are created on first use, with no ``await`` in between, so
+    two requests cannot create two semaphores.
+
+    Args:
+        request: The current request; its app holds the settings and the slots.
+
+    Yields:
+        Nothing; the slot is released on exit, whatever the outcome.
+
+    Raises:
+        ServerBusyError: If no slot freed up within ``queue_timeout_seconds``.
+    """
+    app = request.app
+    settings: ApiSettings = app.state.settings
+    slots: asyncio.Semaphore | None = app.state.inspection_slots
+    if slots is None:
+        slots = asyncio.Semaphore(settings.max_concurrent_inspections)
+        app.state.inspection_slots = slots
+    try:
+        await asyncio.wait_for(slots.acquire(), timeout=settings.queue_timeout_seconds)
+    except asyncio.TimeoutError:
+        msg = (
+            f"all {settings.max_concurrent_inspections} inspection slots stayed busy for "
+            f"{settings.queue_timeout_seconds:g} s"
+        )
+        retry_after = max(1, math.ceil(settings.queue_timeout_seconds))
+        raise ServerBusyError(msg, retry_after_seconds=retry_after) from None
+    try:
+        yield
+    finally:
+        slots.release()
+
+
 async def _inspect(
     request: Request,
     response: Response,
@@ -116,6 +171,7 @@ async def _inspect(
 ) -> CSVInspectionResult:
     """Run one inspection with the app's settings, log it and set the usage headers.
 
+    The inspection runs inside one of the app's slots (:func:`_inspection_slot`).
     Library errors propagate to the handler in ``errors.py``. The result's
     ``usage`` is never in the body (the library keeps it out of every dump),
     so the model that answered and its token counts go in the
@@ -131,21 +187,25 @@ async def _inspect(
 
     Returns:
         The library's inspection result.
+
+    Raises:
+        ServerBusyError: If no inspection slot freed up in time.
     """
     library_settings: Settings = request.app.state.library_settings
     backend = params.backend or library_settings.llm_backend
-    started = time.perf_counter()
-    result = await ainspect_csv(
-        source,
-        backend=backend,
-        settings=library_settings,
-        model=params.model,
-        fallback_model=params.fallback_model,
-        n_bytes=params.n_bytes,
-        tail_bytes=params.tail_bytes,
-        timeout_seconds=params.timeout_seconds,
-        model_invoker=request.app.state.model_invoker,
-    )
+    async with _inspection_slot(request):
+        started = time.perf_counter()
+        result = await ainspect_csv(
+            source,
+            backend=backend,
+            settings=library_settings,
+            model=params.model,
+            fallback_model=params.fallback_model,
+            n_bytes=params.n_bytes,
+            tail_bytes=params.tail_bytes,
+            timeout_seconds=params.timeout_seconds,
+            model_invoker=request.app.state.model_invoker,
+        )
     logger.info(
         "inspected %s with %s/%s in %.2f s, confidence %.2f",
         label,
@@ -309,7 +369,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
             "content": {"application/json": {"example": _EXAMPLE_RESULT}},
             "headers": _USAGE_HEADERS,
         },
-        **problem_responses(403, 413, 422, 502, 503, 504),
+        **problem_responses(403, 413, 422, 502, 503, 504, gated=True),
     }
 
     @router.post(
@@ -397,7 +457,7 @@ def build_inspect_router(settings: ApiSettings) -> APIRouter:
         summary="Inspect a Cloud Storage object with ranged reads",
         responses={
             200: {**responses[200], "headers": {**_USAGE_HEADERS, **_OBJECT_HEADERS}},
-            **problem_responses(403, 404, 422, 429, 502, 503, 504, gcs=True),
+            **problem_responses(403, 404, 422, 429, 502, 503, 504, gcs=True, gated=True),
         },
     )
     async def inspect_gcs(

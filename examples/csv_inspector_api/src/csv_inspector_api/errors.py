@@ -19,6 +19,8 @@ can branch without parsing ``detail``):
 - 403 ``BackendOverrideDisabledError`` (API): drop ``backend=api`` or the
   model overrides, or ask the operator.
 - 413 ``UploadTooLargeError`` (API): send a smaller file.
+- 503 ``ServerBusyError`` (API): every inspection slot stayed taken for
+  ``queue_timeout_seconds``; retry after ``Retry-After`` seconds.
 - 503 ``GcsNotInstalledError`` (API): install the ``[gcs]`` extra.
 - 404 ``NotFound`` (Cloud Storage): a missing bucket and a missing object
   answer the same, so buckets cannot be enumerated.
@@ -123,6 +125,7 @@ _RULES = (
 )
 _UPLOAD_TOO_LARGE_TITLE = "Upload too large"
 _OVERRIDE_DISABLED_TITLE = "Backend override disabled"
+_SERVER_BUSY_TITLE = "Server busy; retry after Retry-After seconds"
 _GCS_UNAVAILABLE_TITLE = "Cloud Storage unavailable on the server"
 _GCS_NOT_FOUND_TITLE = "Object not found"
 _GCS_FORBIDDEN_TITLE = "Access to the object denied"
@@ -162,6 +165,27 @@ class BackendOverrideDisabledError(Exception):
 
     Not a library error: the API raises it before calling ``csv_inspector``.
     """
+
+
+class ServerBusyError(Exception):
+    """No inspection slot freed up within the queue timeout; answered with 503.
+
+    Not a library error: the API raises it before calling ``csv_inspector``.
+
+    Attributes:
+        retry_after_seconds: Whole seconds the client should wait before
+            retrying, sent as ``Retry-After``.
+    """
+
+    def __init__(self, message: str, *, retry_after_seconds: int) -> None:
+        """Describe the refusal.
+
+        Args:
+            message: Explanation sent as ``detail``.
+            retry_after_seconds: Value of the ``Retry-After`` header.
+        """
+        super().__init__(message)
+        self.retry_after_seconds = retry_after_seconds
 
 
 def problem_response(
@@ -228,6 +252,14 @@ async def _handle_override_disabled(request: Request, exc: Exception) -> JSONRes
     """Answer a refused backend override with 403."""
     logger.warning("%s %s rejected with 403: %s", request.method, request.url.path, exc)
     return problem_response(403, _OVERRIDE_DISABLED_TITLE, exc)
+
+
+async def _handle_server_busy(request: Request, exc: Exception) -> JSONResponse:
+    """Answer a request that found no free inspection slot with 503 and ``Retry-After``."""
+    assert isinstance(exc, ServerBusyError)  # registered for this class only
+    logger.warning("%s %s rejected with 503: %s", request.method, request.url.path, exc)
+    headers = {"Retry-After": str(exc.retry_after_seconds)}
+    return problem_response(503, _SERVER_BUSY_TITLE, exc, headers=headers)
 
 
 async def _handle_gcs_not_installed(request: Request, exc: Exception) -> JSONResponse:
@@ -342,6 +374,7 @@ def register_exception_handlers(app: FastAPI) -> None:
     app.add_exception_handler(CSVInspectorError, _handle_inspector_error)
     app.add_exception_handler(UploadTooLargeError, _handle_upload_too_large)
     app.add_exception_handler(BackendOverrideDisabledError, _handle_override_disabled)
+    app.add_exception_handler(ServerBusyError, _handle_server_busy)
     app.add_exception_handler(GcsNotInstalledError, _handle_gcs_not_installed)
     _register_gcs_handlers(app)
 
@@ -364,13 +397,17 @@ _GCS_DESCRIPTIONS = {
 """OpenAPI descriptions of the statuses of ``POST /inspect/gcs``."""
 
 
-def problem_responses(*statuses: int, gcs: bool = False) -> dict[int | str, dict[str, Any]]:
+def problem_responses(
+    *statuses: int, gcs: bool = False, gated: bool = False
+) -> dict[int | str, dict[str, Any]]:
     """OpenAPI ``responses`` entries for error statuses with a ``ProblemDetails`` body.
 
     Args:
         *statuses: The error statuses a route can return.
         gcs: Describe the statuses of ``POST /inspect/gcs``, which add the
             Cloud Storage errors to the library's ones.
+        gated: The route waits for an inspection slot, so its 503 may also
+            mean the server is busy.
 
     Returns:
         A mapping for a route decorator's ``responses=`` argument.
@@ -380,6 +417,8 @@ def problem_responses(*statuses: int, gcs: bool = False) -> dict[int | str, dict
     titles[403] = _OVERRIDE_DISABLED_TITLE
     if gcs:
         titles.update(_GCS_DESCRIPTIONS)
+    if gated:
+        titles[503] += "; or the server is busy (honour Retry-After)"
     schema = ProblemDetails.model_json_schema()
     responses: dict[int | str, dict[str, Any]] = {
         status: {"description": titles[status], "content": {PROBLEM_MEDIA_TYPE: {"schema": schema}}}

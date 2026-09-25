@@ -279,6 +279,25 @@ failures; let them surface.
 - **Limiting concurrency is the host's job.** A local Ollama processes a
   few requests at a time; bound concurrent inspections with your server's
   worker settings or an `asyncio.Semaphore`.
+
+Without a bound, a burst of requests becomes a burst of model calls: on the
+cloud backend it spends the per-minute quota at once (and every `429` it
+earns is retried, costing another full call), and on a local one it queues
+every request on the same GPU until they time out together. In an async
+host, create one `asyncio.Semaphore(n)` at startup (in the lifespan, so it
+belongs to the serving event loop), acquire it around each `ainspect_csv`
+call with `asyncio.wait_for(semaphore.acquire(), timeout=...)`, release it
+in a `finally`, and answer a request that waited too long with `503` and
+`Retry-After` instead of letting it queue forever. Acquire before reading a
+streamed body, so a waiting request holds no memory, and never gate the
+health check. Size `n` to what the backend serves in parallel; it is per
+process, so the total is `n` times the number of workers. A semaphore bounds
+calls in flight, not calls per day: on the free tier, count calls too (see
+"Running on the free tier" in the README). The
+[example API](https://github.com/deluispablo/data-agent-toolkit/tree/main/examples/csv_inspector_api)
+does exactly this (`CSV_INSPECTOR_API_MAX_CONCURRENT_INSPECTIONS` and
+`CSV_INSPECTOR_API_QUEUE_TIMEOUT_SECONDS`, in `routes/inspect.py`).
+
 - Injecting a shared, pre-built HTTP client for very high throughput is
   deliberately not supported yet.
 

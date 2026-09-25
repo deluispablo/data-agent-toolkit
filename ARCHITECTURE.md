@@ -185,9 +185,9 @@ Around the package:
 
 | Module | Responsibility |
 |---|---|
-| `app.py` | `create_app(settings=None, *, model_invoker=None, gcs_client=None)`. The two keyword arguments are the test seams. The Cloud Storage client is built once in the lifespan. |
+| `app.py` | `create_app(settings=None, *, model_invoker=None, gcs_client=None)`. The two keyword arguments are the test seams. The Cloud Storage client and the inspection slots (one `asyncio.Semaphore`) are built once in the lifespan. |
 | `settings.py` | `ApiSettings` (`CSV_INSPECTOR_API_*`); `to_library_settings()` is the only place that builds `csv_inspector.Settings`. |
-| `routes/inspect.py` | `POST /inspect` (multipart, seekable), `/inspect/raw` (streamed, non-seekable) and `/inspect/gcs` (ranged `BlobReader`); shared query parameters and the cost guard on overrides. |
+| `routes/inspect.py` | `POST /inspect` (multipart, seekable), `/inspect/raw` (streamed, non-seekable) and `/inspect/gcs` (ranged `BlobReader`); shared query parameters, the cost guard on overrides, and the concurrency cap (`503` busy after `queue_timeout_seconds`). |
 | `routes/health.py` | `GET /health`, and `?probe=true` for `ensure_backend_ready`. |
 | `streaming.py` | `AsyncIteratorReader`: a blocking reader over `request.stream()` for the library's worker thread. |
 | `sources/gcs.py` | Opens a `gs://` object for ranged reads; typed protocols over the untyped SDK; no `google.*` import at module level. |

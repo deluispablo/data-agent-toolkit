@@ -3,7 +3,7 @@
 **Point it at any CSV. Get back how to read it.**
 
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
-![Version 0.3.0](https://img.shields.io/badge/version-0.3.0-informational)
+![Version 0.4.0](https://img.shields.io/badge/version-0.4.0-informational)
 ![LLM: local Ollama or Gemini](https://img.shields.io/badge/LLM-local%20Ollama%20%7C%20Gemini-8250df)
 ![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
@@ -83,7 +83,7 @@ picture,
 (UTF-16 with a BOM, tabs, doubled quotes, a totals row and an export
 stamp):
 
-<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, True), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines, six column names, and confidence 0.95 with prompt version 2026.09-f in 2.0 s. demo_stock.tsv: ('UTF-16', '	', '&quot;', None, True), (True, 0, 2), its two footer lines, five column names, and confidence 0.95 in 2.1 s" src="docs/assets/demo.gif" width="900">
+<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, True), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines, six column names, and confidence 0.95 with prompt version 2026.09-m in 1.9 s. demo_stock.tsv: ('UTF-16', '	', '&quot;', None, True), (True, 0, 2), its two footer lines, five column names, and confidence 0.95 in 2.1 s" src="docs/assets/demo.gif" width="900">
 
 ## Accuracy at a glance
 
@@ -95,30 +95,28 @@ stamp):
 
 Measured with the repository's evaluation harness against a catalog of
 **80 messy fixtures** (encodings, delimiters, quoting, preambles, footers,
-header-less files, structural oddities). Baseline 0.3.0, measured on
-2026-09-24:
+header-less files, structural oddities). Baseline 0.4.0, measured on
+2026-09-25, next to 0.3.0:
 
 | | Local: `qwen2.5-coder:7b` | Cloud: `gemini-flash-lite-latest` |
 |---|---|---|
-| Accuracy | **92.8 %** (the full catalog, 3 repeats) | **98.1 %** (a 15-fixture subset) |
-| Latency per inspection | p50 5.0 s, p95 20.9 s | p50 1.7 s, p95 2.5 s |
-| Cost | $0, on your own machine | about $1.64 per 1,000 files at list price, on that subset |
+| Accuracy | **99.7 %** (the full catalog, 3 repeats; 0.3.0: 92.8 %) | **100 %** (a 15-fixture subset; 0.3.0: 98.1 %) |
+| Latency per inspection | p50 1.6 s, p95 6.5 s (0.3.0: 5.0 s, 20.9 s) | p50 1.1 s, p95 1.4 s |
+| Cost | $0, on your own machine | about $0.84 per 1,000 files at list price, on that subset (0.3.0: $1.64) |
 
 Each fixture scores the share of its fields that match the ground truth;
 accuracy is the mean over fixtures, known limitations and failed
-inspections excluded. On 0.3.0, `encoding` and `quotechar` were always
-right; the weakest fields were the footer (`footer_lines`, 77.1 %) and
-header-less detection (`has_header`, 75.0 %), and very wide files (the
-catalog's 40-column ones) failed on the local models. The grounding fixes
-and the lean contract of the next release target exactly those misses,
-and wide files no longer fail
+inspections excluded. On 0.4.0 every category is at 100 % except
+`header_footer` (99.2 %), and no inspection fails on the 7b model: the
+40-column files that failed on 0.3.0 now pass
 ([#147](https://github.com/deluispablo/data-agent-toolkit/issues/147)).
-The catalog scores `escapechar` and `doublequote` on too few fixtures to
+The fallback `qwen2.5-coder:3b` scores 98.7 % when used as the primary. The
+remaining misses are two known limitations and one missed footer. The
+catalog scores `escapechar` and `doublequote` on too few fixtures to
 trust their figures yet
-([#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)). The
-next release's baseline will replace these figures.
-Method, per-field scores, machine and every miss:
-[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-030).
+([#158](https://github.com/deluispablo/data-agent-toolkit/issues/158)).
+Method, per-category and per-field scores, machine and every miss:
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-040).
 
 ## Install
 
@@ -401,7 +399,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-f`); it changes with every change to the prompt wording |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-m`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is

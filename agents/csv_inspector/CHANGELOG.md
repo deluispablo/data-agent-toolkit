@@ -8,6 +8,14 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Changed
+
+- The private module `csv_inspector._invokers` no longer has
+  `invoke_ollama_model`, `ainvoke_ollama_model`, `invoke_cloud_model` and
+  `ainvoke_cloud_model`: only the tests called them, and they were never
+  exported. Inject a `model_invoker`, or leave the default, as before
+  ([#169](https://github.com/deluispablo/data-agent-toolkit/issues/169)).
+
 ### Changed (breaking)
 
 - An answer in the pre-0.4 shape, with a `footer_lines` list instead of

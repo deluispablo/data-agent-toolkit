@@ -34,11 +34,11 @@ from csv_inspector import (
 from csv_inspector import _inspect as inspect_module
 from csv_inspector._invokers import (
     _OLLAMA_MIN_RESPONSE_TOKENS,
+    _ainvoke_cloud,
+    _ainvoke_ollama,
+    _invoke_cloud,
+    _invoke_ollama,
     _ollama_num_ctx,
-    ainvoke_cloud_model,
-    ainvoke_ollama_model,
-    invoke_cloud_model,
-    invoke_ollama_model,
     ollama_reply_tokens,
 )
 from csv_inspector._prompt import CHARS_PER_TOKEN, SYSTEM_PROMPT
@@ -421,7 +421,7 @@ def test_client_timeouts_map_to_model_timeout_error(
     install_fake_ollama(monkeypatch, chat)
 
     with pytest.raises(ModelTimeoutError):
-        invoke_ollama_model("prompt", "m", timeout_seconds=1)
+        _invoke_ollama("prompt", "m", timeout_seconds=1)
 
 
 # ---------------------------------------------------------------------
@@ -489,7 +489,7 @@ def test_gemini_receives_the_timeout_in_milliseconds(
     recording_genai: type[_RecordingGenai],
 ) -> None:
     """google-genai's HttpOptions.timeout is in ms: 2.5 s must become 2500."""
-    invoke_cloud_model(
+    _invoke_cloud(
         "prompt",
         "gemini-2.5-flash",
         settings=Settings(gemini_api_key=FAKE_KEY),
@@ -504,7 +504,7 @@ def test_gemini_without_a_timeout_sets_no_http_options(
     recording_genai: type[_RecordingGenai],
 ) -> None:
     """No budget: the client is built exactly as before, without http_options."""
-    invoke_cloud_model("prompt", "gemini-2.5-flash", settings=Settings(gemini_api_key=FAKE_KEY))
+    _invoke_cloud("prompt", "gemini-2.5-flash", settings=Settings(gemini_api_key=FAKE_KEY))
 
     assert recording_genai.instances[0].init_kwargs == {"api_key": FAKE_KEY}
 
@@ -517,7 +517,7 @@ def test_gemini_transport_timeouts_map_to_model_timeout_error(
     recording_genai.error = httpx.ReadTimeout(f"timed out for {FAKE_KEY}")
 
     with pytest.raises(ModelTimeoutError) as exc_info:
-        invoke_cloud_model(
+        _invoke_cloud(
             "prompt",
             "gemini-2.5-flash",
             settings=Settings(gemini_api_key=FAKE_KEY),
@@ -533,13 +533,13 @@ def test_async_cloud_invoker_uses_the_native_aio_client(
 ) -> None:
     """ainvoke_cloud_model awaits client.aio and closes it; no sync request is made."""
     text = asyncio.run(
-        ainvoke_cloud_model(
+        _ainvoke_cloud(
             "prompt",
             "gemini-2.5-flash",
             settings=Settings(gemini_api_key=FAKE_KEY),
             timeout_seconds=3,
         )
-    )
+    ).text
 
     client = recording_genai.instances[0]
     assert text == RESULT_JSON
@@ -644,7 +644,7 @@ def test_ainvoke_ollama_model_returns_the_message_content(monkeypatch: pytest.Mo
     """The async local invoker returns the model's content verbatim."""
     install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
 
-    assert asyncio.run(ainvoke_ollama_model("prompt", "m")) == '{"ok": true}'
+    assert asyncio.run(_ainvoke_ollama("prompt", "m")).text == '{"ok": true}'
 
 
 @needs_cloud_extra
@@ -689,7 +689,7 @@ def test_ollama_num_ctx_uses_the_first_step_for_small_prompts(
     """Small prompts keep the first window, and the reply gets the minimum cap."""
     fake = install_fake_ollama(monkeypatch, lambda **kwargs: ollama_reply('{"ok": true}'))
 
-    invoke_ollama_model("tiny", "m")
+    _invoke_ollama("tiny", "m")
 
     options = fake.requests[0]["options"]
     assert options["num_ctx"] == 8192

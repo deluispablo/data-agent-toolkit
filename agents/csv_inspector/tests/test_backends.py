@@ -37,10 +37,10 @@ from csv_inspector import (
 )
 from csv_inspector._config import DEFAULT_MODEL, FALLBACK_MODEL, resolve_settings
 from csv_inspector._invokers import (
-    ainvoke_cloud_model,
-    ainvoke_ollama_model,
-    invoke_cloud_model,
-    invoke_ollama_model,
+    _ainvoke_cloud,
+    _ainvoke_ollama,
+    _invoke_cloud,
+    _invoke_ollama,
 )
 from csv_inspector._prompt import _strip_annotations, response_schema
 from fakes import install_fake_ollama, ollama_reply
@@ -223,7 +223,7 @@ def test_ensure_backend_ready_requires_the_sdk(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ---------------------------------------------------------------------
-# invoke_cloud_model (real SDK types, recorded client, no network)
+# _invoke_cloud (real SDK types, recorded client, no network)
 # ---------------------------------------------------------------------
 
 
@@ -233,7 +233,7 @@ def test_cloud_invoker_without_credentials_fails_before_creating_a_client(
 ) -> None:
     """No credentials: a clear domain error, and no client or request is ever made."""
     with pytest.raises(CredentialsNotConfiguredError, match="GEMINI_API_KEY"):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
     assert recording_client.instances == []
 
@@ -245,7 +245,7 @@ def test_cloud_invoker_sends_a_deterministic_json_request_with_the_schema(
     """The request uses JSON mode, the shared response schema and temperature 0.0."""
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
 
-    text = invoke_cloud_model("the prompt", "gemini-2.5-flash")
+    text = _invoke_cloud("the prompt", "gemini-2.5-flash").text
 
     assert text == VALID_RESULT_JSON
     (client,) = recording_client.instances
@@ -288,7 +288,7 @@ def test_cloud_invoker_uses_vertex_ai_without_an_api_key(
     monkeypatch.setenv("GOOGLE_CLOUD_PROJECT", "my-project")
     monkeypatch.setenv("GOOGLE_CLOUD_LOCATION", "europe-west1")
 
-    invoke_cloud_model("prompt", "gemini-2.5-flash")
+    _invoke_cloud("prompt", "gemini-2.5-flash")
 
     assert recording_client.instances[0].init_kwargs == {
         "vertexai": True,
@@ -307,7 +307,7 @@ def test_cloud_invoker_rejects_an_empty_response(
     recording_client.response_text = text
 
     with pytest.raises(ModelInvocationError, match="empty response"):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
 
 @needs_cloud_extra
@@ -331,7 +331,7 @@ def test_cloud_invoker_reports_why_a_response_is_empty(
     recording_client.response = types.GenerateContentResponse.model_validate(response_fields)
 
     with pytest.raises(ModelInvocationError, match=rf"empty response \({reason}\)"):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
 
 @needs_cloud_extra
@@ -348,7 +348,7 @@ def test_cloud_invoker_errors_never_carry_the_api_key(
         caplog.at_level(logging.DEBUG),
         pytest.raises(ModelInvocationError, match="PERMISSION_DENIED") as exc_info,
     ):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
     assert FAKE_KEY not in str(exc_info.value)
     assert exc_info.value.__cause__ is None
@@ -396,7 +396,7 @@ def test_cloud_invoker_retries_a_transient_error_once(
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
     recording_client.errors = [_api_error(code)]
 
-    assert invoke_cloud_model("prompt", "gemini-x") == VALID_RESULT_JSON
+    assert _invoke_cloud("prompt", "gemini-x").text == VALID_RESULT_JSON
 
     assert [len(client.requests) for client in recording_client.instances] == [1, 1]
     (wait,) = sleeps
@@ -412,7 +412,7 @@ def test_cloud_invoker_retries_only_once(
     recording_client.errors = [_api_error(503), _api_error(503)]
 
     with pytest.raises(ModelInvocationError, match="503"):
-        invoke_cloud_model("prompt", "gemini-x")
+        _invoke_cloud("prompt", "gemini-x")
 
     assert sum(len(client.requests) for client in recording_client.instances) == 2
     assert len(sleeps) == 1
@@ -431,7 +431,7 @@ def test_cloud_invoker_does_not_retry_other_errors(
     recording_client.errors = [_api_error(code)]
 
     with pytest.raises(ModelInvocationError):
-        invoke_cloud_model("prompt", "gemini-x")
+        _invoke_cloud("prompt", "gemini-x")
 
     assert len(recording_client.instances) == 1
     assert sleeps == []
@@ -444,12 +444,12 @@ def test_cloud_invoker_honours_a_short_retry_after(
     """Retry-After sets the wait; a long one means a quota, so there is no retry."""
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
     recording_client.errors = [_api_error(429, retry_after="3")]
-    invoke_cloud_model("prompt", "gemini-x")
+    _invoke_cloud("prompt", "gemini-x")
     assert sleeps == [3.0]
 
     recording_client.errors = [_api_error(429, retry_after="60")]
     with pytest.raises(ModelInvocationError):
-        invoke_cloud_model("prompt", "gemini-x")
+        _invoke_cloud("prompt", "gemini-x")
     assert sleeps == [3.0]
 
 
@@ -461,12 +461,12 @@ def test_cloud_retry_never_outlives_the_time_budget(
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
     recording_client.errors = [_api_error(503, retry_after="2")]
     with pytest.raises(ModelInvocationError):
-        invoke_cloud_model("prompt", "gemini-x", timeout_seconds=2.5)
+        _invoke_cloud("prompt", "gemini-x", timeout_seconds=2.5)
     assert sleeps == []
 
     recording_client.instances = []
     recording_client.errors = [_api_error(503, retry_after="2")]
-    invoke_cloud_model("prompt", "gemini-x", timeout_seconds=10)
+    _invoke_cloud("prompt", "gemini-x", timeout_seconds=10)
     first, retried = (
         client.init_kwargs["http_options"].timeout for client in recording_client.instances
     )
@@ -482,7 +482,7 @@ def test_async_cloud_invoker_retries_a_transient_error_once(
     monkeypatch.setenv("GEMINI_API_KEY", FAKE_KEY)
     recording_client.errors = [_api_error(503)]
 
-    assert asyncio.run(ainvoke_cloud_model("prompt", "gemini-x")) == VALID_RESULT_JSON
+    assert asyncio.run(_ainvoke_cloud("prompt", "gemini-x")).text == VALID_RESULT_JSON
 
     assert len(recording_client.instances) == 2
     assert len(sleeps) == 1
@@ -544,7 +544,7 @@ def test_missing_application_default_credentials_is_a_credentials_error(
     recording_client.error = DefaultCredentialsError("File not found")  # type: ignore[no-untyped-call]
 
     with pytest.raises(CredentialsNotConfiguredError, match="application-default login"):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
 
 @needs_cloud_extra
@@ -559,7 +559,7 @@ def test_cloud_invoker_without_the_sdk_says_how_to_install_it(
     monkeypatch.delattr(google, "genai", raising=False)
 
     with pytest.raises(BackendConfigurationError, match=r"csv-inspector\[cloud\]"):
-        invoke_cloud_model("prompt", "gemini-2.5-flash")
+        _invoke_cloud("prompt", "gemini-2.5-flash")
 
 
 # ---------------------------------------------------------------------
@@ -703,9 +703,9 @@ def test_ollama_request_sends_the_response_schema(
     fake = install_fake_ollama(monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON))
 
     if use_async:
-        asyncio.run(ainvoke_ollama_model("p", "m"))
+        asyncio.run(_ainvoke_ollama("p", "m"))
     else:
-        invoke_ollama_model("p", "m")
+        _invoke_ollama("p", "m")
 
     (request,) = fake.requests
     assert request["format"] == response_schema()
@@ -729,9 +729,9 @@ def test_ollama_schema_rejection_retries_in_json_mode(
 
     with caplog.at_level(logging.WARNING, logger="csv_inspector"):
         if use_async:
-            text = asyncio.run(ainvoke_ollama_model("p", "m"))
+            text = asyncio.run(_ainvoke_ollama("p", "m")).text
         else:
-            text = invoke_ollama_model("p", "m")
+            text = _invoke_ollama("p", "m").text
 
     assert text == VALID_RESULT_JSON
     assert [request["format"] for request in fake.requests] == [response_schema(), "json"]
@@ -759,8 +759,8 @@ def test_other_ollama_errors_are_not_retried_in_json_mode(
 
     def invoke() -> str:
         if use_async:
-            return asyncio.run(ainvoke_ollama_model("p", "m"))
-        return invoke_ollama_model("p", "m")
+            return asyncio.run(_ainvoke_ollama("p", "m")).text
+        return _invoke_ollama("p", "m").text
 
     with pytest.raises(ModelInvocationError, match=error):
         invoke()

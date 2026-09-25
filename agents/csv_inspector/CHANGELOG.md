@@ -39,6 +39,15 @@ listed under **Changed (breaking)**.
   `2026.09-n`; the usage log line reports `lines_omitted`
   ([#134](https://github.com/deluispablo/data-agent-toolkit/issues/134)).
 
+- The Ollama reply cap (`num_predict`) is sized from the head sample's
+  field count, 32 tokens plus 20 per column and at least 448, instead of a
+  fixed 1,024: a model stuck repeating now fails after about 450 tokens on
+  a narrow file, leaving the fallback its budget, and a 200-column file is
+  no longer cut at 1,024. `num_ctx` takes one of three windows (8K, 16K,
+  32K) from the prompt at 1.81 characters per token (measured, was 2),
+  plus the reply cap; a step above 8K is logged at INFO
+  ([#138](https://github.com/deluispablo/data-agent-toolkit/issues/138)).
+
 ### Fixed
 
 - A file whose quoted fields hold no quote (`"Washer, zinc"`, the most

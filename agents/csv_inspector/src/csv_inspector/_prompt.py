@@ -26,6 +26,11 @@ from ._models import _ModelAnswer
 # docs/evaluation.md "Changing the prompt".
 PROMPT_VERSION = "2026.09-n"
 
+CHARS_PER_TOKEN = 1.81
+"""Characters per token of the prompts, measured on ``qwen2.5-coder:7b`` (0.4.0
+baseline run, ``runs/qwen2.5-coder-7b-040.jsonl``, 2026-09-25): CSV samples
+tokenize poorly. Sizes Ollama's context window and the harness's dry run."""
+
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
 _JSON_FENCE_PATTERN = re.compile(r"```(?:json)?\s*(\{.*\})\s*```", re.DOTALL)

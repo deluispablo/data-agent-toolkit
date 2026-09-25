@@ -67,10 +67,10 @@ def _recording_calls(calls: list[dict[str, Any]]) -> Iterator[None]:
         calls: The list ``{"model", "prompt", "answer", "prompt_tokens"}`` entries are
             appended to.
     """
-    original: Callable[[LLMBackend, Settings], _SyncCall] = getattr(_inspect, _SEAM)
+    original: Callable[..., _SyncCall] = getattr(_inspect, _SEAM)
 
-    def factory(backend: LLMBackend, settings: Settings) -> _SyncCall:
-        call = original(backend, settings)
+    def factory(backend: LLMBackend, settings: Settings, *, fields: int | None = None) -> _SyncCall:
+        call = original(backend, settings, fields=fields)
 
         def recording(prompt: str, model: str, timeout: float | None) -> InvokerResponse:
             response = call(prompt, model, timeout)

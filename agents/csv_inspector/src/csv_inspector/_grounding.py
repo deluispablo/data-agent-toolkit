@@ -452,14 +452,34 @@ def _ground_encoding(reported: str, detected: str) -> str:
     return reported if reported_codec is not None else detected
 
 
-def _agreement_score(lines: list[str], delimiter: str, quotechar: str) -> int:
-    """Count the lines that ``delimiter`` splits into the modal field count (2 or more)."""
+def _modal_width(lines: list[str], delimiter: str, quotechar: str) -> tuple[int, int]:
+    """``(agreeing lines, field count)`` of the modal count of 2 or more, else ``(0, 1)``."""
     widths = [
         len(fields)
         for line in lines
         if (fields := _split_fields(line, delimiter, quotechar)) is not None and len(fields) > 1
     ]
-    return Counter(widths).most_common(1)[0][1] if widths else 0
+    if not widths:
+        return 0, 1
+    width, count = Counter(widths).most_common(1)[0]
+    return count, width
+
+
+def _agreement_score(lines: list[str], delimiter: str, quotechar: str) -> int:
+    """Count the lines that ``delimiter`` splits into the modal field count (2 or more)."""
+    return _modal_width(lines, delimiter, quotechar)[0]
+
+
+def head_field_count(head_sample: str) -> int:
+    """Estimate the number of columns from the head sample, before any model answer.
+
+    Each usual delimiter is scored as :func:`_ground_delimiter` scores it
+    (the head lines it splits into its modal field count); the best one's
+    modal count is returned, or 1 when none splits two fields. It sizes the
+    model's reply, which holds one name per column.
+    """
+    lines = _split_lines(head_sample.lstrip("\ufeff"))
+    return max(_modal_width(lines, candidate, '"') for candidate in _CANDIDATE_DELIMITERS)[1]
 
 
 def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:

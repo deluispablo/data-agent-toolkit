@@ -35,7 +35,7 @@ from ._exceptions import (
     ResponseParsingError,
     SchemaValidationError,
 )
-from ._grounding import ground_in_samples
+from ._grounding import ground_in_samples, head_field_count
 from ._invokers import (
     AsyncModelInvoker,
     InvokerResponse,
@@ -467,7 +467,7 @@ def inspect_csv(
         custom = model_invoker
         call = lambda prompt, model, _timeout: InvokerResponse(custom(prompt, model))  # noqa: E731
     else:
-        call = builtin_invoker(backend, plan.settings)
+        call = builtin_invoker(backend, plan.settings, fields=head_field_count(samples.head_text))
 
     run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
     for candidate, budget in run.attempts():
@@ -541,7 +541,9 @@ async def ainspect_csv(
             return InvokerResponse(await custom(prompt, model))
 
     else:
-        call = builtin_async_invoker(backend, plan.settings)
+        call = builtin_async_invoker(
+            backend, plan.settings, fields=head_field_count(samples.head_text)
+        )
 
     run = _Run(plan, samples, timeout_seconds, custom_invoker=model_invoker is not None)
     for candidate, budget in run.attempts():

@@ -415,7 +415,8 @@ flowchart TD
   fits a local model's context window.
 - **The Ollama context window is sized to the prompt** (`num_ctx`): Ollama's
   small default would otherwise silently drop the start of a long prompt,
-  the instructions and head sample included.
+  the instructions and head sample included. The reply cap (`num_predict`)
+  is sized from the head's field count (see [Backends](#backends)).
 - **The JSON answer is extracted leniently**: from a markdown code fence
   when there is one, otherwise from the first `{` to the last `}`, so
   prose around the object (`Here is the result: {...}`) does not waste an
@@ -466,6 +467,17 @@ The schema constrains the output (Ollama's structured outputs, Gemini's
 An Ollama server older than 0.5, which rejects a schema, is asked again in
 plain JSON mode, with a WARNING. SDKs are imported lazily; the local
 backend never loads the cloud SDK.
+
+**Ollama window and reply cap.** The reply (`num_predict`) is capped at
+32 tokens plus 20 per column, counted in the head sample before the call,
+and never below 448: enough for every answer measured on the catalog (a
+40-column answer takes up to about 590 tokens), while a model stuck
+repeating is cut early and the fallback keeps its time budget. The context
+window (`num_ctx`) holds the prompt, at 1.81 characters per token
+(measured on `qwen2.5-coder:7b`), plus that cap, rounded up to 8K, 16K or
+32K tokens: few steps, since Ollama reloads a model when `num_ctx` changes.
+A step above 8K is logged at INFO; a prompt too large for 32K is logged at
+WARNING, as it may be truncated.
 
 **Gemini notes.** Verified against the real Gemini Developer API on
 2026-09-24 with `google-genai` 2.25.0. Vertex AI has not been verified

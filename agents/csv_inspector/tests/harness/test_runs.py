@@ -7,15 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_support import (
-    FIXTURES,
-    _answer,
-    _evaluation,
-    _fake_inspect,
-    _main_args,
-    _read_run,
-    _usage,
-)
 
 from csv_inspector import (
     CSVInspectionResult,
@@ -31,6 +22,15 @@ from eval_harness.runs import (
     run_info,
     summarize,
     summarize_file,
+)
+from harness_support import (
+    FIXTURES,
+    _answer,
+    _evaluation,
+    _fake_inspect,
+    _main_args,
+    _read_run,
+    _usage,
 )
 
 

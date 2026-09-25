@@ -7,7 +7,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_support import _read_run
 
 from csv_inspector import (
     CSVInspectionResult,
@@ -21,6 +20,7 @@ from eval_harness.replay import load_replay
 from eval_harness.runs import (
     run_info,
 )
+from harness_support import _read_run
 
 _REPLAY_FIXTURES = ["delimiter_comma.csv", "delimiter_pipe.csv"]
 

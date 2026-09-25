@@ -4,8 +4,9 @@
 Accuracy is measured by `scripts/eval_samples.py`, which runs a real model
 against every fixture in `samples/` and scores its answers against the
 ground truth in `samples/manifest.json`, and by `scripts/compare_runs.py`,
-which puts two or more runs side by side. Both live in the repository only;
-they are not part of the installed package.
+which puts two or more runs side by side. Both are entry points of the
+`scripts/eval_harness/` package (its modules are listed in `ARCHITECTURE.md`)
+and live in the repository only; they are not part of the installed package.
 
 All commands below run from the repository root with
 `uv run --directory agents/csv_inspector ...`, so relative paths such as
@@ -290,7 +291,7 @@ uv run --directory agents/csv_inspector python scripts/eval_samples.py --no-env-
 Twenty-one fixtures: every category, every footer kind, header-less files,
 a 40-column file, the tab-with-commas files, the blank-name header, the
 expected-error file and the misses of the [0.3.0 baseline](#baseline-030).
-The list lives in `SUBSETS["quick"]` in `scripts/eval_samples.py`; change
+The list lives in `SUBSETS["quick"]` in `scripts/eval_harness/guards.py`; change
 it there and here together.
 
 | Category | Fixtures | Why |

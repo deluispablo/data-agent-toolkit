@@ -3,12 +3,12 @@
 from __future__ import annotations
 
 import pytest
-from harness_support import _evaluate_with, _evaluation, _result_with_columns
 
 from eval_harness.report import (
     format_file_line,
 )
 from eval_harness.scoring import column_diagnostics, matches_encoding, repeat_stats
+from harness_support import _evaluate_with, _evaluation, _result_with_columns
 
 
 @pytest.mark.parametrize(

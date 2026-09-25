@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from harness_support import _evaluation, _usage
 
 from csv_inspector import LLMBackend
 from eval_harness.evaluation import FileEvaluation
@@ -28,6 +27,7 @@ from eval_harness.runs import (
     summarize,
     summarize_file,
 )
+from harness_support import _evaluation, _usage
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 

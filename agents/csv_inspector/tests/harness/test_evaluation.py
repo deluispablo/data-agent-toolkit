@@ -8,7 +8,6 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
-from harness_support import _answer, _evaluate_with, _fake_inspect, _result_with_columns, _usage
 
 from csv_inspector import (
     InspectionFailedError,
@@ -29,6 +28,7 @@ from eval_harness.runs import (
     summarize,
 )
 from fakes import install_fake_ollama, ollama_reply
+from harness_support import _answer, _evaluate_with, _fake_inspect, _result_with_columns, _usage
 
 
 def test_file_evaluation_score_is_none_when_nothing_is_comparable() -> None:

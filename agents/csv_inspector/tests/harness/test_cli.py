@@ -8,12 +8,12 @@ import sys
 from pathlib import Path
 
 import pytest
-from harness_support import FIXTURES, _answer, _fake_inspect, _main_args, _read_run, _usage
 
 from csv_inspector import _prompt as prompt_module
 from csv_inspector.cli import DEFAULT_CLI_TIMEOUT_SECONDS
 from eval_harness.cli import main, parse_args
 from eval_harness.guards import SUBSETS
+from harness_support import FIXTURES, _answer, _fake_inspect, _main_args, _read_run, _usage
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 

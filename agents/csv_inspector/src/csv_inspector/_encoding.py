@@ -39,15 +39,7 @@ def split_lines(text: str, *, keepends: bool = False) -> list[str]:
 
 
 def detect_encoding(raw_bytes: bytes) -> str:
-    """Heuristically detect the character encoding of a byte sample.
-
-    Args:
-        raw_bytes: The raw byte sample to analyze.
-
-    Returns:
-        The detected encoding name, defaulting to ``"utf-8"`` when detection
-        is inconclusive or reports plain ASCII.
-    """
+    """Detect a byte sample's encoding with chardet; ``"utf-8"`` for ASCII or no verdict."""
     detection = chardet.detect(raw_bytes)
     encoding: str = detection.get("encoding") or "utf-8"
     if encoding.lower() == "ascii":
@@ -84,17 +76,10 @@ def canonical_codec_name(encoding: str) -> str | None:
 
 
 def code_unit_size(encoding: str) -> int:
-    """Return the fixed code-unit width, in bytes, of ``encoding``.
+    """The code-unit width of ``encoding`` in bytes: 2 for UTF-16, 4 for UTF-32, else 1.
 
-    UTF-16 and UTF-32 cannot be decoded from an arbitrary byte offset: a
-    window that starts on an odd byte turns every character into garbage.
-    Aligning the tail window to the code unit avoids that.
-
-    Args:
-        encoding: An encoding name, typically from :func:`detect_encoding`.
-
-    Returns:
-        ``2`` for UTF-16 variants, ``4`` for UTF-32 variants, ``1`` otherwise.
+    A tail window of UTF-16 or UTF-32 must start on a code unit, or every
+    character decodes as garbage.
     """
     codec = canonical_codec_name(encoding) or ""
     if codec.startswith("utf-16"):
@@ -105,19 +90,11 @@ def code_unit_size(encoding: str) -> int:
 
 
 def tail_encoding(head_bytes: bytes, encoding: str) -> str:
-    """Pick the codec for decoding a tail sample, which never carries a BOM.
+    """The BOM-less codec for a tail sample, the byte order read from the head's BOM.
 
-    BOM-dependent codecs (``utf-16``, ``utf-32``, ``utf-8-sig``) decide byte
-    order from a leading BOM. A tail sample has none, so decoding it with
-    the generic codec would silently assume the host's byte order. This
-    resolves the explicit, BOM-less variant from the head's BOM instead.
-
-    Args:
-        head_bytes: The raw head sample, which may start with a BOM.
-        encoding: The encoding detected for the head sample.
-
-    Returns:
-        An encoding name that decodes a BOM-less suffix of the same file.
+    ``utf-16``, ``utf-32`` and ``utf-8-sig`` read the byte order from a
+    leading BOM, which a tail never has: decoded as is, it would silently
+    take the host's byte order.
     """
     codec = canonical_codec_name(encoding)
     if codec == "utf-8-sig":
@@ -130,15 +107,7 @@ def tail_encoding(head_bytes: bytes, encoding: str) -> str:
 
 
 def decode_sample(raw_bytes: bytes, encoding: str) -> str:
-    """Decode a byte sample using the given encoding, tolerating bad bytes.
-
-    Args:
-        raw_bytes: The raw byte sample to decode.
-        encoding: The encoding to use, typically from :func:`detect_encoding`.
-
-    Returns:
-        The decoded text, with undecodable bytes replaced rather than raising.
-    """
+    """Decode a byte sample, replacing undecodable bytes; an unknown codec falls back to UTF-8."""
     try:
         return raw_bytes.decode(encoding, errors="replace")
     except LookupError:

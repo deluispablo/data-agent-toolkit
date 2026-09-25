@@ -40,16 +40,10 @@ DEFAULT_CLI_TIMEOUT_SECONDS = 300.0
 
 
 def bounded_int(minimum: int, maximum: int | None = None) -> Callable[[str], int]:
-    """Build an argparse ``type=`` converter for integers in ``[minimum, maximum]``.
+    """An argparse ``type=`` for integers in ``[minimum, maximum]`` (``None``: unbounded).
 
-    Args:
-        minimum: The smallest accepted value.
-        maximum: The largest accepted value, or ``None`` for no upper bound.
-
-    Returns:
-        A converter raising :class:`argparse.ArgumentTypeError` for anything
-        that is not an integer in range, so argparse reports it as a usage
-        error naming the option.
+    Anything else raises :class:`argparse.ArgumentTypeError`, a usage error
+    naming the option.
     """
 
     def convert(value: str) -> int:
@@ -74,10 +68,7 @@ TAIL_BYTES = bounded_int(0, MAX_SAMPLE_BYTES)
 
 
 def timeout_budget(value: str) -> float | None:
-    """Argparse ``type=`` converter for ``--timeout``: seconds, or 0 for no limit.
-
-    Returns:
-        The budget in seconds, or ``None`` (no limit) for ``0``.
+    """Argparse ``type=`` for ``--timeout``: seconds, or ``None`` (no limit) for 0.
 
     Raises:
         argparse.ArgumentTypeError: If ``value`` is not a number >= 0.
@@ -127,17 +118,10 @@ def add_log_level_argument(parser: argparse.ArgumentParser) -> None:
 
 
 def load_cli_settings(env_file: Path | None, *, no_env_file: bool) -> Settings:
-    """Load settings for a CLI run: environment variables plus an optional ``.env``.
+    """Load settings for a CLI run: the environment plus ``--env-file``, else ``./.env``.
 
-    Unlike the library, the CLI reads ``./.env`` by default when it exists:
-    the user running the command chose the working directory.
-
-    Args:
-        env_file: An explicit ``.env`` path (``--env-file``), or ``None``.
-        no_env_file: Whether ``--no-env-file`` was given.
-
-    Returns:
-        The loaded settings.
+    Unlike the library, the CLI reads ``./.env`` by default (unless
+    ``--no-env-file``): the user running it chose the working directory.
 
     Raises:
         BackendConfigurationError: If an explicitly requested ``.env`` file is
@@ -163,12 +147,10 @@ def resolve_backend(value: str | None, settings: Settings) -> LLMBackend:
 
 
 def configure_cli(log_level: str) -> None:
-    """Configure logging and force UTF-8 output for a command-line entry point.
+    """Configure logging and force UTF-8 stdout and stderr for a command-line entry point.
 
     Windows consoles default to a legacy code page (e.g. cp1252), which
-    mangles the accented characters common in real-world CSV exports, so
-    stdout (results) and stderr (logs) are switched to UTF-8 when they are
-    regular text streams.
+    mangles the accented characters common in real-world CSV exports.
     """
     for stream in (sys.stdout, sys.stderr):
         if isinstance(stream, io.TextIOWrapper):
@@ -235,11 +217,8 @@ def _parse_args(argv: Sequence[str] | None, default_file: Path | None) -> argpar
 def main(argv: Sequence[str] | None = None, *, default_file: Path | None = None) -> None:
     """Run the CLI: inspect one file and print the result as JSON.
 
-    Args:
-        argv: Command-line arguments (default: ``sys.argv[1:]``).
-        default_file: File to inspect when none is given on the command line
-            (used by the repository's ``main_demo.py``); when ``None``, the
-            file argument is required.
+    ``default_file`` (``main_demo.py``'s) is inspected when the command line
+    names none; without it the file argument is required.
     """
     args = _parse_args(argv, default_file)
     configure_cli(args.log_level)

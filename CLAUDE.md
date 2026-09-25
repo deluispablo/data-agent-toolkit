@@ -1,11 +1,11 @@
 # CLAUDE.md
 
-Guide for Claude Code in this repo. Caveman style on purpose. Keep under 5 KB: loaded every turn.
+Guide for Claude Code in this repo. Caveman style on purpose. Under 5 KB: loaded every turn.
 
 ## Active Skills & Behavior
 
 - **Caveman Mode:** Active on session start. Ultra-concise, direct, minimal responses.
-- Do not greet, summarize changes, or speak in long prose.
+- No greetings, change summaries or long prose.
 - Skill: `anthropic-skills:caveman`, level full, all chat replies.
 - Commits, PRs, code comments, docstrings, repo docs (except this file): normal English prose.
 
@@ -32,9 +32,10 @@ Root `pyproject.toml` = virtual uv workspace (`agents/*`, `examples/*`). `dev` g
 
 ```bash
 uv sync --all-packages --all-extras                        # install
-uv run ruff check . && uv run ruff format --check .       # lint, whole repo, from root
+uv run ruff check --no-cache . && uv run ruff format --check .  # lint, whole repo
 uv run --directory agents/csv_inspector mypy               # strict
 uv run --directory agents/csv_inspector pytest --cov       # floor 93%
+uv run --directory agents/csv_inspector pytest --cov=eval_harness --cov=compare_runs  # floor 90%
 uv run --directory examples/csv_inspector_api mypy
 uv run --directory examples/csv_inspector_api pytest --cov # floor 90%
 uv build --package csv-inspector                           # wheel + sdist
@@ -42,11 +43,11 @@ uv lock                                                    # after any pyproject
 ```
 
 - mypy/pytest per package, never across: `conftest.py`/`fakes.py` names collide.
-- Tests hermetic: no Ollama, network, credentials.
-- Live run: `ollama serve` + `qwen2.5-coder:7b`, `:3b`. `uv run agents/csv_inspector/main_demo.py`, `uv run csv-inspector file.csv [--backend api]`.
+- Tests hermetic: no Ollama, network, keys.
+- Live: `ollama serve` + `qwen2.5-coder:7b`, `:3b`. `uv run agents/csv_inspector/main_demo.py`, `uv run csv-inspector file.csv [--backend api]`.
 - Pytest not measure LLM accuracy. Prompt/grounding change: `uv run --directory agents/csv_inspector python scripts/eval_samples.py [--category X]` before + after, both scores in PR.
-- M7 rule: refactor PR proves no behaviour change with `eval_samples.py --replay` on `runs/qwen2.5-coder-{7b,3b}-050.jsonl` (reference replays: `runs/replay-{7b,3b}-050.jsonl`).
-- New baseline in `docs/evaluation.md`: same PR update README "Accuracy at a glance". Demo result change: rerun `scripts/render_readme_hero.py` + `docs/assets/demo.tape` + `scripts/capture_walkthrough.py` then `scripts/render_walkthrough.py --markdown` (paste into README).
+- Refactor PR: prove no behaviour change, `eval_samples.py --replay runs/qwen2.5-coder-{7b,3b}-050.jsonl` = `runs/replay-{7b,3b}-050.jsonl`.
+- New baseline in `docs/evaluation.md`: same PR update README "Accuracy at a glance". Demo result change: rerun scripts `render_readme_hero.py`, `capture_walkthrough.py`, `render_walkthrough.py --markdown` (paste into README) + `docs/assets/demo.tape`.
 - Dependency change: also build wheel, install in clean venv, run `scripts/smoke_test_installed.py` outside repo.
 
 ## Rules

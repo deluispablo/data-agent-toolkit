@@ -317,18 +317,49 @@ in #133). The quick subset ran on `qwen2.5-coder:7b` with `--repeat 2`;
 | B | `2026.09-h` | header and footer rules as bullets, one example per footer kind | 2,314 | 638 | 99.2 %, 4 errored (+ `header_none_data_only.csv`: `has_header` true with a null index) |
 | C | `2026.09-i` | role sentence dropped | 2,247 | 618 | 96.7 %, 4 errored (a multi-line footer anchor) |
 | D | `2026.09-j` | one-line encoding hint, shorter tail note | 2,082 | 586 | **90.2 %**: without "read footer lines ONLY from its last lines" the model answers no footer on six files |
-| D2 | `2026.09-k` | D with that clause restored (kept) | 2,126 | **595** | 97.4 %, 0 errored; **100.0 %** once its answers are re-grounded with the final grounding |
+| D2 | `2026.09-k` | D with that clause restored | 2,126 | **595** | 97.4 %, 0 errored; **100.0 %** once its answers are re-grounded with the final grounding |
 
-What the passes taught: the sentences that could go carried nothing the
-7b model used, except the tail note's footer rule (restored in D2). The
-errors and misses of passes A to C were small-model slips that the prompt
-had been papering over (a line break as delimiter, `has_header` true with a
-null index, a multi-line footer anchor, a `'` quote character that never
-occurs, invented names for a header-less file, every line of a one-column
-file listed as a column). They are now read by validation and grounding
-instead, so they no longer depend on the prompt's wording. Re-grounding
-the recorded answers of passes C and D2 with the final code gives 100.0 %
-on the quick subset.
+| L | `2026.09-l` | D2 with the field notes moved after the rules (3b repeated the footer examples into `columns`) | 2,126 | 595 | full catalog: 7b 98.8 %, `combo` -9.5 pts: **blocked** |
+| M (kept) | `2026.09-m` | L with the pass-0 FOOTER paragraph restored, all its examples included | 2,567 | **701** | see the full-catalog table below |
+
+Full catalog, `--repeat 3`, pass 0 (`2026.09-f`) against the kept prompt
+(`2026.09-m`). Every run's recorded answers are re-grounded with the final
+code (`--keep-raw` answers replayed through a custom `model_invoker`), so
+the columns differ by prompt only. The 3b pass-0 run had 219 of 240 lines
+error on `confidence: 100` before the percentage rule; re-grounded, none
+do.
+
+| metric | 7b pass 0 | 7b kept | 3b pass 0 | 3b kept |
+|---|---|---|---|---|
+| template tokens | 852 | 701 | 852 | 701 |
+| prompt tokens (mean) | 2,781 | 2,639 | n/a | 2,616 |
+| completion tokens (mean) | 144 | 146 | n/a | 164 |
+| latency p50 | 1.51 s | 1.53 s | 0.83 s | 1.00 s |
+| errored lines | 0 | 0 | 0 | 14 |
+| **accuracy** | **100.0 %** | **99.7 %** | **97.5 %** | **98.7 %** |
+| `header_footer` | 100.0 % | 99.2 % | 94.7 % | 96.0 % |
+| `structural` | 100.0 % | 100.0 % | 100.0 % | 100.0 % |
+| other categories | 100.0 % | 100.0 % | 95.6-100 % | 100.0 % |
+
+What the passes taught:
+
+- **The footer rules carry weight.** Compressing them (pass B) and the
+  tail note (pass D) cost footer recall on the full catalog. Pass D's
+  clause came back in D2, and the whole pass-0 FOOTER paragraph came back
+  in M. This is why the template ends at 701 tokens and not at the
+  600-token target: the 150 tokens between them are those rules.
+- **Most misses were small-model slips, not the prompt's wording.** The
+  prompt had been papering over them: a line break as delimiter,
+  `has_header` true with a null index, a multi-line footer anchor, a `'`
+  quote character that never occurs, invented names for a header-less
+  file, a one-column file listed line by line, and a 3b confidence of
+  `100`. Validation and grounding now read them instead.
+- **3b still loops on 14 lines** (4 files x up to 3 repeats), repeating
+  the prompt's footer examples inside `columns` until the reply cap. The
+  answer is then invalid JSON, so the inspection fails over to the
+  fallback, which is the same model in this run. The schema caps
+  `footer_first_line` at 300 characters, but a list of names cannot be
+  capped without a per-file bound; #138 re-sizes the reply cap.
 
 ## Baseline 0.3.0
 

@@ -89,7 +89,7 @@ pipelines consume.
   `generated` flag
   ([#124](https://github.com/deluispablo/data-agent-toolkit/issues/124)).
 - The prompt is versioned: `result.usage.prompt_version` records the
-  version of the prompt the models were sent (`2026.09-e` today), and the
+  version of the prompt the models were sent (`2026.09-f` today), and the
   usage log line includes it, so measurements of different prompts are
   never mixed. Unit tests fail when the prompt template grows more than
   10 % past its measured size, and pin each prompt branch to a golden
@@ -141,7 +141,7 @@ pipelines consume.
   the cloud backend sends the same schema, stripped of titles,
   descriptions and defaults, with every field required (a grammar lets a
   model skip an optional key, and a skipped `quotechar` or `escapechar`
-  silently became its default; `PROMPT_VERSION` `2026.09-e`). The prompt
+  silently became its default). The prompt
   no longer spells out the JSON
   shape, only what the fields mean: the instruction template shrinks from
   3,291 to 2,813 characters (`PROMPT_VERSION` `2026.09-c`). An Ollama
@@ -206,6 +206,13 @@ pipelines consume.
   its separators, still anchors
   ([#129](https://github.com/deluispablo/data-agent-toolkit/issues/129),
   follow-up of [#153](https://github.com/deluispablo/data-agent-toolkit/issues/153)).
+- How quotes are escaped is read from the samples when they show a single
+  convention: a backslash before a quote (`\"`) gives `escapechar="\\"`,
+  `doublequote=False`; a doubled quote inside a value (`abc""`) gives
+  `escapechar=None`, `doublequote=True`. With a response schema the model
+  tends to answer the defaults for these two keys. The prompt also says
+  what a single-quoted field looks like (`PROMPT_VERSION` `2026.09-f`)
+  ([#130](https://github.com/deluispablo/data-agent-toolkit/issues/130)).
 
 ### Documentation
 

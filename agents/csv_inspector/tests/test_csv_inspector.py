@@ -1675,6 +1675,42 @@ def test_grounding_replaces_a_delimiter_dominated_one_and_a_half_times(tmp_path:
     assert result.delimiter == "\t"
 
 
+@pytest.mark.parametrize(
+    ("note", "answered", "expected"),
+    [
+        ('"dijo \\"hola\\" ya"', (None, True), ("\\", False)),
+        ('"fin \\"hola\\""', (None, True), ("\\", False)),
+        ('"dijo ""hola"" ya"', ("\\", False), (None, True)),
+        ('"sin comillas"', ("\\", False), ("\\", False)),
+        ('"mezcla \\"a\\" y ""b"""', (None, True), (None, True)),
+    ],
+)
+def test_grounding_reads_quote_escaping_from_the_samples(
+    tmp_path: Path,
+    note: str,
+    answered: tuple[str | None, bool],
+    expected: tuple[str | None, bool],
+) -> None:
+    """One escaping convention in the samples overrides the answer; none or both keep it."""
+    target = tmp_path / "notes.csv"
+    target.write_text(
+        f"Fecha,Cliente,Nota\n2024-01-01,Acme,{note}\n2024-01-02,Beta,x\n", encoding="utf-8"
+    )
+
+    result = inspect_csv(
+        target,
+        model_invoker=_sloppy_answer(
+            delimiter=",",
+            columns=["Fecha", "Cliente", "Nota"],
+            escapechar=answered[0],
+            doublequote=answered[1],
+            footer_first_line=None,
+        ),
+    )
+
+    assert (result.escapechar, result.doublequote) == expected
+
+
 def test_grounding_anchors_a_header_with_a_blank_name(tmp_path: Path) -> None:
     """A blank name the model left out is restored from the header row (issue #153)."""
     target = tmp_path / "indexed.csv"

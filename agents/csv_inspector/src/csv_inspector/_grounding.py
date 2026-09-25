@@ -470,6 +470,39 @@ def _ground_delimiter(result: CSVInspectionResult, head_sample: str) -> str:
     return winners[0]
 
 
+def _ground_quote_escaping(result: CSVInspectionResult, text: str) -> dict[str, object]:
+    r"""Return the ``escapechar``/``doublequote`` pair the samples show, when it differs.
+
+    Under a response schema a model writes these two keys before reading
+    the data closely, and tends to answer the defaults. The samples settle
+    it when only one convention occurs: a quote character right after a
+    backslash (``\"``) means ``escapechar="\\"``, ``doublequote=False``;
+    a doubled quote right after a field character (``abc""``, not the empty
+    field ``,"",``) means ``escapechar=None``, ``doublequote=True``. With
+    both, or neither, the answer stays.
+
+    Args:
+        result: The answer, with the delimiter already grounded.
+        text: The sampled text (head, plus tail when there is one).
+    """
+    quote = result.quotechar
+    backslashed = f"\\{quote}" in text
+    # A field character: not a delimiter, quote, backslash or line break, so
+    # neither an empty field nor a backslash-escaped quote before a closing
+    # quote (\"") counts as a doubled quote.
+    field = f"[^{re.escape(result.delimiter + quote)}\\\\\\r\\n]"
+    doubled = re.search(f"{field}{re.escape(quote * 2)}", text) is not None
+    if backslashed and not doubled:
+        grounded: tuple[str | None, bool] = ("\\", False)
+    elif doubled and not backslashed:
+        grounded = (None, True)
+    else:
+        return {}
+    if grounded == (result.escapechar, result.doublequote):
+        return {}
+    return {"escapechar": grounded[0], "doublequote": grounded[1]}
+
+
 def ground_in_samples(
     answer: _ModelAnswer,
     head_sample: str,
@@ -491,7 +524,9 @@ def ground_in_samples(
     pointed at (its ``footer_first_line``, matched tolerantly: see
     :func:`_locate_footer_lines`). A delimiter that splits too few head
     lines, or that another usual delimiter clearly dominates, is replaced
-    (see :func:`_ground_delimiter`), and the reported encoding is checked
+    (see :func:`_ground_delimiter`), how quotes are escaped is read from the
+    samples when they show one convention (see
+    :func:`_ground_quote_escaping`), and the reported encoding is checked
     against the detected one (see :func:`_ground_encoding`). A header at
     row 0 that cannot be anchored becomes "no header" when the first row
     has the same field shapes (integer, decimal, date, empty or text) as the
@@ -514,8 +549,9 @@ def ground_in_samples(
             or ``None`` to leave the reported encoding unchecked.
 
     Returns:
-        The result, with ``delimiter``, ``header_row_index``, column names,
-        ``footer_lines`` and ``encoding`` grounded in the samples.
+        The result, with ``delimiter``, quote escaping,
+        ``header_row_index``, column names, ``footer_lines`` and
+        ``encoding`` grounded in the samples.
     """
     result = CSVInspectionResult.model_validate(answer.model_dump(exclude={"footer_first_line"}))
     updates: dict[str, object] = {}
@@ -527,6 +563,7 @@ def ground_in_samples(
         # Header and footer grounding split fields with the grounded delimiter.
         result = result.model_copy(update={"delimiter": delimiter})
 
+    updates.update(_ground_quote_escaping(result, head_sample + (tail_sample or "")))
     updates.update(_ground_header(result, head_sample))
 
     anchor = answer.footer_first_line

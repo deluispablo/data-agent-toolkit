@@ -24,7 +24,7 @@ from ._models import _ModelAnswer
 # tells several bumps in one month apart). Recorded in every Usage and eval
 # run, so measurements of different prompts are never mixed; see
 # docs/evaluation.md "Changing the prompt".
-PROMPT_VERSION = "2026.09-e"
+PROMPT_VERSION = "2026.09-f"
 
 SYSTEM_PROMPT = "You always respond with valid JSON, with no explanations or markdown."
 
@@ -155,10 +155,11 @@ detected by chardet is: {detected_encoding!r} (it may be incorrect).
 Analyze the samples and answer with a JSON object matching the schema you \
 were given. What its fields mean:
 - "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.
-- "quotechar" is '"' if fields are never quoted.
-- "escapechar" and "doublequote": quotes inside fields written as "" mean \
-"escapechar": null, "doublequote": true; written as \\" they mean \
-"escapechar": "\\\\", "doublequote": false.
+- "quotechar" is the character that wraps quoted fields: "'" when fields \
+look like 'Acme, S.L.', '"' when they look like "Acme, S.L." or are never quoted.
+- "escapechar" and "doublequote": a quote inside a quoted field written \
+with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; \
+written doubled ("") or never present, "escapechar": null, "doublequote": true.
 - "columns" holds each name copied character for character from the header row.
 
 HEADER (start of the file): lines before the real column-name row, such as \

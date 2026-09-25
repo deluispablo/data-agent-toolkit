@@ -16,9 +16,9 @@ import pytest
 
 from csv_inspector._prompt import PROMPT_VERSION, build_prompt
 
-# The template with empty samples: 2826 characters on PROMPT_VERSION
-# 2026.09-d, plus 10 %. Lower it when the template shrinks (#133).
-PROMPT_TEMPLATE_MAX_CHARS = 3109
+# The template with empty samples: 2973 characters on PROMPT_VERSION
+# 2026.09-f, plus 10 %. Lower it when the template shrinks (#133).
+PROMPT_TEMPLATE_MAX_CHARS = 3271
 
 _HEAD = "Fecha,Importe\n2024-01-15,1250.50\n"
 _TAIL = "15,890.00\nTOTAL,2140.50\n"
@@ -92,8 +92,8 @@ _GOLDEN_WITH_TAIL = (
     "\n"
     "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is \'"\' if fields are never quoted.\n'
-    '- "escapechar" and "doublequote": quotes inside fields written as "" mean "escapechar": null, "doublequote": true; written as \\" they mean "escapechar": "\\\\", "doublequote": false.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -127,8 +127,8 @@ _GOLDEN_TRUNCATED_HEAD = (
     "\n"
     "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is \'"\' if fields are never quoted.\n'
-    '- "escapechar" and "doublequote": quotes inside fields written as "" mean "escapechar": null, "doublequote": true; written as \\" they mean "escapechar": "\\\\", "doublequote": false.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'
@@ -162,8 +162,8 @@ _GOLDEN_WHOLE_FILE = (
     "\n"
     "Analyze the samples and answer with a JSON object matching the schema you were given. What its fields mean:\n"
     '- "encoding" is the real encoding, e.g. utf-8, latin-1, cp1252.\n'
-    '- "quotechar" is \'"\' if fields are never quoted.\n'
-    '- "escapechar" and "doublequote": quotes inside fields written as "" mean "escapechar": null, "doublequote": true; written as \\" they mean "escapechar": "\\\\", "doublequote": false.\n'
+    '- "quotechar" is the character that wraps quoted fields: "\'" when fields look like \'Acme, S.L.\', \'"\' when they look like "Acme, S.L." or are never quoted.\n'
+    '- "escapechar" and "doublequote": a quote inside a quoted field written with a backslash (\\") means "escapechar": "\\\\", "doublequote": false; written doubled ("") or never present, "escapechar": null, "doublequote": true.\n'
     '- "columns" holds each name copied character for character from the header row.\n'
     "\n"
     'HEADER (start of the file): lines before the real column-name row, such as export banners, comments (e.g. starting with \'#\') or blank lines, are preamble. Do not list them anywhere; just count them: "header_row_index" is the 0-based index of the column-name row, i.e. the number of preamble lines. If the file has no column-name row at all (its first line is already a data record, e.g. "17,red,3.5"), answer "has_header": false, "header_row_index": null, and name the columns column_1, column_2, and so on.\n'

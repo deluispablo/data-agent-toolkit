@@ -1,9 +1,7 @@
-"""Bounded byte sampling for csv_inspector.
+"""Bounded byte sampling: a head and a tail window, never the whole source.
 
-Reads only a small head window and, when the source is larger, a small tail
-window of a delimited source, never loading a file or stream into memory in
-full. Sources can be a filesystem path, an in-memory buffer, or a binary
-stream (seekable or not); see :data:`CSVSource`.
+Sources are paths, in-memory buffers, or binary streams (seekable or not);
+see :data:`CSVSource`.
 """
 
 from __future__ import annotations
@@ -23,6 +21,7 @@ from ._encoding import (
     decode_sample,
     detect_encoding,
     is_utf8_suffix,
+    split_lines,
     tail_encoding,
 )
 from ._exceptions import EmptySampleError, FileSampleReadError
@@ -44,98 +43,12 @@ MAX_HEAD_LINES: int = 15
 MAX_TAIL_LINES: int = 10
 
 
-def _validate_byte_budget(
-    name: str, value: int, *, minimum: int, maximum: int | None = None
-) -> None:
-    """Reject byte budgets that would break the bounded-read guarantee.
-
-    A negative size passed to ``file.read()`` means "read everything", so an
-    unchecked budget would silently load a multi-gigabyte file into memory.
-
-    Args:
-        name: Parameter name, used in the error message.
-        value: The requested byte budget.
-        minimum: The smallest accepted value.
-        maximum: The largest accepted value, or ``None`` for no upper bound.
-
-    Raises:
-        ValueError: If ``value`` is outside ``[minimum, maximum]``.
-    """
+def _validate_byte_budget(name: str, value: int, *, minimum: int) -> None:
+    """Reject a budget outside ``[minimum, MAX_SAMPLE_BYTES]``: ``read(-1)`` reads everything."""
     if value < minimum:
         raise ValueError(f"{name} must be >= {minimum}, got {value}.")
-    if maximum is not None and value > maximum:
-        raise ValueError(f"{name} must be <= {maximum}, got {value}.")
-
-
-def read_sample_bytes(path: str | os.PathLike[str], n_bytes: int = DEFAULT_SAMPLE_BYTES) -> bytes:
-    """Read only the first ``n_bytes`` of a file without loading it fully into memory.
-
-    Args:
-        path: Path to the source file.
-        n_bytes: Maximum number of bytes to read from the start of the file.
-            Must be at least 1.
-
-    Returns:
-        The raw bytes read from the file. Shorter than ``n_bytes`` only when
-        the file itself is smaller than ``n_bytes``.
-
-    Raises:
-        ValueError: If ``n_bytes`` is less than 1.
-        FileSampleReadError: If the file does not exist or cannot be read.
-    """
-    _validate_byte_budget("n_bytes", n_bytes, minimum=1)
-    try:
-        with Path(path).open("rb") as handle:
-            return handle.read(n_bytes)
-    except OSError as exc:
-        raise FileSampleReadError(f"Unable to read head sample from '{path}': {exc}") from exc
-
-
-def read_tail_bytes(path: str | os.PathLike[str], n_bytes: int = DEFAULT_TAIL_BYTES) -> bytes:
-    """Read only the last ``n_bytes`` of a file without loading it fully into memory.
-
-    Uses a bounded seek from the end of the file (``os.SEEK_END``) followed
-    by a single bounded read, so the cost is independent of the file's total
-    size: no data before the tail window is ever touched.
-
-    Args:
-        path: Path to the source file.
-        n_bytes: Maximum number of trailing bytes to read. ``0`` returns an
-            empty sample without touching the file contents.
-
-    Returns:
-        The raw trailing bytes. Shorter than ``n_bytes`` only when the file
-        itself is smaller than ``n_bytes``; empty for a zero-byte file.
-        These bytes are a blind suffix of the file and may begin mid-line
-        (or mid-character, for multi-byte encodings) rather than at a clean
-        row boundary.
-
-    Raises:
-        ValueError: If ``n_bytes`` is negative.
-        FileSampleReadError: If the file does not exist or cannot be read.
-    """
-    _validate_byte_budget("n_bytes", n_bytes, minimum=0)
-    try:
-        with Path(path).open("rb") as handle:
-            handle.seek(0, os.SEEK_END)
-            file_size = handle.tell()
-            read_size = min(n_bytes, file_size)
-            handle.seek(-read_size, os.SEEK_END)
-            return handle.read(read_size)
-    except OSError as exc:
-        raise FileSampleReadError(f"Unable to read tail sample from '{path}': {exc}") from exc
-
-
-def _file_size(path: str | os.PathLike[str]) -> int:
-    """Return the size of ``path`` in bytes.
-
-    Raises:
-        FileSampleReadError: If the file cannot be stat'ed.
-    """
-    try:
-        return Path(path).stat().st_size
-    except OSError as exc:
-        raise FileSampleReadError(f"Unable to stat '{path}': {exc}") from exc
+    if value > MAX_SAMPLE_BYTES:
+        raise ValueError(f"{name} must be <= {MAX_SAMPLE_BYTES}, got {value}.")
 
 
 class SupportsBinaryRead(Protocol):
@@ -185,25 +98,16 @@ class Samples:
     """The decoded head and tail samples of a source.
 
     Attributes:
-        head_text: The decoded head sample. When the head is truncated
-            (it does not cover the whole source), it ends on a line
-            boundary: the partial last row, and any character cut in
-            half with it, are dropped.
-        tail_text: The decoded tail sample, or ``None`` when the head
-            already covers the whole source (or tail sampling is disabled).
-        encoding: The encoding detected for the head sample, or for the
-            head and tail together when the tail is not valid in the
-            encoding detected from the head alone.
+        head_text: The decoded head; a truncated one ends on a line break.
+        tail_text: The decoded tail, or ``None`` when the head covers the
+            whole source (or tail sampling is disabled).
+        encoding: The encoding detected from the head, or from both windows
+            when the tail is not valid in the head's.
         description: A log-safe description of the source.
         covers_whole_file: Whether the samples reach the real end of the
-            source: the head covers it all, or a tail was sampled. ``False``
-            when the head was truncated and tail sampling is disabled, or a
-            non-seekable stream ran past :data:`MAX_FORWARD_SCAN_BYTES`, in
-            which case the end of the source was never seen. The line
-            bounds never change it.
-        lines_omitted: How many decoded lines the line bounds
-            (:data:`MAX_HEAD_LINES`, :data:`MAX_TAIL_LINES`) left out of
-            the texts; 0 when nothing was cut.
+            source: ``False`` when a truncated head has no tail, or a
+            non-seekable stream ran past :data:`MAX_FORWARD_SCAN_BYTES`.
+        lines_omitted: How many decoded lines the line bounds left out.
     """
 
     head_text: str
@@ -251,14 +155,31 @@ class _PathReader:
 
     @property
     def size(self) -> int:
-        return _file_size(self._path)
+        try:
+            return Path(self._path).stat().st_size
+        except OSError as exc:
+            raise FileSampleReadError(f"Unable to stat '{self._path}': {exc}") from exc
 
     def head(self, n_bytes: int) -> bytes:
-        return read_sample_bytes(self._path, n_bytes)
+        return self._read("head", n_bytes)
 
     def tail(self, head_length: int, max_bytes: int, unit: int) -> bytes:
-        window = _tail_window(_file_size(self._path) - head_length, max_bytes, unit)
-        return read_tail_bytes(self._path, window) if window else b""
+        window = _tail_window(self.size - head_length, max_bytes, unit)
+        return self._read("tail", window) if window else b""
+
+    def _read(self, window: str, n_bytes: int) -> bytes:
+        """Read the ``head`` or ``tail`` window with one seek and one bounded read."""
+        try:
+            with Path(self._path).open("rb") as handle:
+                if window == "tail":
+                    # Seek from the real end: the file may have shrunk since stat().
+                    handle.seek(0, os.SEEK_END)
+                    n_bytes = min(n_bytes, handle.tell())
+                    handle.seek(-n_bytes, os.SEEK_END)
+                return handle.read(n_bytes)
+        except OSError as exc:
+            msg = f"Unable to read {window} sample from '{self._path}': {exc}"
+            raise FileSampleReadError(msg) from exc
 
 
 class _BufferReader:
@@ -281,16 +202,11 @@ class _BufferReader:
 
 
 def _read_chunk(stream: SupportsBinaryRead, size: int) -> bytes:
-    """Read at most ``size`` bytes from ``stream``, rejecting text streams.
-
-    Returns:
-        The bytes read; empty only at the end of the stream.
+    """Read at most ``size`` bytes from ``stream``; empty only at its end.
 
     Raises:
         TypeError: If the stream yields ``str`` (a text-mode stream).
-        BlockingIOError: If the stream yields ``None``: it is non-blocking
-            and has no data available yet, which is not the end of the
-            stream, so sampling cannot go on without a wrong result.
+        BlockingIOError: If it yields ``None`` (non-blocking, no data yet: not the end).
     """
     chunk: bytes | str | None = stream.read(size)
     if isinstance(chunk, str):
@@ -442,35 +358,16 @@ def _trim_to_last_line_break(text: str) -> str:
     return text[:end] if end else text
 
 
-def _lines(text: str) -> list[str]:
-    """Split ``text`` into lines, each keeping its line break (the last may have none)."""
-    lines: list[str] = []
-    start = 0
-    for match in LINE_BREAK.finditer(text):
-        lines.append(text[start : match.end()])
-        start = match.end()
-    if start < len(text):
-        lines.append(text[start:])
-    return lines
-
-
 def _bound_lines(
     head_text: str, tail_text: str | None, covers_whole_file: bool
 ) -> tuple[str, str | None, int]:
     """Keep at most :data:`MAX_HEAD_LINES` head lines and :data:`MAX_TAIL_LINES` tail lines.
 
-    The head keeps its first lines. A sampled tail keeps its last lines, so
-    it still ends at the real end of the source, and loses its first,
-    possibly cut, line whenever it is trimmed. When the head covers the
-    whole source (no tail) and holds more lines than both bounds together,
-    a tail is synthesized from its last :data:`MAX_TAIL_LINES` lines: the
-    prompt then shows a head and a tail, and grounding looks for the footer
-    at the real end. A source within the bounds is kept whole.
-
-    Returns:
-        The bounded head and tail texts, and how many lines were left out.
+    A tail keeps its last lines, so it still ends at the real end. A whole
+    source longer than both bounds gets a tail made of its last lines, so
+    grounding still finds its footer. Returns the texts and the lines left out.
     """
-    head = _lines(head_text)
+    head = split_lines(head_text, keepends=True)
     if tail_text is None and covers_whole_file:
         if len(head) <= MAX_HEAD_LINES + MAX_TAIL_LINES:
             return head_text, None, 0
@@ -478,7 +375,7 @@ def _bound_lines(
         return "".join(head[:MAX_HEAD_LINES]), "".join(head[-MAX_TAIL_LINES:]), omitted
     omitted = max(len(head) - MAX_HEAD_LINES, 0)
     if tail_text is not None:
-        tail = _lines(tail_text)
+        tail = split_lines(tail_text, keepends=True)
         omitted += max(len(tail) - MAX_TAIL_LINES, 0)
         tail_text = "".join(tail[-MAX_TAIL_LINES:])
     return "".join(head[:MAX_HEAD_LINES]), tail_text, omitted
@@ -487,18 +384,12 @@ def _bound_lines(
 def _sample_tail(
     reader: _Reader, head_raw: bytes, encoding: str, tail_bytes: int
 ) -> tuple[str, str | None, bool]:
-    """Read and decode the tail that follows a full head window.
-
-    Args:
-        reader: The source's reader.
-        head_raw: The head window, as read.
-        encoding: The encoding detected from the head.
-        tail_bytes: Maximum tail window size, in bytes; ``0`` disables it.
+    """Read and decode the tail past a full head window.
 
     Returns:
         The encoding (detected again from both windows when a UTF-8 head is
-        followed by a tail that is not UTF-8), the decoded tail (``None``
-        without one), and whether the head covers the whole source.
+        followed by a non-UTF-8 tail), the tail text or ``None``, and whether
+        the samples reach the end of the source.
     """
     tail_raw = reader.tail(len(head_raw), tail_bytes, code_unit_size(encoding))
     if tail_raw is None:
@@ -517,28 +408,17 @@ def _sample_tail(
 def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
     """Read and decode the bounded head and tail samples of ``source``.
 
-    Paths are read with one bounded read per window. Buffers are sliced.
-    Seekable streams are sampled from their **current position** to their
-    end, and that position is restored afterwards. Non-seekable streams are
-    consumed once, with memory bounded by ``n_bytes + tail_bytes``; when one
-    runs on for more than :data:`MAX_FORWARD_SCAN_BYTES` past the head,
-    reading stops there and the tail is skipped (``covers_whole_file`` is
-    then ``False``). The tail never overlaps the head and is skipped when
-    the head already covers the whole source. The decoded texts are then
-    bounded in lines (see :func:`_bound_lines`); encoding detection uses
-    the whole windows. No single read exceeds
-    ``max(n_bytes, tail_bytes)`` for files, or :data:`STREAM_CHUNK_BYTES`
-    for streams.
+    Paths get one bounded read per window, buffers are sliced, seekable
+    streams are read from their **current position** (restored afterwards),
+    and non-seekable ones are consumed once with memory bounded by
+    ``n_bytes + tail_bytes``, skipping the tail past
+    :data:`MAX_FORWARD_SCAN_BYTES`. The tail never overlaps the head. Encoding
+    detection uses the whole windows; the texts are then bounded in lines.
 
     Args:
         source: The source to sample; see :data:`CSVSource`.
-        n_bytes: Head window size, in bytes. Must be between 1 and
-            :data:`MAX_SAMPLE_BYTES`.
-        tail_bytes: Maximum tail window size, in bytes; ``0`` disables it.
-            At most :data:`MAX_SAMPLE_BYTES`.
-
-    Returns:
-        The decoded :class:`Samples`.
+        n_bytes: Head window size, 1 to :data:`MAX_SAMPLE_BYTES` bytes.
+        tail_bytes: Tail window size, 0 (no tail) to :data:`MAX_SAMPLE_BYTES`.
 
     Raises:
         ValueError: If a byte budget is out of range.
@@ -546,8 +426,8 @@ def sample_source(source: CSVSource, n_bytes: int, tail_bytes: int) -> Samples:
         FileSampleReadError: If the source cannot be read.
         EmptySampleError: If the source is empty.
     """
-    _validate_byte_budget("n_bytes", n_bytes, minimum=1, maximum=MAX_SAMPLE_BYTES)
-    _validate_byte_budget("tail_bytes", tail_bytes, minimum=0, maximum=MAX_SAMPLE_BYTES)
+    _validate_byte_budget("n_bytes", n_bytes, minimum=1)
+    _validate_byte_budget("tail_bytes", tail_bytes, minimum=0)
     description = describe_source(source)
 
     try:

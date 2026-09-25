@@ -496,7 +496,7 @@
     "known_limitation": false,
     "generated": false,
     "expected_error": "EmptySampleError",
-    "notes": "read_sample_bytes and read_tail_bytes must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
+    "notes": "_sampling._PathReader.head and .tail must both return b'' without raising; inspect_csv then raises EmptySampleError before invoking any model, since there is nothing to infer from."
   },
   "header_only_no_data.csv": {
     "category": "structural",

@@ -61,8 +61,9 @@ it and infers them better than a 4 KB sample can (see
 - **Free and local by default.** Ollama with `qwen2.5-coder:7b`, falling
   back to `qwen2.5-coder:3b`. Gemini is an opt-in extra.
 - **Grounded, not trusted.** The model's answer is re-checked against the
-  real bytes: the delimiter, the header row, the literal column names and
-  the verbatim footer are recomputed from the sample.
+  real bytes: the delimiter, the quote escaping, the header row, the
+  literal column names and the verbatim footer are recomputed from the
+  sample.
 - **A validated contract.** A small Pydantic v2 model with exactly what a
   reader needs, not free text; `confidence` tells you which files to send
   to human review.
@@ -82,7 +83,7 @@ picture,
 (UTF-16 with a BOM, tabs, doubled quotes, a totals row and an export
 stamp):
 
-<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, True), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines, six column names, and confidence 0.95 with prompt version 2026.09-d in 1.6 s. demo_stock.tsv: ('UTF-16', '	', '&quot;', None, True), (True, 0, 2), its two footer lines, five column names, and confidence 0.95 in 1.9 s" src="docs/assets/demo.gif" width="900">
+<img alt="Terminal recording. demo_sales.csv: the dialect is ('Windows-1252', ';', '&quot;', None, True), has_header, header_row_index and footer_rows_to_skip are (True, 3, 2), then the two footer lines, six column names, and confidence 0.95 with prompt version 2026.09-f in 2.0 s. demo_stock.tsv: ('UTF-16', '	', '&quot;', None, True), (True, 0, 2), its two footer lines, five column names, and confidence 0.95 in 2.1 s" src="docs/assets/demo.gif" width="900">
 
 ## Accuracy at a glance
 
@@ -205,7 +206,9 @@ flowchart LR
 3. **Ground.** Small local models reliably *recognize* headers and footers
    but count and copy lines poorly, so the model's answer is used as a key
    to recompute the delimiter, the header row and literal column names (or
-   "no header"), and the verbatim footer from the sampled text. The exact
+   "no header"), and the verbatim footer from the sampled text. How quotes
+   are escaped (`""` or `\"`) is read from the samples too, when they show
+   one convention. The exact
    rules are in [How the result is grounded](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/using-the-result.md#how-the-result-is-grounded).
 4. **Validate.** Return a `CSVInspectionResult`, or raise a typed error.
 
@@ -227,7 +230,7 @@ flowchart TD
     T2 --> E2
     E1 --> F{Invoke primary model<br/>local Ollama or Gemini API<br/>within the time budget}
     E2 --> F
-    F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>delimiter, header row + literal column names,<br/>footer re-read verbatim]
+    F -->|success: valid JSON + schema| GR[Ground in the samples:<br/>delimiter, quote escaping,<br/>header row + literal column names,<br/>footer re-read verbatim]
     F -->|failure| G{Invoke fallback model<br/>with the remaining budget}
     G -->|success: valid JSON + schema| GR
     G -->|failure| H[InspectionFailedError<br/>or InspectionTimeoutError]
@@ -398,7 +401,7 @@ Every result returned by `inspect_csv` or `ainspect_csv` carries
 | `attempts` | How many models were called |
 | `retries` | Transient cloud errors (429/503) retried within an attempt |
 | `load_seconds` | Time Ollama spent loading the model, or `None` (cloud, custom invoker) |
-| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-d`); it changes with every change to the prompt wording |
+| `prompt_version` | The version of the prompt the models were sent (for example `2026.09-f`); it changes with every change to the prompt wording |
 
 An attempt that fails without an answer (timeout, transport error, empty
 reply) reports no tokens. `usage` is not part of the JSON contract: it is

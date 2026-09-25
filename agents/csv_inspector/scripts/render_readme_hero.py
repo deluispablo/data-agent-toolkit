@@ -82,7 +82,7 @@ SCENES = [
             ("footer_rows_to_skip", "2"),
         ],
         columns=["Date", "Store", "Product", "Units", "Amount (€)", "Returned"],
-        facts="qwen2.5-coder:7b on local Ollama · 1,053 tokens · confidence 0.95 · $0",
+        facts="qwen2.5-coder:7b on local Ollama · 1,105 tokens · confidence 0.95 · $0",
     ),
     Scene(
         filename="demo_stock.tsv",
@@ -111,7 +111,7 @@ SCENES = [
             ("footer_rows_to_skip", "2"),
         ],
         columns=["SKU", "Item", "Qty", "Unit price", "Updated"],
-        facts="qwen2.5-coder:7b on local Ollama · 1,061 tokens · confidence 0.95 · $0",
+        facts="qwen2.5-coder:7b on local Ollama · 1,120 tokens · confidence 0.95 · $0",
     ),
 ]
 

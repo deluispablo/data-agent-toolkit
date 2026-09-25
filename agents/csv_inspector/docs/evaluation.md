@@ -361,9 +361,111 @@ What the passes taught:
   `footer_first_line` at 300 characters, but a list of names cannot be
   capped without a per-file bound; #138 re-sizes the reply cap.
 
+## Baseline 0.4.0
+
+The reference every M6 pull request compares against
+([#139](https://github.com/deluispablo/data-agent-toolkit/issues/139)).
+Measured on 2026-09-25 on `main` after M5, with the same machine as the
+[0.3.0 baseline](#baseline-030).
+
+| | |
+|---|---|
+| Harness version | 2 |
+| `PROMPT_VERSION` | `2026.09-m` |
+| Catalog | 80 fixtures (44 hand-written, 36 matrix), 6 known limitations |
+| Local runs | `runs/qwen2.5-coder-7b-040.jsonl` and `runs/qwen2.5-coder-3b-040.jsonl`: each model as primary, default fallback `qwen2.5-coder:3b`, `n_bytes` 4096, `tail_bytes` 4096, timeout 300 s, `--repeat 3 --keep-raw` (240 inspections each) |
+| Cloud run | `runs/gemini-flash-lite-latest-040.jsonl`: `gemini-flash-lite-latest` as its own fallback, `--subset cloud --max-calls 18 --rpm 10` |
+
+Commands (from `agents/csv_inspector`; run files are git-ignored):
+
+```bash
+uv run python scripts/eval_samples.py --no-env-file --model qwen2.5-coder:7b \
+  --repeat 3 --keep-raw --out "runs/{model}-040.jsonl"
+uv run python scripts/eval_samples.py --no-env-file --model qwen2.5-coder:3b \
+  --repeat 3 --keep-raw --out "runs/{model}-040.jsonl"
+uv run python scripts/eval_samples.py --backend api --env-file .env \
+  --model gemini-flash-lite-latest --fallback-model gemini-flash-lite-latest \
+  --subset cloud --max-calls 18 --rpm 10 --keep-raw --out "runs/{model}-040.jsonl"
+```
+
+### Headline, 0.3.0 against 0.4.0
+
+| metric | 7b, 0.3.0 | **7b, 0.4.0** | 3b, 0.4.0 | cloud, 0.3.0 | **cloud, 0.4.0** |
+|---|---|---|---|---|---|
+| prompt version | 2026.09-a | 2026.09-m | 2026.09-m | 2026.09-a | 2026.09-m |
+| fixtures x repeat | 80 x 3 | 80 x 3 | 80 x 3 | 15 x 1 | 15 x 1 |
+| prompt tokens (mean) | 2,834 | **2,639** (-7 %) | 2,616 | 2,118 | **1,806** (-15 %) |
+| completion tokens (mean) | 389 | **146** (-62 %) | 164 | 403 | **119** (-70 %) |
+| latency p50 | 5.04 s | **1.58 s** | 1.02 s | 1.75 s | 1.12 s |
+| latency p95 | 20.89 s | **6.52 s** | 7.51 s | 2.48 s | 1.39 s |
+| model calls | 282 | 243 | 237 | 15 | 15 |
+| errored lines | 27 | **0** | 14 | 0 | 0 |
+| **accuracy** | **92.8 %** | **99.7 %** | **98.7 %** | **98.1 %** | **100.0 %** |
+| majority-vote accuracy | 92.8 % | 99.6 % | 98.7 % | 98.1 % | 100.0 % |
+
+| category | 7b, 0.3.0 | 7b, 0.4.0 | 3b, 0.4.0 |
+|---|---|---|---|
+| `combo`, `data_format`, `delimiter` | 100 % | 100 % | 100 % |
+| `encoding` | 85.7 % | 100 % | 100 % |
+| `header_footer` | 87.9 % | 99.2 % | 96.0 % |
+| `quoting` | 97.6 % | 100 % | 100 % |
+| `structural` | 95.7 % | 100 % | 100 % |
+
+| field | 7b, 0.3.0 | 7b, 0.4.0 | 3b, 0.4.0 |
+|---|---|---|---|
+| `encoding`, `quotechar`, `escapechar` | 100 % | 100 % | 100 % |
+| `delimiter` | 92.3 % | 100 % | 100 % |
+| `doublequote` | 50.0 % | 100 % | 100 % |
+| `has_header` | 75.0 % | 100 % | 100 % |
+| `header_row_index` | 96.8 % | 100 % | 98.5 % |
+| `footer_lines`, `footer_rows_to_skip` | 77.1 % | 98.8 % | 96.1 % |
+| `columns` (exact list) | 96.9 % | 100 % | 98.5 % |
+| `expected_error` | (not scored) | 100 % | 100 % |
+
+### What moved the numbers
+
+| Change | Issue | Effect in the M5 runs |
+|---|---|---|
+| Grounding: header-less shape test, delimiter dominance, footer anchors | #131, #151, #153 | 7b accuracy 92.8 % -> 98.3 %; `footer_lines` 77.1 % -> 96.5 % |
+| Columns as names only; `notes`, types and examples dropped | #129, #147 | completion 389 -> 172 tokens; p50 5.2 s -> 1.65 s; the eight 40-column files no longer hit the reply cap |
+| Response schema on both backends, first footer line only, `_ModelAnswer` | #130, #132 | 0 errored lines on 7b; accuracy 100.0 % on the post-wave-4 run |
+| Prompt rewrite | #133 | template 852 -> 701 tokens (see [Prompt passes](#prompt-passes-133)) |
+
+### Failure modes
+
+- **7b**: no errored inspection. Three verdicts fail: two known
+  limitations (`footer_longer_than_tail_window.csv`,
+  `gen_very_wide_long_lines.csv`) and `gen_headerless_marker.csv`, whose
+  footer the model misses.
+- **3b as primary**: 14 errored lines (17 exceptions, known limitations
+  included) on 4 regular files (`single_column.csv`, `header_years.csv`,
+  `gen_combo_pipe_ragged.csv`, `gen_footer_none_narrow.csv`). The model
+  repeats the prompt's footer examples inside `columns` until the
+  1,024-token reply cap, so the answer is not valid JSON. The fallback is
+  the same model in this run; with the default configuration (7b primary)
+  3b only answers after a 7b failure, which the 7b run above never had.
+  Reply sizing is #138.
+- No 429 or 503 on the cloud run; no retries anywhere.
+
+### Cloud cost
+
+`gemini-flash-lite-latest` on the cloud subset: 27,083 prompt and 1,786
+completion tokens for 15 inspections, which costs about **$0.0126** at
+the list price used for 0.3.0 ($0.30 input and $2.50 output per million
+tokens). That is **$0.00084 per inspection, about $0.84 per 1,000 files**:
+half of 0.3.0's $1.64, mostly because the answer is 70 % shorter.
+
+### Open for M6
+
+- The template is 701 tokens, not the 600 that #133 targeted: the footer
+  rules proved necessary (see [Prompt passes](#prompt-passes-133)).
+- The 3b loops above, and `num_predict` sizing (#138).
+- The known limitations are unchanged, except that
+  `header_none_after_preamble.csv` now passes on 7b.
+
 ## Baseline 0.3.0
 
-The reference every M5/M6 pull request compares against
+The reference every M5 pull request compared against (M6 compares against [Baseline 0.4.0](#baseline-040))
 ([#128](https://github.com/deluispablo/data-agent-toolkit/issues/128)).
 Measured on 2026-09-24 on `main` after M4. The inspection behaviour is
 that of 0.3.0: M4 added measurement only (`Usage`, `PROMPT_VERSION`), and

@@ -8,8 +8,9 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
-To be released as **0.4.0**: the output contract is slimmed to what
-pipelines consume.
+## [0.4.0] - 2026-09-25
+
+The output contract is slimmed to what pipelines consume.
 
 ### Changed (breaking)
 
@@ -256,6 +257,12 @@ pipelines consume.
   and field, latency and reloads, failure modes, a cloud run with its list
   price, and the GO/RESCOPE/DROP verdict for each planned optimization
   ([#128](https://github.com/deluispablo/data-agent-toolkit/issues/128)).
+- `docs/evaluation.md` records the 0.4.0 baseline, the reference for M6:
+  on `qwen2.5-coder:7b` accuracy rises from 92.8 % to 99.7 % with no
+  errored inspection (27 in 0.3.0), completion tokens fall 62 % and the
+  median latency from 5.0 s to 1.6 s; the cloud subset costs about $0.84
+  per 1,000 files, half of 0.3.0's
+  ([#139](https://github.com/deluispablo/data-agent-toolkit/issues/139)).
 
 ## [0.3.0] - 2026-09-24
 
@@ -611,7 +618,8 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.4.0...HEAD
+[0.4.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...csv-inspector-v0.4.0
 [0.3.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...csv-inspector-v0.3.0
 [0.2.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.1.0...csv-inspector-v0.2.0
 [0.1.0]: https://github.com/deluispablo/data-agent-toolkit/releases/tag/csv-inspector-v0.1.0

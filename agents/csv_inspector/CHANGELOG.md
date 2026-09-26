@@ -8,6 +8,14 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-09-26
+
+Model selection: fifteen local models measured against a rule fixed
+before the first run. `qwen2.5-coder:7b` stays the default and is now its
+own fallback, the one breaking change. The evaluation harness records
+load time and the loaded model's size, and thinking models (`qwen3`) work
+on the local backend.
+
 ### Changed (breaking)
 
 - The local defaults are now `qwen2.5-coder:7b` / `qwen2.5-coder:7b`
@@ -794,7 +802,8 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.6.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.7.0...HEAD
+[0.7.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.6.0...csv-inspector-v0.7.0
 [0.6.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.5.0...csv-inspector-v0.6.0
 [0.5.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.4.0...csv-inspector-v0.5.0
 [0.4.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...csv-inspector-v0.4.0

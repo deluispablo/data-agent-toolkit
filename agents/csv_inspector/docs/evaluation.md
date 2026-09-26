@@ -451,10 +451,13 @@ Ollama server must not see the GPU:
 
 1. Stop the Ollama tray app, which holds port 11434 (PowerShell:
    `Get-Process ollama* | Stop-Process -Force`).
-2. In a terminal, hide the GPU and start the server:
+2. In a terminal, hide the GPU from both of Ollama's GPU backends and
+   start the server. Hiding CUDA alone is not enough: Ollama 0.34 then
+   finds the same card through Vulkan and loads the model there.
 
    ```powershell
    $env:CUDA_VISIBLE_DEVICES = '-1'
+   $env:GGML_VK_VISIBLE_DEVICES = '-1'
    ollama serve
    ```
 
@@ -463,8 +466,8 @@ Ollama server must not see the GPU:
    `model_vram_bytes` 0.
 4. When done, stop that server and start the tray app again.
 
-On Linux or macOS the same steps apply with `CUDA_VISIBLE_DEVICES=-1
-ollama serve` after stopping the service.
+On Linux the same steps apply with `CUDA_VISIBLE_DEVICES=-1
+GGML_VK_VISIBLE_DEVICES=-1 ollama serve` after stopping the service.
 
 Knobs worth one run each on CPU, all set in the shell before `ollama serve`
 (one server restart per variant):
@@ -477,6 +480,110 @@ Knobs worth one run each on CPU, all set in the shell before `ollama serve`
   smaller KV cache.
 - Quantisation tags, e.g. `qwen2.5-coder:3b-instruct-q4_0` or `-q8_0`:
   smaller or more faithful weights than the default tag.
+
+### Model comparison 2026-09
+
+The M8 measurement ([#148](https://github.com/deluispablo/data-agent-toolkit/issues/148)),
+run on 2026-09-26 with the rule above fixed before the first run.
+
+| | |
+|---|---|
+| Machine | i5-13600KF (20 threads), 64 GB RAM, RTX 4070 12 GB, Windows 11 |
+| Ollama | 0.34.4; GPU runs on the tray app's server, CPU runs on `ollama serve` with CUDA and Vulkan hidden (`ollama ps`: `100% CPU`) |
+| `PROMPT_VERSION` | `2026.09-n` (harness version 2), every run |
+| Settings | each model as its own fallback, `n_bytes` 4096, `tail_bytes` 4096, `--keep-raw`, `--no-env-file`; timeout 300 s on GPU, 600 s on CPU; loaded models stopped before each run, so "load max" is a cold start |
+| Qwen3 | thinking turned off (`think: false`, [#198](https://github.com/deluispablo/data-agent-toolkit/issues/198)) |
+
+**Phases.** (1) Screen: every candidate on the [quick subset](#quick-subset),
+`--repeat 1`, GPU; cut below 97 % or with more than one fixture without a
+valid answer. (2) Prove: the survivors plus `qwen2.5-coder:3b` on the full
+catalog, `--repeat 3`, GPU, where the qualifier is decided. (3) Time: the
+qualifier and the two closest cheaper models on CPU, full catalog,
+`--repeat 1`; accuracy stays the phase-2 number (CPU answers differ in the
+decimals: 3b scored 99.1 % on its CPU run against 98.4 % on GPU). (4) Tune
+the top two on CPU.
+
+Every candidate, smallest on disk first within its phase. Full-catalog
+rows are `80 x 3` on GPU; screened-out rows are the quick subset (`21 x 1`)
+and say so. "Loaded" is `ollama ps`'s size (`model_size_bytes`), on CPU
+where measured, else on GPU; "agreement" is the lowest per-field agreement
+between repeats. Tokens are means per call.
+
+| model | disk | loaded | GPU p50 / p95 | CPU p50 / p95 | load max (GPU / CPU) | tokens (prompt / completion) | aggregate | weakest field | errored lines | agreement | verdict |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| `qwen2.5-coder:1.5b` | 986 MB | 1.37 GB | 0.60 s / 1.94 s | 6.48 s / 29.49 s | 1.88 s / 1.04 s | 1,512 / 150 | 97.2 % | `footer_lines` 88.4 % | 4 | 98.8 % (`footer_lines`) | fails: aggregate, field |
+| `qwen2.5-coder:3b` | 1.9 GB | 2.41 GB | 0.91 s / 3.82 s | 12.62 s / 56.86 s | 1.67 s / 1.53 s | 1,531 / 170 | 98.4 % | `footer_lines` 93.9 % | 21 | 100 % | fails: aggregate, field |
+| `qwen3:4b` | 2.5 GB | 3.87 GB | 1.19 s / 4.02 s | not run | 1.91 s / - | 1,524 / 160 | 97.2 % | `has_header` 75.0 % | 0 | 100 % | fails: aggregate, field |
+| **`qwen2.5-coder:7b`** | 4.7 GB | **5.46 GB** | 1.44 s / 4.45 s | **25.07 s / 105.48 s** | 2.40 s / 3.08 s | 1,507 / 141 | **100.0 %** | every field 100 % | 6 | 100 % | **qualifies** |
+| `gemma3:1b` (quick) | 815 MB | 0.95 GB | 0.78 s / 1.85 s | - | 0.00 s | 1,593 / 114 | 77.8 % | `header_row_index` 0 % | 19 | - | cut: accuracy, 19 invalid answers |
+| `qwen2.5:1.5b` (quick) | 986 MB | 1.36 GB | 0.67 s / 1.88 s | - | 1.33 s | 1,287 / 157 | 94.2 % | `has_header` 66.7 % | 0 | - | cut: accuracy |
+| `llama3.2:1b` (quick) | 1.3 GB | 1.72 GB | 0.58 s / 1.71 s | - | 3.09 s | 1,144 / 110 | 85.6 % | `footer_lines` 52.9 % | 0 | - | cut: accuracy |
+| `qwen3:1.7b` (quick) | 1.4 GB | 2.24 GB | 0.83 s / 2.45 s | - | 5.63 s | 1,270 / 124 | 91.2 % | `has_header` 50.0 % | 2 | - | cut: accuracy, 2 invalid answers |
+| `granite3.3:2b` (quick) | 1.5 GB | 2.36 GB | 0.81 s / 2.31 s | - | 1.37 s | 1,380 / 120 | 89.6 % | `has_header` 33.3 % | 0 | - | cut: accuracy |
+| `qwen2.5:3b` (quick) | 1.9 GB | 2.40 GB | 0.91 s / 2.71 s | - | 1.58 s | 1,320 / 110 | 92.8 % | `has_header` 66.7 % | 1 | - | cut: accuracy |
+| `llama3.2:3b` (quick) | 2.0 GB | 3.11 GB | 0.83 s / 3.12 s | - | 1.92 s | 1,084 / 116 | 87.6 % | `has_header` 0 % | 8 | - | cut: accuracy, 8 invalid answers |
+| `phi4-mini` (quick) | 2.5 GB | 3.70 GB | 1.22 s / 7.19 s | - | 1.86 s | 927 / 106 | 94.8 % | `has_header` 50.0 % | 6 | - | cut: accuracy, 6 invalid answers |
+| `gemma3:4b` (quick) | 3.3 GB | 3.03 GB | 1.50 s / 5.20 s | - | 3.61 s | 1,371 / 138 | 93.8 % | `has_header` 0 % | 3 | - | cut: accuracy, 3 invalid answers |
+| `llama3.1:8b` (quick) | 4.9 GB | 5.93 GB | 1.75 s / 5.57 s | - | 3.62 s | 1,134 / 123 | 95.0 % | `has_header` 66.7 % | 0 | - | cut: accuracy |
+| `qwen3:8b` (quick) | 5.2 GB | 6.30 GB | 1.88 s / 5.46 s | - | 3.63 s | 1,295 / 112 | 96.9 % | `has_header` 66.7 % | 0 | - | cut: accuracy |
+
+On the quick subset the four finalists scored: `qwen2.5-coder:1.5b`
+100 % (1 invalid answer), `qwen2.5-coder:3b` 96.6 % (3; kept as the
+current fallback, as the plan required), `qwen3:4b` 97.6 % (1),
+`qwen2.5-coder:7b` 100 % (0). Every candidate pulled; none was dropped.
+The errored lines of `qwen2.5-coder:7b` and most of `:3b`'s are Ollama's
+"token repeat limit reached" on the tab-separated totals footers
+([#181](https://github.com/deluispablo/data-agent-toolkit/issues/181));
+the others are answers that are not JSON or break the schema
+(`gemma3:1b` and `llama3.2:3b` mostly set `header_row_index` with
+`has_header` false). Prompt tokens differ by tokenizer (Llama, Phi and
+Gemma count fewer). The two 8B models loaded at more than 5 GB and lost on
+the screen anyway, so neither would win on size.
+
+**Tuning on CPU.** The top two: `qwen2.5-coder:7b`, the only qualifier,
+and `qwen2.5-coder:3b`, the closest to the bar and today's fallback. Each
+variant is one quick-subset run, `--repeat 2`, against the same run of the
+default setup; a variant is kept when p50 improves by 10 % or more, or the
+loaded size drops by 20 % or more, with the quick-subset accuracy
+unchanged. `OLLAMA_NUM_PARALLEL=1` and `OLLAMA_FLASH_ATTENTION=1` were not
+run: Ollama 0.34.4 already defaults to one slot and turns flash attention
+on (`flash_attn = auto`) on this CPU, so both are the baseline.
+
+| model | variant | loaded | CPU p50 / p95 | quick accuracy | errored lines | kept |
+|---|---|---|---|---|---|---|
+| `qwen2.5-coder:7b` | default (`q4_K_M`) | 5.46 GB | 13.91 s / 32.05 s | 100.0 % | 0 | baseline |
+| `qwen2.5-coder:7b` | `7b-instruct-q4_0` tag | 5.20 GB | 10.51 s / 28.08 s | 100.0 % | 0 | **yes** (p50 -24 %) |
+| `qwen2.5-coder:7b` | `OLLAMA_KV_CACHE_TYPE=q8_0` (with `OLLAMA_FLASH_ATTENTION=1`) | 5.22 GB | 13.76 s / 34.42 s | 100.0 % | 0 | no (p50 -1 %, size -4 %) |
+| `qwen2.5-coder:3b` | default (`q4_K_M`) | 2.41 GB | 8.48 s / 19.87 s | 96.7 % | 5 | baseline |
+| `qwen2.5-coder:3b` | `3b-instruct-q4_0` tag | 2.31 GB | 6.52 s / 24.43 s | 95.2 % | 7 | no (accuracy drops) |
+| `qwen2.5-coder:3b` | `OLLAMA_KV_CACHE_TYPE=q8_0` (with `OLLAMA_FLASH_ATTENTION=1`) | 2.26 GB | 8.28 s / 22.04 s | 96.7 % | 4 | no (p50 -2 %, size -6 %) |
+
+Run files, all in `runs/`: `{model}-quick.jsonl` for every candidate,
+`{model}-gpu.jsonl` and `{model}-cpu.jsonl` for the finalists,
+`{model}-tune.jsonl` and `{model}-tune-kvq8.jsonl` for the tuning runs
+(`{model}` made file-safe, e.g. `qwen2.5-coder-7b-instruct-q4_0-tune.jsonl`),
+and `probe-qwen3-4b*.jsonl` from #198.
+
+**Recommendation.** Primary `qwen2.5-coder:7b`, unchanged: it is the only
+qualifier (100.0 %, every field and every repeat agreement at 100 %).
+Fallback, by the rule: no other model qualifies, so it is the primary
+again, `qwen2.5-coder:7b`, which differs from today's `qwen2.5-coder:3b`
+(98.4 %, `footer_lines` 93.9 %: under both bars). The library skips a
+fallback equal to the primary, so in practice there is no fallback model:
+the primary gets the whole time budget instead of about 70 % of it, and a
+failed answer raises `InspectionFailedError` instead of asking the 3B
+model. On the cheapest host (CPU only) the primary needs about 5.5 GB of
+RAM once loaded (5.2 GB with the `7b-instruct-q4_0` tag, the one tuning
+variant kept: p50 24 % lower on the quick subset at the same accuracy, not
+proven on the full catalog) and answers in 25 s at p50 and 105 s at p95 on
+this 20-thread CPU (slowest 121 s, inside the CLI's 300 s budget); a cold
+load adds about 3 s. Against today's `qwen2.5-coder:7b` + `:3b` pair
+nothing is lost in accuracy; what is lost is the 3B rescue of the #181
+lines: 3 errored lines out of 240 with the 3B fallback (the 0.6.0 run)
+against 6 without it. Nothing under 5 GB loaded reaches the bar: the best
+small models, `qwen2.5-coder:1.5b` (1.4 GB, CPU p50 6.5 s) and `qwen3:4b`,
+stop at 97.2 %, so a host that cannot hold 5.5 GB has no default that
+meets it.
 
 ## Publishing a baseline
 

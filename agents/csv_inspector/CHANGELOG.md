@@ -31,6 +31,12 @@ listed under **Changed (breaking)**.
 - `docs/evaluation.md` "Comparing models": the M8 decision rule for
   choosing a default model, the run-file names per phase and a CPU-only
   recipe for Ollama (with the tuning knobs worth a run).
+- `docs/evaluation.md` "Model comparison 2026-09": fifteen local models
+  screened, four proven on the full catalog, three timed on CPU and two
+  tuned, with the recommendation for the defaults (#148). The CPU-only
+  recipe now also hides the GPU from Ollama's Vulkan backend
+  (`GGML_VK_VISIBLE_DEVICES=-1`), without which Ollama 0.34 still loads
+  the model on the GPU.
 
 ## [0.6.0] - 2026-09-26
 

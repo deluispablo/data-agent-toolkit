@@ -96,10 +96,12 @@ def test_capture_keeps_the_fallback_answer_when_the_primary_fails(
     replies = _replies("not json", json.dumps(ANSWER))
     install_fake_ollama(monkeypatch, lambda **kwargs: next(replies))
 
-    data = capture(DEMO_FILE, HEAD_BYTES, TAIL_BYTES, Settings())
+    settings = Settings(ollama_fallback_model="small-fallback")
 
-    assert data["answer"]["model"] == "qwen2.5-coder:3b"
-    assert data["usage"]["model"] == "qwen2.5-coder:3b"
+    data = capture(DEMO_FILE, HEAD_BYTES, TAIL_BYTES, settings)
+
+    assert data["answer"]["model"] == "small-fallback"
+    assert data["usage"]["model"] == "small-fallback"
     assert data["usage"]["attempts"] == 2
 
 
@@ -135,7 +137,9 @@ def test_capture_reports_the_kept_prompt_tokens_not_the_sum_of_attempts(
     replies = _replies("not json", json.dumps(ANSWER))
     install_fake_ollama(monkeypatch, lambda **kwargs: next(replies))
 
-    data = capture(DEMO_FILE, HEAD_BYTES, TAIL_BYTES, Settings())
+    settings = Settings(ollama_fallback_model="small-fallback")
+
+    data = capture(DEMO_FILE, HEAD_BYTES, TAIL_BYTES, settings)
 
     assert data["prompt"]["tokens"] == 950
     assert data["usage"]["prompt_tokens"] == 1900  # usage keeps the totals

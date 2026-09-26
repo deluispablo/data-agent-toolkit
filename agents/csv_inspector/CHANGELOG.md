@@ -8,6 +8,20 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Changed (breaking)
+
+- The local defaults are now `qwen2.5-coder:7b` / `qwen2.5-coder:7b`
+  (were `qwen2.5-coder:7b` / `qwen2.5-coder:3b`): the model comparison of
+  #148 found no second local model that meets the accuracy bar, so the
+  fallback is the primary itself. A fallback equal to the primary is
+  skipped, so the local backend now tries one model, with the whole time
+  budget instead of about 70 % of it, and a failed answer raises
+  `InspectionFailedError` instead of asking the 3B model. Pull the model
+  with `ollama pull qwen2.5-coder:7b` (`qwen2.5-coder:3b` is no longer
+  needed); set `OLLAMA_FALLBACK_MODEL=qwen2.5-coder:3b` (or
+  `Settings(ollama_fallback_model=...)`) to keep the old fallback. The
+  cloud defaults are unchanged.
+
 ### Added
 
 - Evaluation harness: a run summary records the model load time
@@ -37,6 +51,9 @@ listed under **Changed (breaking)**.
   recipe now also hides the GPU from Ollama's Vulkan backend
   (`GGML_VK_VISIBLE_DEVICES=-1`), without which Ollama 0.34 still loads
   the model on the GPU.
+- `docs/evaluation.md` "Baseline 0.7.0" (CPU-only and GPU numbers for the
+  new defaults) and README "Accuracy at a glance" with the CPU-only host as
+  the headline.
 
 ## [0.6.0] - 2026-09-26
 

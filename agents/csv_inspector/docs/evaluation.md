@@ -478,7 +478,7 @@ Knobs worth one run each on CPU, all set in the shell before `ollama serve`
   (default 5 minutes); longer avoids reloads between sparse inspections.
 - `OLLAMA_FLASH_ATTENTION=1`, and with it `OLLAMA_KV_CACHE_TYPE=q8_0`: a
   smaller KV cache.
-- Quantisation tags, e.g. `qwen2.5-coder:3b-instruct-q4_0` or `-q8_0`:
+- Quantisation tags, e.g. `qwen2.5-coder:7b-instruct-q4_0` or `-q8_0`:
   smaller or more faithful weights than the default tag.
 
 ### Model comparison 2026-09
@@ -599,6 +599,61 @@ README.
 If a demo file's result changes too (a prompt, grounding or default-model
 change), regenerate the README's hero, terminal recording and walkthrough: see
 "Development" in the README.
+
+## Baseline 0.7.0
+
+The reference after M8 ([#199](https://github.com/deluispablo/data-agent-toolkit/issues/199)):
+the local defaults are `qwen2.5-coder:7b` as primary and as fallback,
+chosen by the [model comparison](#model-comparison-2026-09), whose
+finalist runs of that model are this baseline. Measured on 2026-09-26 on
+the same machine as the earlier baselines. The prompt is unchanged since
+0.5.0, so the cloud numbers are carried over from
+[0.5.0](#baseline-050) (not re-run).
+
+| | |
+|---|---|
+| Harness version | 2 (summaries now carry load time and loaded size, #197) |
+| `PROMPT_VERSION` | `2026.09-n` |
+| Catalog | 80 fixtures (44 hand-written, 36 matrix), 6 known limitations |
+| GPU run | `runs/qwen2.5-coder-7b-gpu.jsonl`: `qwen2.5-coder:7b` as its own fallback, `n_bytes` 4096, `tail_bytes` 4096, timeout 300 s, `--repeat 3 --keep-raw` (240 inspections), RTX 4070 |
+| CPU run | `runs/qwen2.5-coder-7b-cpu.jsonl`: same settings, `--repeat 1`, timeout 600 s, Ollama with CUDA and Vulkan hidden (`ollama ps`: `100% CPU`), i5-13600KF (20 threads) |
+
+Commands, from the repository root:
+
+```bash
+uv run --directory agents/csv_inspector python scripts/eval_samples.py --no-env-file \
+  --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:7b --repeat 3 --keep-raw \
+  --out "runs/{model}-gpu.jsonl"
+# CPU: restart Ollama as in "CPU-only recipe", then
+uv run --directory agents/csv_inspector python scripts/eval_samples.py --no-env-file \
+  --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:7b --repeat 1 --timeout 600 \
+  --keep-raw --out "runs/{model}-cpu.jsonl"
+```
+
+| metric | 7b, 0.5.0 (fallback 3b) | **7b, 0.7.0, GPU** | **7b, 0.7.0, CPU** |
+|---|---|---|---|
+| fixtures x repeat | 80 x 3 | 80 x 3 | 80 x 1 |
+| prompt tokens (mean) | 1,522 | 1,507 | 1,507 |
+| completion tokens (mean) | 144 | 141 | 141 |
+| latency p50 | 1.49 s | **1.44 s** | **25.07 s** |
+| latency p95 | 4.69 s | **4.45 s** | **105.48 s** (slowest 120.9 s) |
+| load max (cold) | not recorded | 2.40 s | 3.08 s |
+| loaded size | not recorded | 5.13 GB, all in VRAM | 5.46 GB, 0 in VRAM |
+| errored lines | 3 | 6 | 2 |
+| **accuracy** | **100.0 %** | **100.0 %** | 99.7 % |
+| majority-vote accuracy | 100.0 % | 100.0 % | n/a (one repeat) |
+
+Every category and every field scores 100 % on the GPU run, and every
+field agrees across the three repeats. The CPU pass differs in the
+decimals (it misses the footer of `gen_encoding_utf8_bom_crlf.csv`:
+`footer_lines` and `footer_rows_to_skip` at 98.1 %); the accuracy of
+record is the GPU run's. The errored lines are all
+[#181](https://github.com/deluispablo/data-agent-toolkit/issues/181):
+`gen_preamble_5_footer.csv` and `gen_utf16le_bom_crlf_wide.csv`, both
+tab-separated with a totals row that ends in empty fields, make the model
+repeat `\t` until Ollama aborts, on every repeat. In 0.5.0 and 0.6.0 the
+`qwen2.5-coder:3b` fallback answered the second one; with the fallback
+now the primary itself, both fail. Cloud: as measured at 0.5.0.
 
 ## Baseline 0.5.0
 

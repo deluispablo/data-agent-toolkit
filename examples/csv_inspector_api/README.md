@@ -18,7 +18,7 @@ and column names.
 ## Run
 
 From the repository root, after `uv sync --all-packages --all-extras`, with
-`ollama serve` running and `qwen2.5-coder:7b` and `qwen2.5-coder:3b` pulled:
+`ollama serve` running and `qwen2.5-coder:7b` pulled:
 
 ```bash
 uv run examples/csv_inspector_api/main_demo.py
@@ -45,7 +45,7 @@ optional. For a file, copy [`.env.example`](.env.example) to `.env` and add
 | variable | default | meaning |
 |---|---|---|
 | `LLM_BACKEND` | `local` | `local` (Ollama) or `api` (Gemini) |
-| `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `:3b` | local models |
+| `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:7b` (the same model: tried once) | local models |
 | `OLLAMA_HOST` | SDK default (`http://localhost:11434`) | Ollama server |
 | `CLOUD_MODEL` / `CLOUD_FALLBACK_MODEL` | library defaults | cloud models |
 | `GEMINI_API_KEY` | unset | Gemini Developer API key; never commit it |

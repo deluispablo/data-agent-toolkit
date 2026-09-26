@@ -42,16 +42,18 @@ def test_defaults_select_the_local_backend_with_built_in_models() -> None:
     assert settings.gemini_api_key is None
 
 
-@pytest.mark.parametrize("backend", list(LLMBackend))
-def test_every_backend_has_a_distinct_fallback_by_default(backend: LLMBackend) -> None:
-    """Out of the box, a failed primary is retried with a different model.
+def test_the_default_fallbacks_follow_the_model_comparison() -> None:
+    """The cloud fallback differs from its primary; the local one is the primary again.
 
-    Regression test for issue #13: each default fallback equalled its primary,
-    so it was skipped and only one model was ever tried.
+    Issue #13 made every default fallback differ from its primary. The M8
+    comparison (#148, #199) found no second local model that qualifies, and
+    its rule then makes the fallback the primary again: one local model is
+    tried, with the whole time budget.
     """
     settings = Settings()
 
-    assert settings.fallback_model_for(backend) != settings.model_for(backend)
+    assert settings.fallback_model_for(LLMBackend.API) != settings.model_for(LLMBackend.API)
+    assert settings.fallback_model_for(LLMBackend.LOCAL) == settings.model_for(LLMBackend.LOCAL)
 
 
 @pytest.mark.parametrize("raw", ["api", "API", " Api "])

@@ -75,19 +75,19 @@ def test_a_prose_wrapped_reply_is_accepted_on_the_first_attempt() -> None:
     assert result.delimiter == ";"
 
 
-def test_the_default_models_include_a_distinct_fallback() -> None:
-    """With default settings, a failing primary is retried with the default fallback."""
+def test_the_default_local_models_are_one_model_tried_once() -> None:
+    """With default settings the local fallback is the primary, so a failure is not retried."""
     models: list[str] = []
 
     def invoker(prompt: str, model: str) -> str:
         models.append(model)
-        if len(models) == 1:
-            raise ModelInvocationError("primary unavailable")
-        return json.dumps(VALID_RESULT_PAYLOAD)
+        raise ModelInvocationError("primary unavailable")
 
-    inspect_csv(SAMPLE_CSV_PATH, settings=Settings(), model_invoker=invoker)
+    with pytest.raises(InspectionFailedError):
+        inspect_csv(SAMPLE_CSV_PATH, settings=Settings(), model_invoker=invoker)
 
-    assert models == [DEFAULT_MODEL, FALLBACK_MODEL]
+    assert FALLBACK_MODEL == DEFAULT_MODEL
+    assert models == [DEFAULT_MODEL]
 
 
 def test_inspect_csv_returns_validated_result_on_first_model_success() -> None:
@@ -404,7 +404,13 @@ def test_a_failed_attempt_log_never_shows_the_configured_api_key(
         caplog.at_level(logging.DEBUG, logger="csv_inspector"),
         pytest.raises(InspectionFailedError),
     ):
-        inspect_csv(SAMPLE_CSV_PATH, settings=settings, model_invoker=invoker)
+        inspect_csv(
+            SAMPLE_CSV_PATH,
+            settings=settings,
+            model="primary",
+            fallback_model="fallback",
+            model_invoker=invoker,
+        )
 
     failures = [r.getMessage() for r in caplog.records if "failed:" in r.getMessage()]
     assert len(failures) == 2

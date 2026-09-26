@@ -33,8 +33,7 @@ Only live runs need Ollama, never the tests:
 
 ```bash
 ollama serve
-ollama pull qwen2.5-coder:7b
-ollama pull qwen2.5-coder:3b          # default fallback model
+ollama pull qwen2.5-coder:7b          # default model (also the default fallback)
 
 uv run agents/csv_inspector/main_demo.py            # or: uv run csv-inspector path/to/file.csv
 uv run agents/csv_inspector/scripts/eval_samples.py # score a live model on the fixture catalog

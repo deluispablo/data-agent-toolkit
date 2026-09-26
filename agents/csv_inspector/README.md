@@ -58,8 +58,9 @@ it and infers them better than a 4 KB sample can (see
 - **Never loads the source.** One bounded read of the head and one of the
   tail (4 KiB each by default, 16 KiB at most), whether the file is 4 KB or
   40 GB. Only their first and last few lines reach the model.
-- **Free and local by default.** Ollama with `qwen2.5-coder:7b`, falling
-  back to `qwen2.5-coder:3b`. Gemini is an opt-in extra.
+- **Free and local by default.** Ollama with `qwen2.5-coder:7b`, the one
+  local model that met the bar in a 15-model comparison, CPU-only hosts
+  included. Gemini is an opt-in extra.
 - **Grounded, not trusted.** The model's answer is re-checked against the
   real bytes: the delimiter, the quote escaping, the header row, the
   literal column names and the verbatim footer are recomputed from the
@@ -95,31 +96,39 @@ stamp):
 
 Measured with the repository's evaluation harness against a catalog of
 **80 messy fixtures** (encodings, delimiters, quoting, preambles, footers,
-header-less files, structural oddities). Baseline 0.5.0, measured on
-2026-09-25, next to 0.4.0:
+header-less files, structural oddities). Baseline 0.7.0, measured on
+2026-09-26 on a CPU-only server (the cheapest host) and on a GPU; the
+cloud column is baseline 0.5.0 (2026-09-25), unchanged:
 
-| | Local: `qwen2.5-coder:7b` | Cloud: `gemini-flash-lite-latest` |
-|---|---|---|
-| Accuracy | **100 %** of the answered inspections (the full catalog, 3 repeats; 0.4.0: 99.7 %); 3 of 240 fail, see below | **100 %** (a 15-fixture subset; 0.4.0: 100 %) |
-| Prompt size | 1,522 tokens on average (0.4.0: 2,639, -42 %) | 968 tokens (0.4.0: 1,806, -46 %) |
-| Latency per inspection | p50 1.5 s, p95 4.7 s (0.4.0: 1.6 s, 6.5 s) | p50 19.8 s, p95 28.3 s on the day measured (0.4.0: 1.1 s, 1.4 s), all of it the service's |
-| Cost | $0, on your own machine | about $0.58 per 1,000 files at list price, on that subset (0.4.0: $0.84) |
+| | Local: `qwen2.5-coder:7b`, CPU only | Local, same model, GPU | Cloud: `gemini-flash-lite-latest` |
+|---|---|---|---|
+| Accuracy | **100 %** of the answered inspections (the full catalog, 3 repeats, measured on GPU; the one CPU pass scored 99.7 %) | **100 %**; 6 of 240 fail, see below | **100 %** (a 15-fixture subset) |
+| Memory | 5.5 GB of RAM with the model loaded | 5.1 GB of VRAM | none on your side |
+| Prompt size | 1,507 tokens on average | 1,507 tokens | 968 tokens |
+| Latency per inspection | p50 25.1 s, p95 105.5 s (20-thread desktop CPU) | p50 1.4 s, p95 4.5 s (RTX 4070) | p50 19.8 s, p95 28.3 s on the day measured, all of it the service's |
+| Cost | $0, on your own machine | $0 | about $0.58 per 1,000 files at list price, on that subset |
 
 Each fixture scores the share of its fields that match the ground truth;
 accuracy is the mean over fixtures, known limitations and failed
-inspections excluded. On 0.5.0 every category is at 100 % on the 7b model.
-The samples are bounded in lines (the first 15 and last 10 of each window,
-[#134](https://github.com/deluispablo/data-agent-toolkit/issues/134)),
-which is where the prompt savings come from. One fixture fails on all 3
-repeats: `gen_preamble_5_footer.csv`, a tab-separated file whose totals
-row ends in empty fields, makes both local models repeat `\t` until Ollama
-aborts ([#181](https://github.com/deluispablo/data-agent-toolkit/issues/181)).
-The fallback `qwen2.5-coder:3b` scores 98.4 % when used as the primary,
-with 21 failed inspections of 240. `escapechar` and `doublequote` are
-scored on every fixture with quoted fields (45 of 80) since
-[#158](https://github.com/deluispablo/data-agent-toolkit/issues/158).
+inspections excluded. Every category and every field is at 100 % on the
+7b model. The samples are bounded in lines (the first 15 and last 10 of
+each window,
+[#134](https://github.com/deluispablo/data-agent-toolkit/issues/134)).
+Failed inspections: two tab-separated fixtures whose totals row ends in
+empty fields make the model repeat `\t` until Ollama aborts
+([#181](https://github.com/deluispablo/data-agent-toolkit/issues/181)),
+on all 3 repeats. Since 0.7.0 the local fallback is the primary itself, so
+nothing retries them (0.6.0 asked `qwen2.5-coder:3b`, which rescued one of
+the two). No smaller model meets the bar: of 15 local models compared,
+the best under 5 GB loaded (`qwen2.5-coder:3b`, `qwen2.5-coder:1.5b`,
+`qwen3:4b`) stop between 97.2 % and 98.4 %; a
+`qwen2.5-coder:7b-instruct-q4_0` tag is about 24 % faster on CPU. `escapechar` and
+`doublequote` are scored on every fixture with quoted fields (45 of 80)
+since [#158](https://github.com/deluispablo/data-agent-toolkit/issues/158).
 Method, per-category and per-field scores, machine and every miss:
-[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-050).
+[docs/evaluation.md](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#baseline-070);
+the model comparison:
+[Model comparison 2026-09](https://github.com/deluispablo/data-agent-toolkit/blob/main/agents/csv_inspector/docs/evaluation.md#model-comparison-2026-09).
 
 ## Install
 
@@ -134,8 +143,8 @@ pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolk
 
 Requires Python 3.10+. The local backend needs a running
 [Ollama](https://ollama.com) with the models pulled:
-`ollama pull qwen2.5-coder:7b` (primary) and `ollama pull qwen2.5-coder:3b`
-(fallback, only used when the primary fails).
+`ollama pull qwen2.5-coder:7b` (the default model, and its own fallback:
+one model, tried once).
 
 ## Quickstart
 
@@ -459,7 +468,7 @@ These are the catalog's known limitations, with their fixtures, in
 |---|---|---|
 | Model service | Ollama | Google Gemini: Gemini Developer API (API key) or Vertex AI (Application Default Credentials), via `google-genai` |
 | Install | `pip install csv-inspector` + a running Ollama | `pip install "csv-inspector[cloud]"` + credentials |
-| Default models | `qwen2.5-coder:7b`, fallback `qwen2.5-coder:3b` | `gemini-3.6-flash`, fallback `gemini-flash-lite-latest` |
+| Default models | `qwen2.5-coder:7b`, its own fallback (tried once) | `gemini-3.6-flash`, fallback `gemini-flash-lite-latest` |
 | Cost | Free | Pay per token (free tier available) |
 | Retries | Never | One retry on `503` / `429`, see below |
 
@@ -660,7 +669,7 @@ There are two ways to configure the library:
 | `Settings` field | Environment variable | Default |
 |---|---|---|
 | `llm_backend` | `LLM_BACKEND` (`local` / `api`) | `local` |
-| `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:3b` |
+| `ollama_model` / `ollama_fallback_model` | `OLLAMA_MODEL` / `OLLAMA_FALLBACK_MODEL` | `qwen2.5-coder:7b` / `qwen2.5-coder:7b` |
 | `ollama_host` | `OLLAMA_HOST` (the Ollama SDK's own variable) | unset: SDK default, `http://localhost:11434` |
 | `gemini_api_key` | `GEMINI_API_KEY` (takes precedence when set) | unset |
 | `google_cloud_project` / `google_cloud_location` | `GOOGLE_CLOUD_PROJECT` / `GOOGLE_CLOUD_LOCATION` (Vertex AI with ADC) | unset |
@@ -681,7 +690,7 @@ never appears in logs or exceptions.
 
 ```bash
 csv-inspector data.csv                                   # or: python -m csv_inspector data.csv
-csv-inspector data.csv --model qwen2.5-coder:7b --fallback-model qwen2.5-coder:3b
+csv-inspector data.csv --model qwen2.5-coder:7b-instruct-q4_0 --fallback-model qwen2.5-coder:7b
 csv-inspector data.csv --bytes 8192 --tail-bytes 8192 --timeout 60
 csv-inspector data.csv --stats                           # usage as JSON on stderr
 csv-inspector data.csv --backend api --model gemini-3.6-flash --env-file secrets.env

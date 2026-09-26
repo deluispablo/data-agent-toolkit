@@ -8,6 +8,22 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
+### Added
+
+- Evaluation harness: a run summary records the model load time
+  (`load_seconds`, max and p50) and, for a live local run, the loaded
+  model's size and VRAM share from Ollama's `/api/ps`
+  (`model_size_bytes`, `model_vram_bytes`); `compare_runs.py` shows them
+  as "load max", "loaded size (GB)" and "in VRAM (GB)". Older run files
+  still summarize and compare (`n/a`).
+
+### Documentation
+
+- `docs/evaluation.md` "Comparing models": the M8 decision rule for
+  choosing a default model, the run-file names per phase and a CPU-only
+  recipe for Ollama (with the tuning knobs worth a run).
+
+
 ## [0.6.0] - 2026-09-26
 
 Simpler inside, same answers: M7 cut the library from 4,046 to 3,188

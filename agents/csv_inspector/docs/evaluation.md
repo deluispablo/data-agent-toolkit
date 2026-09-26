@@ -177,12 +177,18 @@ charged its worst case).
 The last line is `{"summary": {...}}`: the settings of the `run` line,
 whether the run stopped early and whether it is `incomplete`, the
 aggregate, per-category and per-field scores, majority-vote scores,
-agreement, verdicts, token totals and means, latency p50/p95, model calls,
-fallback uses, retries (every line's `retries`, failed inspections
+agreement, verdicts, token totals and means, latency p50/p95, model load
+time (`load_seconds`: max and p50 over the lines that report one; `null`
+on a replay or a cloud run), model calls, fallback uses, retries (every line's `retries`, failed inspections
 included), error counts by exception class (the inspection's and each
 failed attempt's) and the number of 429 and 503 answers seen in failed
 attempts. `fixtures_run` against `fixtures_planned` shows how far the run
-got.
+got. A live `local` run also records how big its model is once loaded,
+asked once from Ollama's `/api/ps` right after the first answer:
+`model_size_bytes` and `model_vram_bytes` (the part in GPU memory, `0` on
+a CPU-only server); both are `null` when the lookup fails, and replays and
+cloud runs have neither key. Files written before 0.7.0 lack these keys;
+`compare_runs.py` shows them as `n/a`.
 
 A file with no summary line is an interrupted run (the harness was killed,
 or stopped with Ctrl+C, which prints the recovery command).
@@ -417,7 +423,63 @@ Run files: `runs/tail0-structural.jsonl`, `runs/tail0-delimiter.jsonl`
 (`--category C --tail-bytes 0 --repeat 3 --keep-raw`), against the
 full-catalog 15 x 10 run of [Line bounds](#line-bounds-134).
 
+## Comparing models
+
+Choosing a default model is a measurement with its rule written first.
+The rule of M8 (milestone "Model selection", 2026-09-26), verbatim:
+
+> Criterion, fixed before any run: the smallest model that scores >= 99.0 % on the full catalog (--repeat 3, no field under 95 %, repeat agreement >= 95 %), ranked by loaded size (ollama ps), then CPU p50 latency, then completion tokens.
+
+Run every candidate as its own fallback (`--model M --fallback-model M`)
+so each row measures one model, always with `--no-env-file`, one run at a
+time (two runs at once share the machine and skew the latency). Name the
+files by phase:
+
+| file | run |
+|---|---|
+| `runs/{model}-quick.jsonl` | screen: `--subset quick --repeat 1 --keep-raw`, on GPU |
+| `runs/{model}-gpu.jsonl` | prove: full catalog, `--repeat 3 --keep-raw`, on GPU |
+| `runs/{model}-cpu.jsonl` | time: full catalog, `--repeat 1 --timeout 600`, CPU only |
+
+`compare_runs.py` shows each run's "load max", "loaded size (GB)" and
+"in VRAM (GB)" next to its latency.
+
+### CPU-only recipe (Windows)
+
+The cheapest host has no GPU; to time it on a machine that has one, the
+Ollama server must not see the GPU:
+
+1. Stop the Ollama tray app, which holds port 11434 (PowerShell:
+   `Get-Process ollama* | Stop-Process -Force`).
+2. In a terminal, hide the GPU and start the server:
+
+   ```powershell
+   $env:CUDA_VISIBLE_DEVICES = '-1'
+   ollama serve
+   ```
+
+3. After the first call of a run, confirm in another terminal that
+   `ollama ps` shows `100% CPU` for the model; the run's summary then has
+   `model_vram_bytes` 0.
+4. When done, stop that server and start the tray app again.
+
+On Linux or macOS the same steps apply with `CUDA_VISIBLE_DEVICES=-1
+ollama serve` after stopping the service.
+
+Knobs worth one run each on CPU, all set in the shell before `ollama serve`
+(one server restart per variant):
+
+- `OLLAMA_NUM_PARALLEL=1`: one request slot, so the KV cache is sized for
+  one conversation.
+- `OLLAMA_KEEP_ALIVE`: how long a model stays loaded after its last call
+  (default 5 minutes); longer avoids reloads between sparse inspections.
+- `OLLAMA_FLASH_ATTENTION=1`, and with it `OLLAMA_KV_CACHE_TYPE=q8_0`: a
+  smaller KV cache.
+- Quantisation tags, e.g. `qwen2.5-coder:3b-instruct-q4_0` or `-q8_0`:
+  smaller or more faithful weights than the default tag.
+
 ## Publishing a baseline
+
 
 A baseline is a full local run (`--repeat 3`) plus the cloud subset,
 written up below as `## Baseline <version>`, usually once per release.

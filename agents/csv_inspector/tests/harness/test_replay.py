@@ -109,7 +109,10 @@ def test_replay_answers_from_the_run_and_calls_no_model(
     assert summary["aggregate_score"] == 1.0
     assert summary["fallback_used"] == 2
     assert summary["tokens"]["prompt_mean"] is None
+    assert summary["load_seconds"] == {"max": None, "p50": None}
+    assert "model_size_bytes" not in summary
     pipe = lines[3]
+
     assert pipe["fixture"] == "delimiter_pipe.csv"
     assert pipe["model_used"] == "fallback"
     assert [attempt["model"] for attempt in pipe["raw_response"]] == ["primary", "fallback"]

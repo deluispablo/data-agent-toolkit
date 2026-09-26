@@ -129,7 +129,7 @@ pip install ./agents/csv_inspector            # local backend (Ollama)
 pip install "./agents/csv_inspector[cloud]"   # + Gemini backend
 
 # As a dependency of another project, pinned to a release tag
-pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.5.0#subdirectory=agents/csv_inspector"
+pip install "csv-inspector @ git+https://github.com/deluispablo/data-agent-toolkit@csv-inspector-v0.6.0#subdirectory=agents/csv_inspector"
 ```
 
 Requires Python 3.10+. The local backend needs a running

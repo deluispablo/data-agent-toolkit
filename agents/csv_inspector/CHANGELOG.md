@@ -8,13 +8,11 @@ listed under **Changed (breaking)**.
 
 ## [Unreleased]
 
-### Changed
+## [0.6.0] - 2026-09-26
 
-- The private module `csv_inspector._invokers` no longer has
-  `invoke_ollama_model`, `ainvoke_ollama_model`, `invoke_cloud_model` and
-  `ainvoke_cloud_model`: only the tests called them, and they were never
-  exported. Inject a `model_invoker`, or leave the default, as before
-  ([#169](https://github.com/deluispablo/data-agent-toolkit/issues/169)).
+Simpler inside, same answers: M7 cut the library from 4,046 to 3,188
+lines with no function over complexity 10, and replaying the 0.5.0 runs
+gives every verdict unchanged. One breaking removal.
 
 ### Changed (breaking)
 
@@ -24,12 +22,33 @@ listed under **Changed (breaking)**.
   `footer_first_line`, the shape the prompt and the JSON Schema ask for
   ([#171](https://github.com/deluispablo/data-agent-toolkit/issues/171)).
 
+### Changed
+
+- The private module `csv_inspector._invokers` no longer has
+  `invoke_ollama_model`, `ainvoke_ollama_model`, `invoke_cloud_model` and
+  `ainvoke_cloud_model`: only the tests called them, and they were never
+  exported. Inject a `model_invoker`, or leave the default, as before
+  ([#169](https://github.com/deluispablo/data-agent-toolkit/issues/169)).
+- No behaviour change otherwise: grounding parses each sample once, the
+  invokers share one retry decision, the inspection loop lives in one
+  place, and the model's small slips are read in one pass. Replaying the
+  0.5.0 7b and 3b runs gives identical verdicts and field matches
+  ([#168](https://github.com/deluispablo/data-agent-toolkit/issues/168),
+  [#169](https://github.com/deluispablo/data-agent-toolkit/issues/169),
+  [#170](https://github.com/deluispablo/data-agent-toolkit/issues/170),
+  [#171](https://github.com/deluispablo/data-agent-toolkit/issues/171)).
+
 ### Documentation
 
 - `docs/embedding.md` §7: the inspection semaphore can be created when the
   app is built (it binds to the serving loop on first use), as the FastAPI
   example now does
   ([#175](https://github.com/deluispablo/data-agent-toolkit/issues/175)).
+- `docs/evaluation.md` names the `scripts/eval_harness/` package behind
+  `eval_samples.py` and `compare_runs.py` (same commands, same run files),
+  and keeps "Prompt passes (#133)" under the 0.4.0 baseline as history
+  ([#172](https://github.com/deluispablo/data-agent-toolkit/issues/172),
+  [#176](https://github.com/deluispablo/data-agent-toolkit/issues/176)).
 
 ## [0.5.0] - 2026-09-25
 
@@ -728,7 +747,8 @@ Relative to the unpackaged monorepo code:
 - The `metadata_lines` field of `CSVInspectionResult`; the preamble is
   described by `header_row_index`.
 
-[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.5.0...HEAD
+[Unreleased]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.6.0...HEAD
+[0.6.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.5.0...csv-inspector-v0.6.0
 [0.5.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.4.0...csv-inspector-v0.5.0
 [0.4.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.3.0...csv-inspector-v0.4.0
 [0.3.0]: https://github.com/deluispablo/data-agent-toolkit/compare/csv-inspector-v0.2.0...csv-inspector-v0.3.0

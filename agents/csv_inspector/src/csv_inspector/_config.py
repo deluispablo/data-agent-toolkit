@@ -24,10 +24,14 @@ from ._exceptions import BackendConfigurationError, CredentialsNotConfiguredErro
 
 logger = logging.getLogger(__name__)
 
-# Each fallback differs from its primary: a fallback equal to the primary is
-# skipped, so it would leave only one model to try out of the box.
+# The local defaults follow the M8 model comparison (docs/evaluation.md,
+# "Model comparison 2026-09"): the fallback is the next-smallest model that
+# qualifies, or the primary again when none does, as for qwen2.5-coder:7b. A
+# fallback equal to the primary is skipped, so the local backend tries one
+# model out of the box and gives it the whole time budget. The cloud
+# fallback differs from its primary.
 DEFAULT_MODEL: str = "qwen2.5-coder:7b"
-FALLBACK_MODEL: str = "qwen2.5-coder:3b"
+FALLBACK_MODEL: str = "qwen2.5-coder:7b"
 DEFAULT_CLOUD_MODEL: str = "gemini-3.6-flash"
 DEFAULT_CLOUD_FALLBACK_MODEL: str = "gemini-flash-lite-latest"
 

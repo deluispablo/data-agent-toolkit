@@ -210,14 +210,18 @@ async def test_backend_configuration_error_is_503(
 
 @pytest.mark.anyio
 async def test_model_failure_is_502(client: httpx.AsyncClient, invoker: FakeInvoker) -> None:
-    """When primary and fallback models both fail, the answer is a 502."""
+    """When the model fails, the answer is a 502.
+
+    The default local fallback is the primary itself, so it is tried once;
+    ``test_overrides.py`` covers a distinct fallback tried second.
+    """
     invoker.error = ConnectionError("model server went away")
 
     response = await client.post("/inspect", files=_upload())
 
     assert response.status_code == 502
     assert response.json()["error"] == "InspectionFailedError"
-    assert [model for _, model in invoker.calls] == ["qwen2.5-coder:7b", "qwen2.5-coder:3b"]
+    assert [model for _, model in invoker.calls] == ["qwen2.5-coder:7b"]
 
 
 @pytest.mark.anyio

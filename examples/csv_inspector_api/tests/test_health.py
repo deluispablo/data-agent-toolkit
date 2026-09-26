@@ -27,7 +27,7 @@ async def test_reports_the_local_configuration(
         "api_version": __version__,
         "backend": "local",
         "model": "qwen2.5-coder:7b",
-        "fallback_model": "qwen2.5-coder:3b",
+        "fallback_model": "qwen2.5-coder:7b",
     }
     assert invoker.calls == []
 

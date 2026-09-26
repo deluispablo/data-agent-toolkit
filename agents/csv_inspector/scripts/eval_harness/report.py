@@ -31,6 +31,10 @@ def _seconds(value: float | None) -> str:
     return "n/a" if value is None else f"{value:.2f}s"
 
 
+def _gigabytes(value: float | None) -> str:
+    return "n/a" if value is None else f"{value / 1e9:.2f}"
+
+
 def _text(value: object) -> str:
     return "n/a" if value is None else str(value).replace("|", "\\|")
 
@@ -108,12 +112,18 @@ def _print_summary_extras(summary: dict[str, Any], *, repeated: bool) -> None:
     """Print the cost, latency and repeat lines of a run summary."""
     tokens = summary["tokens"]
     latency = summary["latency_seconds"]
+    load = summary.get("load_seconds") or {}
     print(
         f"Model calls: {summary['calls']} (fallback used {summary['fallback_used']}x, "
         f"{summary['retries']} retries); tokens: {tokens['prompt_total']} prompt, "
         f"{tokens['completion_total']} completion; latency p50 {_seconds(latency['p50'])}, "
-        f"p95 {_seconds(latency['p95'])}"
+        f"p95 {_seconds(latency['p95'])}; load max {_seconds(load.get('max'))}"
     )
+    if "model_size_bytes" in summary:
+        print(
+            f"Loaded model: {_gigabytes(summary['model_size_bytes'])} GB, "
+            f"{_gigabytes(summary['model_vram_bytes'])} GB in VRAM"
+        )
     if repeated:
         agreement = ", ".join(
             f"{name} {value:.0%}" for name, value in summary["field_agreement"].items()
@@ -191,6 +201,9 @@ def render_table(labels: Sequence[str], summaries: Sequence[dict[str, Any]]) -> 
         ("completion tokens (mean)", [_number(s["tokens"]["completion_mean"]) for s in summaries]),
         ("latency p50", [_seconds(s["latency_seconds"]["p50"]) for s in summaries]),
         ("latency p95", [_seconds(s["latency_seconds"]["p95"]) for s in summaries]),
+        ("load max", [_seconds((s.get("load_seconds") or {}).get("max")) for s in summaries]),
+        ("loaded size (GB)", [_gigabytes(s.get("model_size_bytes")) for s in summaries]),
+        ("in VRAM (GB)", [_gigabytes(s.get("model_vram_bytes")) for s in summaries]),
         ("model calls", [_text(s.get("calls")) for s in summaries]),
         ("errored lines", [_text(s.get("errored_lines")) for s in summaries]),
         ("**accuracy**", [f"**{_percent(s.get('aggregate_score'))}**" for s in summaries]),

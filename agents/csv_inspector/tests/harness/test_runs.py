@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -18,6 +20,7 @@ from eval_harness.evaluation import FileEvaluation
 from eval_harness.runs import (
     HARNESS_VERSION,
     _percentile,
+    model_footprint,
     output_path,
     run_info,
     summarize,
@@ -49,7 +52,7 @@ def test_summary_aggregates_scores_cost_and_errors() -> None:
             "a.csv",
             matched=["delimiter", "columns"],
             category="delimiter",
-            usage=_usage(attempts=2, retries=1),
+            usage=_usage(attempts=2, retries=1, load_seconds=2.0),
             retries=1,
             latency_seconds=1.0,
             calls=3,
@@ -61,7 +64,7 @@ def test_summary_aggregates_scores_cost_and_errors() -> None:
             matched=["delimiter"],
             mismatched=[("columns", ["x"], ["y"])],
             category="quoting",
-            usage=_usage(prompt_tokens=None, completion_tokens=40),
+            usage=_usage(prompt_tokens=None, completion_tokens=40, load_seconds=0.5),
             latency_seconds=3.0,
             calls=1,
             columns_recall=0.0,
@@ -108,6 +111,7 @@ def test_summary_aggregates_scores_cost_and_errors() -> None:
         "completion_mean": 30,
     }
     assert summary["latency_seconds"]["p50"] == pytest.approx(3.0)
+    assert summary["load_seconds"] == {"max": 2.0, "p50": pytest.approx(1.25)}
     assert (summary["calls"], summary["fallback_used"], summary["retries"]) == (6, 1, 1)
     assert summary["errors"] == {"InspectionFailedError": 1}
     assert summary["attempt_errors"] == {"ModelInvocationError": 2}
@@ -197,8 +201,73 @@ def test_a_0_5_0_run_file_round_trips_and_resummarizes_unchanged(tmp_path: Path)
 
     assert [evaluation.to_record() for evaluation in evaluations] == records
     info = {**run["run"], "stopped_early": final["summary"]["stopped_early"]}
-    assert summarize(evaluations, info) == final["summary"]
+    loads = [r["usage"]["load_seconds"] for r in records if r["usage"]]
+    # 0.7.0 added the load times; everything a 0.5.0 summary had is unchanged.
+    added = {"load_seconds": {"max": max(loads), "p50": _percentile(loads, 0.5)}}
+    assert summarize(evaluations, info) == {**final["summary"], **added}
     interrupted = tmp_path / "interrupted.jsonl"
     interrupted.write_text("".join(lines.splitlines(keepends=True)[:-1]), encoding="utf-8")
     _, recovered = summarize_file(interrupted)
-    assert recovered == {**final["summary"], "stopped_early": "interrupted", "incomplete": True}
+    assert recovered == {
+        **final["summary"],
+        **added,
+        "stopped_early": "interrupted",
+        "incomplete": True,
+    }
+
+
+def _fake_ps(monkeypatch: pytest.MonkeyPatch, ps: Any) -> list[dict[str, Any]]:
+    """Register an ``ollama`` module whose client's ``ps`` is ``ps``; returns the client kwargs."""
+    clients: list[dict[str, Any]] = []
+
+    class Client:
+        def __init__(self, **kwargs: Any) -> None:
+            clients.append(kwargs)
+
+        def __enter__(self) -> Any:
+            return SimpleNamespace(ps=ps)
+
+        def __exit__(self, *exc_info: object) -> None:
+            pass
+
+    monkeypatch.setitem(sys.modules, "ollama", SimpleNamespace(Client=Client))
+    return clients
+
+
+def _loaded(*models: tuple[str, int, int]) -> Any:
+    entries = [SimpleNamespace(model=m, name=m, size=s, size_vram=v) for m, s, v in models]
+    return lambda: SimpleNamespace(models=entries)
+
+
+def test_model_footprint_reads_the_loaded_size_from_ollama_ps(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The run's model is found by its tag, ``:latest`` implied; others are ignored."""
+    clients = _fake_ps(monkeypatch, _loaded(("other:1b", 1, 1), ("phi4-mini:latest", 3, 2)))
+
+    assert model_footprint("phi4-mini", "http://ollama:11434") == {
+        "model_size_bytes": 3,
+        "model_vram_bytes": 2,
+    }
+    assert clients == [{"host": "http://ollama:11434"}]
+
+
+def test_model_footprint_is_best_effort(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A model not loaded, or a failing server, gives None sizes and an info log."""
+    unknown = {"model_size_bytes": None, "model_vram_bytes": None}
+    _fake_ps(monkeypatch, _loaded(("other:1b", 1, 1)))
+    with caplog.at_level("INFO", logger="eval_harness.runs"):
+        assert model_footprint("qwen3:4b", None) == unknown
+
+    def refuse() -> Any:
+        raise ConnectionError("refused")
+
+    _fake_ps(monkeypatch, refuse)
+    with caplog.at_level("INFO", logger="eval_harness.runs"):
+        assert model_footprint("qwen3:4b", None) == unknown
+    assert [r.getMessage() for r in caplog.records] == [
+        "Model footprint unavailable: 'qwen3:4b' is not loaded.",
+        "Model footprint unavailable: refused",
+    ]

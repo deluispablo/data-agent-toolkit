@@ -13,7 +13,15 @@ from csv_inspector import _prompt as prompt_module
 from csv_inspector.cli import DEFAULT_CLI_TIMEOUT_SECONDS
 from eval_harness.cli import main, parse_args
 from eval_harness.guards import SUBSETS
-from harness_support import FIXTURES, _answer, _fake_inspect, _main_args, _read_run, _usage
+from harness_support import (
+    FIXTURES,
+    FOOTPRINT,
+    _answer,
+    _fake_inspect,
+    _main_args,
+    _read_run,
+    _usage,
+)
 
 SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
 
@@ -49,7 +57,10 @@ def test_repeat_and_out_write_one_line_per_fixture_and_repeat(
     assert (summary["repeat"], summary["fixtures_run"], summary["model"]) == (3, 3, "primary")
     assert summary["stopped_early"] is None
     assert summary["incomplete"] is False
-    assert "Wrote 9 line(s)" in capsys.readouterr().out
+    assert {key: summary[key] for key in FOOTPRINT} == FOOTPRINT
+    output = capsys.readouterr().out
+    assert "Loaded model: 2.50 GB, 0.00 GB in VRAM" in output
+    assert "Wrote 9 line(s)" in output
 
 
 def test_several_models_run_in_sequence_into_separate_files(

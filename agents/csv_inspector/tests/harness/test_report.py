@@ -168,6 +168,23 @@ def test_table_puts_each_run_in_a_column(two_runs: tuple[Path, Path]) -> None:
     assert "| prompt tokens (mean) | n/a | n/a |" in report
 
 
+def test_table_shows_load_time_and_footprint_or_na(two_runs: tuple[Path, Path]) -> None:
+    """A local run's load and loaded size; a pre-0.7.0 summary without them reads n/a."""
+    measured, legacy = (load_summary(path) for path in two_runs)
+    measured.update(
+        load_seconds={"max": 4.5, "p50": 0.01},
+        model_size_bytes=3_210_000_000,
+        model_vram_bytes=0,
+    )
+    del legacy["load_seconds"]
+
+    report = render(["measured", "legacy"], [measured, legacy])
+
+    assert "| load max | 4.50s | n/a |" in report
+    assert "| loaded size (GB) | 3.21 | n/a |" in report
+    assert "| in VRAM (GB) | 0.00 | n/a |" in report
+
+
 def test_verdict_changes_list_fixed_and_broken_fixtures(two_runs: tuple[Path, Path]) -> None:
     """Every fixture whose verdict moved is listed against the first run."""
     report = render(["baseline", "candidate"], [load_summary(path) for path in two_runs])

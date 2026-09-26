@@ -16,6 +16,7 @@ from csv_inspector import (
 from csv_inspector._models import Usage
 from csv_inspector._prompt import PROMPT_VERSION
 from eval_harness import evaluation as evaluation_module
+from eval_harness import runs as runs_module
 from eval_harness.evaluation import FileEvaluation, evaluate_file
 
 
@@ -93,9 +94,18 @@ def _evaluation(
     )
 
 
+FOOTPRINT = {"model_size_bytes": 2_500_000_000, "model_vram_bytes": 0}
+"""What the faked Ollama ``/api/ps`` lookup reports for every run (see :func:`_fake_inspect`)."""
+
+
 def _fake_inspect(monkeypatch: pytest.MonkeyPatch, answer: Any) -> list[dict[str, Any]]:
-    """Replace ``inspect_csv`` by ``answer`` (a result, an exception or a callable)."""
+    """Replace ``inspect_csv`` by ``answer`` (a result, an exception or a callable).
+
+    The loaded-model lookup of a local run is faked too (:data:`FOOTPRINT`):
+    there is no Ollama server in the tests.
+    """
     calls: list[dict[str, Any]] = []
+    monkeypatch.setattr(runs_module, "model_footprint", lambda model, host: dict(FOOTPRINT))
 
     def fake_inspect_csv(source: object, /, **kwargs: Any) -> CSVInspectionResult:
         calls.append({"source": source, **kwargs})

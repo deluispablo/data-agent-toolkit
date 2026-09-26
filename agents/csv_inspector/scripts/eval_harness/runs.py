@@ -34,6 +34,9 @@ HARNESS_VERSION = "2"
 
 _TRANSIENT_STATUS = re.compile(r"\b(429|503)\b")
 
+FOOTPRINT_KEYS = ("model_size_bytes", "model_vram_bytes")
+"""Summary keys of a local run's loaded model size (:func:`model_footprint`)."""
+
 
 def run_info(
     *,
@@ -107,7 +110,8 @@ def summarize(evaluations: list[FileEvaluation], info: dict[str, Any]) -> dict[s
     Scores are the mean of the per-line scores over lines with no known
     limitation and no pipeline error; per-field scores are matched /
     compared over the same lines. Token means are over the lines that
-    reported tokens; latency percentiles over every line.
+    reported tokens; latency percentiles over every line; model load times
+    over the lines that reported one (none on a replay or a cloud run).
     """
     regular = [e for e in evaluations if not e.known_limitation and not e.error]
     scores = [e.score for e in regular if e.score is not None]
@@ -119,6 +123,7 @@ def summarize(evaluations: list[FileEvaluation], info: dict[str, Any]) -> dict[s
     prompt_tokens = [u.prompt_tokens for u in usages if u.prompt_tokens is not None]
     completion_tokens = [u.completion_tokens for u in usages if u.completion_tokens is not None]
     latencies = [e.latency_seconds for e in evaluations if e.latency_seconds is not None]
+    loads = [u.load_seconds for u in usages if u.load_seconds is not None]
     attempt_messages = [m for e in evaluations for m in e.attempt_errors.values()]
     statuses = Counter(
         match.group(1) for m in attempt_messages if (match := _TRANSIENT_STATUS.search(m))
@@ -152,6 +157,10 @@ def summarize(evaluations: list[FileEvaluation], info: dict[str, Any]) -> dict[s
         "latency_seconds": {
             "p50": _percentile(latencies, 0.5),
             "p95": _percentile(latencies, 0.95),
+        },
+        "load_seconds": {
+            "max": max(loads, default=None),
+            "p50": _percentile(loads, 0.5),
         },
         "calls": sum(e.calls for e in evaluations),
         "fallback_used": sum(u.attempts > 1 for u in usages),
@@ -223,6 +232,34 @@ def summarize_file(path: Path) -> tuple[list[FileEvaluation], dict[str, Any]]:
     with path.open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(_json_line({"summary": summary}))
     return evaluations, summary
+
+
+def model_footprint(model: str, host: str | None) -> dict[str, int | None]:
+    """How much memory ``model`` takes once loaded, from Ollama's ``/api/ps``.
+
+    Best effort: the harness asks once per local run, right after the first
+    answer, while the model is still loaded. Any failure, or a model the
+    server does not list, gives ``None`` for both sizes.
+
+    Returns:
+        ``model_size_bytes`` (the loaded size) and ``model_vram_bytes`` (the
+        part of it in GPU memory; ``0`` on a CPU-only server).
+    """
+    footprint: dict[str, int | None] = dict.fromkeys(FOOTPRINT_KEYS)
+    try:
+        import ollama  # noqa: PLC0415 - lazily imported, as the local invoker does.
+
+        with ollama.Client(host=host) as client:
+            loaded = client.ps().models
+    except Exception as exc:  # noqa: BLE001 - best effort: a size is never worth failing a run.
+        logger.info("Model footprint unavailable: %s", exc)
+        return footprint
+    names = {model, model if ":" in model else f"{model}:latest"}
+    for entry in loaded:
+        if entry.model in names or entry.name in names:
+            return {"model_size_bytes": entry.size, "model_vram_bytes": entry.size_vram}
+    logger.info("Model footprint unavailable: '%s' is not loaded.", model)
+    return footprint
 
 
 def output_path(out: str | None, model: str, *, several_models: bool, stamp: str) -> Path | None:
@@ -330,10 +367,24 @@ def run_and_report(
 ) -> str | None:
     """Run one model over ``fixtures`` as ``info`` describes, report it, write its file.
 
+    A live ``local`` run also records the loaded model's size
+    (:func:`model_footprint`) in its summary; a replay or a cloud run does not.
+
     Returns:
         Why the run stopped early, or ``None``.
     """
     writer = RunWriter(path, info) if path is not None else None
+    measure = info["backend"] == LLMBackend.LOCAL.value and replay is None
+    footprint: dict[str, int | None] = dict.fromkeys(FOOTPRINT_KEYS) if measure else {}
+
+    def record(evaluation: FileEvaluation) -> None:
+        nonlocal measure
+        if writer is not None:
+            writer.add(evaluation)
+        if measure and evaluation.usage is not None:
+            measure = False
+            footprint.update(model_footprint(info["model"], settings.ollama_host))
+
     try:
         evaluations, stopped = run_model(
             fixtures,
@@ -348,7 +399,7 @@ def run_and_report(
             keep_raw=keep_raw,
             budget=budget,
             limiter=limiter,
-            on_evaluation=writer.add if writer is not None else None,
+            on_evaluation=record,
             replay=replay,
         )
     except KeyboardInterrupt:
@@ -358,7 +409,8 @@ def run_and_report(
             msg += "--summarize %s"
             logger.error(msg, writer.lines, writer.path, writer.path)
         sys.exit(130)
-    summary = summarize(evaluations, {**info, "stopped_early": stopped})
+    summary = summarize(evaluations, {**info, **footprint, "stopped_early": stopped})
+
     print_report(
         evaluations,
         backend=info["backend"],

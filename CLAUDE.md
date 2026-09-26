@@ -54,7 +54,7 @@ uv lock                                                    # after any pyproject
 
 - Cost first: no new runtime dependency, no extra model call, without asking.
 - Python 3.10+ (CI 3.10–3.14 Linux, 3.14 Windows). Dev 3.14. Full type hints, Google docstrings.
-- **GitHub Actions paused since 2026-09-25** (private repo, monthly minute quota exhausted): CI workflow `disabled_manually`. No PR gets CI. Run every check above locally before opening and merging a PR; say "CI paused, checks run locally" in PR body. Never re-enable (`gh workflow enable CI`) without user approval; see `CONTRIBUTING.md` "Checks".
+- CI runs on every PR (repo public since 2026-09-26). Still run checks above locally before opening PR; merge only green.
 - Public API = `csv_inspector.__all__` only (test enforce). Change `__all__` or JSON contract: ask first. Examples import `__all__` only, never `_` modules or `cli`.
 - Library: module logger only. No `print()`, no `basicConfig()` outside `cli.py` (and example `main_demo.py`).
 - All exceptions derive `CSVInspectorError`. No bare `except`.

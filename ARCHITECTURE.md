@@ -87,10 +87,6 @@ exactly as an external host would (`import csv_inspector`), never through
 
 ### CI
 
-**Paused since 2026-09-25**: the workflow is disabled by hand because the
-private repository's monthly Actions quota ran out; checks run locally
-until the maintainer re-enables it (see `CONTRIBUTING.md`, "Checks").
-
 [`ci.yml`](.github/workflows/ci.yml) first discovers the agents from
 `agents/*/pyproject.toml`, together with their extras. It then runs these
 jobs:

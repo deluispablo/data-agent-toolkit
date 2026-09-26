@@ -51,11 +51,22 @@ class FakeOllama:
         chat: The handler every client's ``chat`` calls.
         delay_seconds: Delay before each answer.
         closed_clients: How many clients were closed (context exited).
+        capabilities: What ``show`` reports for every model, or the
+            exception it raises.
+        shows: The model of every ``show`` request, in call order.
     """
 
-    def __init__(self, chat: ChatHandler, *, delay_seconds: float = 0.0) -> None:
+    def __init__(
+        self,
+        chat: ChatHandler,
+        *,
+        delay_seconds: float = 0.0,
+        capabilities: list[str] | Exception | None = None,
+    ) -> None:
         self.chat = chat
         self.delay_seconds = delay_seconds
+        self.capabilities = ["completion"] if capabilities is None else capabilities
+        self.shows: list[str] = []
         self.client_kwargs: list[dict[str, Any]] = []
         self.requests: list[dict[str, Any]] = []
         self.closed_clients = 0
@@ -64,6 +75,14 @@ class FakeOllama:
             AsyncClient=partial(_FakeOllamaAsyncClient, self),
             ResponseError=ResponseError,
         )
+
+
+def _show(fake: FakeOllama, model: str) -> SimpleNamespace:
+    """``Client.show`` of a :class:`FakeOllama`: its capabilities, or its exception."""
+    fake.shows.append(model)
+    if isinstance(fake.capabilities, Exception):
+        raise fake.capabilities
+    return SimpleNamespace(capabilities=fake.capabilities)
 
 
 class _FakeOllamaClient:
@@ -78,6 +97,9 @@ class _FakeOllamaClient:
 
     def __exit__(self, *exc_info: object) -> None:
         self._fake.closed_clients += 1
+
+    def show(self, model: str) -> SimpleNamespace:
+        return _show(self._fake, model)
 
     def chat(self, **kwargs: Any) -> Any:
         self._fake.requests.append(kwargs)
@@ -99,6 +121,9 @@ class _FakeOllamaAsyncClient:
     async def __aexit__(self, *exc_info: object) -> None:
         self._fake.closed_clients += 1
 
+    async def show(self, model: str) -> SimpleNamespace:
+        return _show(self._fake, model)
+
     async def chat(self, **kwargs: Any) -> Any:
         self._fake.requests.append(kwargs)
         if self._fake.delay_seconds:
@@ -107,9 +132,14 @@ class _FakeOllamaAsyncClient:
 
 
 def install_fake_ollama(
-    monkeypatch: pytest.MonkeyPatch, chat: ChatHandler, *, delay_seconds: float = 0.0
+    monkeypatch: pytest.MonkeyPatch,
+    chat: ChatHandler,
+    *,
+    delay_seconds: float = 0.0,
+    capabilities: list[str] | Exception | None = None,
 ) -> FakeOllama:
     """Register a :class:`FakeOllama` as the ``ollama`` module for one test."""
-    fake = FakeOllama(chat, delay_seconds=delay_seconds)
+    fake = FakeOllama(chat, delay_seconds=delay_seconds, capabilities=capabilities)
+
     monkeypatch.setitem(sys.modules, "ollama", fake.module)
     return fake

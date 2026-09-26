@@ -715,6 +715,62 @@ def test_ollama_request_sends_the_response_schema(
 
 
 @pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+@pytest.mark.parametrize(
+    ("capabilities", "think"),
+    [
+        (["completion", "thinking"], {"think": False}),
+        (["completion"], {}),
+        (ConnectionError("show failed"), {}),
+    ],
+    ids=["thinking", "no-thinking", "show-fails"],
+)
+def test_thinking_is_turned_off_only_for_thinking_models(
+    monkeypatch: pytest.MonkeyPatch,
+    use_async: bool,
+    capabilities: list[str] | Exception,
+    think: dict[str, bool],
+) -> None:
+    """``think: False`` goes only to a model reporting ``thinking``; a failed show sends no key.
+
+    A thinking model (qwen3) otherwise spends the reply cap thinking and
+    answers an empty message (#198).
+    """
+    fake = install_fake_ollama(
+        monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON), capabilities=capabilities
+    )
+
+    for _ in range(2):  # Two inspections, two invokers: one show each.
+        if use_async:
+            asyncio.run(ainspect_csv(SAMPLE_CSV_PATH))
+        else:
+            inspect_csv(SAMPLE_CSV_PATH)
+
+    assert fake.shows == [DEFAULT_MODEL, DEFAULT_MODEL]
+    assert [{k: v for k, v in r.items() if k == "think"} for r in fake.requests] == [think] * 2
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
+def test_the_capabilities_cache_asks_once_per_model(
+    monkeypatch: pytest.MonkeyPatch, use_async: bool
+) -> None:
+    """With the invoker's cache, a second call of the same model sends no second ``show``."""
+    fake = install_fake_ollama(
+        monkeypatch, lambda **_: ollama_reply(VALID_RESULT_JSON), capabilities=["thinking"]
+    )
+    cache: dict[str, bool] = {}
+
+    for model in ("a", "a", "b"):
+        if use_async:
+            asyncio.run(_ainvoke_ollama("p", model, thinking=cache))
+        else:
+            _invoke_ollama("p", model, thinking=cache)
+
+    assert fake.shows == ["a", "b"]
+    assert cache == {"a": True, "b": True}
+    assert all(request["think"] is False for request in fake.requests)
+
+
+@pytest.mark.parametrize("use_async", [False, True], ids=["sync", "async"])
 def test_ollama_schema_rejection_retries_in_json_mode(
     monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture, use_async: bool
 ) -> None:

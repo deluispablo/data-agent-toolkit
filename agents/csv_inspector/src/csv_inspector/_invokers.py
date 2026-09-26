@@ -140,10 +140,15 @@ def _ollama_num_ctx(prompt: str, reply_tokens: int) -> int:
 
 
 def _ollama_request(
-    prompt: str, model: str, *, reply_tokens: int, schema: bool = True
+    prompt: str, model: str, *, reply_tokens: int, schema: bool = True, thinks: bool = False
 ) -> dict[str, Any]:
-    """Keyword arguments for an Ollama chat request (``schema=False``: plain JSON mode)."""
-    return {
+    """Keyword arguments for an Ollama chat request (``schema=False``: plain JSON mode).
+
+    ``thinks``: the model has the ``thinking`` capability, so thinking is
+    turned off. A thinking model (qwen3) otherwise spends the reply cap on
+    its reasoning and answers an empty message.
+    """
+    request: dict[str, Any] = {
         "model": model,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -158,6 +163,21 @@ def _ollama_request(
             "num_predict": reply_tokens,
         },
     }
+    if thinks:
+        # Only for thinking models: Ollama rejects the key for the others.
+        request["think"] = False
+    return request
+
+
+def _thinks(show_response: object) -> bool:
+    """Whether an ``ollama show`` reply lists the ``thinking`` capability."""
+    return "thinking" in (getattr(show_response, "capabilities", None) or ())
+
+
+def _thinking_unknown(model: str, exc: Exception) -> bool:
+    """A failed ``show``: log it and send no ``think`` key (``False``)."""
+    logger.debug("Could not read the capabilities of model '%s': %s", model, exc)
+    return False
 
 
 def _schema_rejected(ollama: ModuleType, model: str, exc: Exception) -> bool:
@@ -202,8 +222,13 @@ def _invoke_ollama(
     *,
     host: str | None = None,
     reply_tokens: int = _OLLAMA_MIN_RESPONSE_TOKENS,
+    thinking: dict[str, bool] | None = None,
 ) -> InvokerResponse:
     """Send ``prompt`` to Ollama; a pre-0.5 server rejecting the schema is asked in JSON mode.
+
+    Thinking is turned off for a model with the ``thinking`` capability,
+    read with one ``show`` per model and cached in ``thinking`` (the
+    invoker's cache; ``None``: ask every call).
 
     Raises:
         BackendConfigurationError: If the ``ollama`` package is not installed.
@@ -211,9 +236,17 @@ def _invoke_ollama(
         ModelInvocationError: If the request fails or the response is empty.
     """
     ollama = _import_ollama()
-    request = functools.partial(_ollama_request, prompt, model, reply_tokens=reply_tokens)
+    thinking = {} if thinking is None else thinking
     try:
         with ollama.Client(host=host, timeout=timeout_seconds) as client:
+            if model not in thinking:
+                try:
+                    thinking[model] = _thinks(client.show(model))
+                except Exception as exc:  # noqa: BLE001 - a failed show only means no think key.
+                    thinking[model] = _thinking_unknown(model, exc)
+            request = functools.partial(
+                _ollama_request, prompt, model, reply_tokens=reply_tokens, thinks=thinking[model]
+            )
             try:
                 response = client.chat(**request())
             except Exception as exc:
@@ -232,12 +265,21 @@ async def _ainvoke_ollama(
     *,
     host: str | None = None,
     reply_tokens: int = _OLLAMA_MIN_RESPONSE_TOKENS,
+    thinking: dict[str, bool] | None = None,
 ) -> InvokerResponse:
     """:func:`_invoke_ollama` with ``ollama.AsyncClient``."""
     ollama = _import_ollama()
-    request = functools.partial(_ollama_request, prompt, model, reply_tokens=reply_tokens)
+    thinking = {} if thinking is None else thinking
     try:
         async with ollama.AsyncClient(host=host, timeout=timeout_seconds) as client:
+            if model not in thinking:
+                try:
+                    thinking[model] = _thinks(await client.show(model))
+                except Exception as exc:  # noqa: BLE001 - a failed show only means no think key.
+                    thinking[model] = _thinking_unknown(model, exc)
+            request = functools.partial(
+                _ollama_request, prompt, model, reply_tokens=reply_tokens, thinks=thinking[model]
+            )
             try:
                 response = await client.chat(**request())
             except Exception as exc:
@@ -457,7 +499,10 @@ def _bind(
     if backend is LLMBackend.API:
         return functools.partial(cloud, settings=settings)
     reply_tokens = ollama_reply_tokens(fields)
-    return functools.partial(local, host=settings.ollama_host, reply_tokens=reply_tokens)
+    # One capabilities cache per invoker: one ``show`` per model it calls.
+    return functools.partial(
+        local, host=settings.ollama_host, reply_tokens=reply_tokens, thinking={}
+    )
 
 
 def builtin_invoker(

@@ -480,7 +480,6 @@ Knobs worth one run each on CPU, all set in the shell before `ollama serve`
 
 ## Publishing a baseline
 
-
 A baseline is a full local run (`--repeat 3`) plus the cloud subset,
 written up below as `## Baseline <version>`, usually once per release.
 The package README quotes it in "Accuracy at a glance", so a pull request

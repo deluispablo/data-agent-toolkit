@@ -17,12 +17,20 @@ listed under **Changed (breaking)**.
   as "load max", "loaded size (GB)" and "in VRAM (GB)". Older run files
   still summarize and compare (`n/a`).
 
+### Fixed
+
+- Thinking models on the local backend (the `qwen3` family) no longer
+  answer an empty message: they spent the whole reply cap reasoning, so
+  every inspection failed over to the fallback model. Requests to a model
+  whose `ollama show` lists the `thinking` capability now send
+  `think: false` (one `show` per model per inspection; a failed `show`
+  sends no `think` key, as before). Other models' requests are unchanged.
+
 ### Documentation
 
 - `docs/evaluation.md` "Comparing models": the M8 decision rule for
   choosing a default model, the run-file names per phase and a CPU-only
   recipe for Ollama (with the tuning knobs worth a run).
-
 
 ## [0.6.0] - 2026-09-26
 
